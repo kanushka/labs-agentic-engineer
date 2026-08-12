@@ -79,14 +79,21 @@ const RouterLink = createLink(MuiLink);
 
 type DependencyValueState =
   components["schemas"]["ExternalDependencyValueState"];
+type DevelopmentReadiness = DependencyValueState | "unknown";
 
-const VALUE_STATE_RANK: Record<DependencyValueState, number> = {
+const VALUE_STATE_RANK: Record<DevelopmentReadiness, number> = {
+  unknown: -1,
   "not-provisioned": 0,
   unset: 1,
   configured: 2,
 };
 
 const VALUE_STATE_PRESENTATION = {
+  unknown: {
+    label: "Readiness unknown",
+    tone: "neutral",
+    dotColor: "text.disabled",
+  },
   "not-provisioned": {
     label: "Platform provisioning",
     tone: "info",
@@ -103,7 +110,7 @@ const VALUE_STATE_PRESENTATION = {
     dotColor: "success.main",
   },
 } as const satisfies Record<
-  DependencyValueState,
+  DevelopmentReadiness,
   { label: string; tone: StatusTone; dotColor: string }
 >;
 
@@ -112,11 +119,10 @@ function developmentValueStates(
     dependencyName: string;
     status: components["schemas"]["DependencyStatus"] | undefined;
   }[],
-): Map<string, DependencyValueState> {
-  const result = new Map<string, DependencyValueState>();
+): Map<string, DevelopmentReadiness> {
+  const result = new Map<string, DevelopmentReadiness>();
   for (const entry of statuses) {
-    const next = entry.status?.valueState;
-    if (!next) continue;
+    const next: DevelopmentReadiness = entry.status?.valueState ?? "unknown";
     const current = result.get(entry.dependencyName);
     if (
       current === undefined ||
@@ -749,7 +755,10 @@ export function DeploymentsPage({ projectName }: { projectName: string }) {
           <Stack spacing={1.25} sx={{ mt: 1 }}>
             {connections.length > 0 ? (
               connections.map((row) => {
-                const valueState = developmentConnectionStates.get(row.name);
+                const valueState =
+                  row.kind === "external"
+                    ? (developmentConnectionStates.get(row.name) ?? "unknown")
+                    : undefined;
                 const readiness = valueState
                   ? VALUE_STATE_PRESENTATION[valueState]
                   : undefined;
