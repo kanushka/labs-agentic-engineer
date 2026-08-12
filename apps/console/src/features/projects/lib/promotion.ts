@@ -53,10 +53,10 @@ export interface ConnectionRow {
 /** Entered production values, keyed connection id → config key → value. */
 export type ConnectionValues = Record<string, Record<string, string>>;
 
-// The same dedupe identity the Spec view uses (dependencyUsedBy.ts /
-// BuildDependencyDrawer's groupPreflightItems): a shared dependency is
-// declared independently on every consuming component's design.json, and
-// promotion must ask for its values once, not once per consumer.
+// The same dedupe identity the Spec view uses (dependencyUsedBy.ts): a shared
+// dependency is declared independently on every consuming component's
+// design.json, and promotion must ask for its values once, not once per
+// consumer.
 function dependencyIdentity(dep: Dependency): string {
   return dep.kind === "platform-resource"
     ? `platform-resource:${dep.resourceType ?? ""}:${dep.name}`
