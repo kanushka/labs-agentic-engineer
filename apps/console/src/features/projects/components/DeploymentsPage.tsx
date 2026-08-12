@@ -725,7 +725,28 @@ export function DeploymentsPage({ projectName }: { projectName: string }) {
               what the rail doesn't say. */}
           <PanelOverline>Connections</PanelOverline>
           <Stack spacing={1.25} sx={{ mt: 1 }}>
-            {connections.length > 0 ? (
+            {componentDependencyStatuses.isPending ? (
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <CircularProgress size={18} aria-hidden />
+                <Typography variant="body2" color="text.secondary">
+                  Loading connection readiness…
+                </Typography>
+              </Stack>
+            ) : componentDependencyStatuses.failedCount > 0 ? (
+              <Alert
+                severity="error"
+                action={
+                  <Button
+                    aria-label="Retry connection readiness"
+                    onClick={() => void componentDependencyStatuses.refetch()}
+                  >
+                    Retry
+                  </Button>
+                }
+              >
+                Failed to load connection readiness
+              </Alert>
+            ) : connections.length > 0 ? (
               connections.map((row) => {
                 const valueState =
                   row.kind === "external"

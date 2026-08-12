@@ -17,14 +17,19 @@
  */
 
 import { Box, TextField } from "@wso2/oxygen-ui";
-import type { ConnectionRow } from "../lib/promotion";
+
+export interface ConnectionValueFieldConfig {
+  key: string;
+  description?: string;
+  secret?: boolean;
+}
 
 export function ConnectionValueFields({
   config,
   values,
   onValueChange,
 }: {
-  config: ConnectionRow["config"];
+  config: readonly ConnectionValueFieldConfig[];
   values: Record<string, string>;
   onValueChange: (key: string, value: string) => void;
 }) {
@@ -37,7 +42,6 @@ export function ConnectionValueFields({
       }}
     >
       {config.map((key) => (
-        // The key labels the field; its description stays visible below.
         <TextField
           key={key.key}
           label={key.key}

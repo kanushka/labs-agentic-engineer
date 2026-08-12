@@ -80,6 +80,9 @@ const DEFAULT_DEPENDENCIES: ComponentDependencies[] = [
 ];
 let mockDependencies: ComponentDependencies[] = DEFAULT_DEPENDENCIES;
 const mockUseComponentDependencyStatuses = vi.fn();
+const mockComponentStatusRefetch = vi.fn();
+let mockComponentStatusPending = false;
+let mockComponentStatusFailedCount = 0;
 let mockComponentDependencyStatuses: Array<{
   componentName: string;
   dependencyName: string;
@@ -137,9 +140,10 @@ vi.mock("../api/queries", () => ({
   useComponentDependencyStatuses: (...args: unknown[]) => {
     mockUseComponentDependencyStatuses(...args);
     return {
-      isPending: false,
-      failedCount: 0,
+      isPending: mockComponentStatusPending,
+      failedCount: mockComponentStatusFailedCount,
       statuses: mockComponentDependencyStatuses,
+      refetch: mockComponentStatusRefetch,
     };
   },
 }));
@@ -161,6 +165,9 @@ beforeEach(() => {
   mockMutate.mockClear();
   mockDependencies = DEFAULT_DEPENDENCIES;
   mockComponentDependencyStatuses = [];
+  mockComponentStatusPending = false;
+  mockComponentStatusFailedCount = 0;
+  mockComponentStatusRefetch.mockClear();
 });
 
 describe("DeploymentsPage — validation chip", () => {
@@ -272,6 +279,39 @@ describe("DeploymentsPage — story rail", () => {
 });
 
 describe("DeploymentsPage — connections", () => {
+  it("shows a connection-region loading state without readiness claims", () => {
+    mockComponentStatusPending = true;
+
+    render(<DeploymentsPage projectName="acme" />);
+
+    expect(screen.getByText("Loading connection readiness…")).toBeInTheDocument();
+    expect(screen.queryByText("Readiness unknown")).not.toBeInTheDocument();
+    expect(screen.queryByText("Configured")).not.toBeInTheDocument();
+  });
+
+  it("shows a connection-region error, hides partial readiness, and retries", () => {
+    mockComponentStatusFailedCount = 1;
+    mockComponentDependencyStatuses = [
+      {
+        componentName: "storefront",
+        dependencyName: "stripe",
+        status: {
+          outputs: [],
+          ready: true,
+          status: "Ready",
+          valueState: "configured",
+        },
+      },
+    ];
+
+    render(<DeploymentsPage projectName="acme" />);
+
+    expect(screen.getByText("Failed to load connection readiness")).toBeInTheDocument();
+    expect(screen.queryByText("Configured")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry connection readiness" }));
+    expect(mockComponentStatusRefetch).toHaveBeenCalledTimes(1);
+  });
+
   it("shows each development connection's real readiness and keeps correctable externals configurable", () => {
     mockDeploy = {
       version: "v1",

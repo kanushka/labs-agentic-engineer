@@ -109,8 +109,9 @@ func NewPreflightService(d PreflightDeps) *PreflightService {
 // dependency needs the same preflight treatment as a service's, since Task 9
 // already surfaces its status chips and the coding-agent wiring already emits
 // consumed-spec instructions for it) — and emits items for dependencies that
-// still need resolution, schema projection, or automatic provisioning and are
-// not already provisioned or in-flight:
+// still need resolution, schema projection, or automatic provisioning. Legacy
+// provisioned/in-flight status suppresses automatic platform provisioning, but
+// never suppresses the resolved external schema projection:
 //
 //   - external: a blocker item — "external-ambiguous" (2+ candidates),
 //     "external-unresolved" (needs information only the user can supply), or
@@ -118,7 +119,8 @@ func NewPreflightService(d PreflightDeps) *PreflightService {
 //     computed Status/Reason (spec.ComputeDependencyStatus, via
 //     dependencyBlocker) says so; this is the dependency-management proceed
 //     gate Task 1 orphaned, reborn here. Otherwise, an "external-config" item
-//     (key/secret views only) when the dependency is not yet Ready.
+//     (key/secret views only) regardless of legacy provisioning readiness: it
+//     is the durable schema projection used to correct values after Build.
 //   - platform-resource: a "platform-resource" item when not yet Ready.
 //   - org-service: an "org-service" item when Status is one of the three
 //     non-resolved resolution states (unresolved | blocked | ambiguous);
@@ -194,9 +196,10 @@ func (s *PreflightService) itemsFor(ctx context.Context, orgID, projectID, compo
 // no meaningful config schema until the dependency itself resolves (a
 // still-ambiguous/unresolved dependency has no derived config keys yet). Once
 // resolved (or when no resolver was ever wired — the fail-open empty Status),
-// an external-config item (key/secret views only) is emitted when the
-// dependency is not yet Ready. The item carries schema but does not gate Build;
-// value readiness remains separate from ComputeDependencyStatus.
+// an external-config item (key/secret views only) is always emitted. Legacy
+// provisioning readiness does not suppress this schema: Builds needs it for
+// later value correction. The item does not gate Build; value readiness remains
+// separate from ComputeDependencyStatus.
 func (s *PreflightService) externalItems(ctx context.Context, orgID, projectID, componentName string, d spec.Dependency) ([]PreflightItem, error) {
 	if kind, desc, blocked := dependencyBlocker(d); blocked {
 		return []PreflightItem{{
@@ -205,13 +208,6 @@ func (s *PreflightService) externalItems(ctx context.Context, orgID, projectID, 
 			Dependency:  d.Name,
 			Description: desc,
 		}}, nil
-	}
-	ready, err := s.status.Ready(ctx, orgID, projectID, d.Name)
-	if err != nil {
-		return nil, err
-	}
-	if ready {
-		return nil, nil
 	}
 	return []PreflightItem{{
 		Kind:        "external-config",

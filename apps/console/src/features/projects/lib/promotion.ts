@@ -16,9 +16,7 @@
  * under the License.
  */
 
-// Shared connection derivation plus the Deployments page's promotion-readiness
-// model. Builds reuses the rows for development configuration; the production
-// values and promotion calculations remain local to this module's consumers.
+// Promotion readiness — the Deployments page's "live configuration" model.
 //
 // A promotion collects PRODUCTION values for the design's connections: dev
 // credentials never travel to another environment, so every connection that
@@ -35,32 +33,30 @@ type ComponentDependencies = components["schemas"]["ComponentDependencies"];
 type Dependency = components["schemas"]["Dependency"];
 type ConfigKey = components["schemas"]["ConfigKey"];
 
-/** One design-declared connection exposed to configuration consumers. */
+/** One connection the promotion has to account for. */
 export interface ConnectionRow {
   /** Dedupe identity — also the key entered values are stored under. */
   id: string;
   name: string;
-  /** The design-authored dependency description. */
-  description?: string;
   /** The dependency's kind — an "external" connection's values can be
    *  re-collected through collect-external-resource-values; a platform
    *  resource's cannot (the platform owns its credentials). */
   kind: string;
   /** The platform resource type ("postgres-cnpg"), shown beside the name. */
   detail?: string;
-  /** The config-key schema this connection declares; [] when there is none. */
+  /** The production values this connection needs; [] when there are none. */
   config: ConfigKey[];
-  /** No user-entered values to collect — the platform provisions it. */
+  /** No values to collect — the platform provisions it in production. */
   provisioned: boolean;
 }
 
 /** Entered production values, keyed connection id → config key → value. */
 export type ConnectionValues = Record<string, Record<string, string>>;
 
-// The same dedupe identity the Spec view uses (dependencyUsedBy.ts): a shared
-// dependency is declared independently on every consuming component's
-// design.json, and a configuration surface must ask for its values once, not
-// once per consumer. Config keys are unioned below to match server readiness.
+// The same dedupe identity the Spec view uses (dependencyUsedBy.ts /
+// BuildDependencyDrawer's groupPreflightItems): a shared dependency is
+// declared independently on every consuming component's design.json, and
+// promotion must ask for its values once, not once per consumer.
 function dependencyIdentity(dep: Dependency): string {
   return dep.kind === "platform-resource"
     ? `platform-resource:${dep.resourceType ?? ""}:${dep.name}`
@@ -80,28 +76,11 @@ export function connectionRows(
     for (const dep of comp.dependencies ?? []) {
       if (dep.kind === "component") continue;
       const id = dependencyIdentity(dep);
-      const existing = byId.get(id);
-      if (existing) {
-        const configByKey = new Map(
-          existing.config.map((key, index) => [key.key, index]),
-        );
-        for (const key of dep.config ?? []) {
-          const index = configByKey.get(key.key);
-          if (index === undefined) {
-            configByKey.set(key.key, existing.config.length);
-            existing.config.push(key);
-          } else if (key.secret && !existing.config[index]?.secret) {
-            existing.config[index] = { ...existing.config[index]!, secret: true };
-          }
-        }
-        existing.provisioned = existing.config.length === 0;
-        continue;
-      }
-      const config = [...(dep.config ?? [])];
+      if (byId.has(id)) continue;
+      const config = dep.config ?? [];
       byId.set(id, {
         id,
         name: dep.name,
-        ...(dep.description && { description: dep.description }),
         kind: dep.kind,
         ...(dep.resourceType && { detail: dep.resourceType }),
         config,

@@ -181,6 +181,35 @@ describe("component dependency statuses", () => {
       ),
     ).toMatchObject({ valueState: "configured" });
   });
+
+  it("refetches every component status through one rules-safe callback", async () => {
+    mockGET.mockResolvedValue({
+      data: {
+        outputs: [],
+        ready: true,
+        status: "Ready",
+        valueState: "configured",
+      },
+      error: undefined,
+    });
+    const queryClient = new QueryClient();
+    const { result } = renderHook(
+      () =>
+        useComponentDependencyStatuses("acme", [
+          { componentName: "storefront", dependencyName: "stripe" },
+          { componentName: "worker", dependencyName: "stripe" },
+        ]),
+      { wrapper: wrapper(queryClient) },
+    );
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    mockGET.mockClear();
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(mockGET).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("useSaveConnectionValues", () => {

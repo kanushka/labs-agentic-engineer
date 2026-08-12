@@ -31,13 +31,24 @@ import {
   Typography,
 } from "@wso2/oxygen-ui";
 import { ChevronDown } from "@wso2/oxygen-ui-icons-react";
+import { ConnectionValueFields } from "@aep/ui-connection-value-fields";
 import { StatusChip, type StatusTone } from "../../../components/StatusChip";
 import { useSaveConnectionValues, useProjectDependencyReadiness } from "../../projects/api/queries";
-import { connectionRows, type ConnectionValues } from "../../projects/lib/promotion";
-import { ConnectionValueFields } from "../../projects/components/ConnectionValueFields";
 import { useDesignDependencies } from "../../spec/api/queries";
+import {
+  externalConnectionRows,
+  type ExternalConnectionRow,
+  type ExternalConnectionValues,
+} from "../lib/externalConnectionRows";
+
+type ReadinessState =
+  | "unknown"
+  | "not-provisioned"
+  | "unset"
+  | "configured";
 
 const presentation = {
+  unknown: { label: "Readiness unknown", tone: "neutral", canSave: false },
   "not-provisioned": {
     label: "Platform provisioning",
     tone: "info",
@@ -46,11 +57,13 @@ const presentation = {
   unset: { label: "Needs values", tone: "warning", canSave: true },
   configured: { label: "Configured", tone: "success", canSave: true },
 } as const satisfies Record<
-  "not-provisioned" | "unset" | "configured",
+  ReadinessState,
   { label: string; tone: StatusTone; canSave: boolean }
 >;
 
-function seedNonSecretDefaults(rows: ReturnType<typeof connectionRows>): ConnectionValues {
+function seedNonSecretDefaults(
+  rows: ReturnType<typeof externalConnectionRows>,
+): ExternalConnectionValues {
   return Object.fromEntries(
     rows.map((row) => [
       row.id,
@@ -63,6 +76,80 @@ function seedNonSecretDefaults(rows: ReturnType<typeof connectionRows>): Connect
   );
 }
 
+function ConnectionConfigurationCard({
+  projectName,
+  row,
+  state,
+  values,
+  onValueChange,
+}: {
+  projectName: string;
+  row: ExternalConnectionRow;
+  state: ReadinessState;
+  values: Record<string, string>;
+  onValueChange: (key: string, value: string) => void;
+}) {
+  const save = useSaveConnectionValues(projectName, row.name);
+  const status = presentation[state];
+  const complete = row.config.every(
+    (key) => (values[key.key] ?? "").trim() !== "",
+  );
+
+  return (
+    <Card component="section" aria-label={row.name} variant="outlined">
+      <CardContent>
+        <Stack spacing={2}>
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+            <Typography component="h3" variant="subtitle1">
+              {row.name}
+            </Typography>
+            <StatusChip label={status.label} tone={status.tone} appearance="soft" />
+          </Box>
+          {row.description && (
+            <Typography variant="body2" color="text.secondary">
+              {row.description}
+            </Typography>
+          )}
+          {state === "not-provisioned" ? (
+            <Typography variant="body2" color="text.secondary">
+              The platform is provisioning this connection. Values can be
+              saved once platform provisioning is complete.
+            </Typography>
+          ) : (
+            <ConnectionValueFields
+              config={row.config}
+              values={values}
+              onValueChange={onValueChange}
+            />
+          )}
+          {save.isError && (
+            <Alert severity="error">
+              {save.error instanceof Error && save.error.message
+                ? save.error.message
+                : "Failed to save the connection's values"}
+            </Alert>
+          )}
+          <Box>
+            <Button
+              variant="contained"
+              disabled={!status.canSave || !complete || save.isPending}
+              onClick={() =>
+                save.mutate({
+                  name: row.name,
+                  environment: "development",
+                  values,
+                })
+              }
+            >
+              {save.isPending ? "Saving…" : `Save ${row.name} values`}
+            </Button>
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ConnectionConfiguration({
   projectName,
   open,
@@ -72,12 +159,11 @@ export function ConnectionConfiguration({
 }) {
   const designDependencies = useDesignDependencies(projectName);
   const readiness = useProjectDependencyReadiness(projectName);
-  const save = useSaveConnectionValues(projectName);
   const rows = useMemo(
-    () => connectionRows(designDependencies.data).filter((row) => row.kind === "external"),
+    () => externalConnectionRows(designDependencies.data),
     [designDependencies.data],
   );
-  const [values, setValues] = useState<ConnectionValues>({});
+  const [values, setValues] = useState<ExternalConnectionValues>({});
   const [expanded, setExpanded] = useState(open);
 
   // A deep link opens the section even if this component was already mounted;
@@ -159,68 +245,21 @@ export function ConnectionConfiguration({
         ) : (
           <Stack spacing={2}>
             {rows.map((row) => {
-              const state = readinessByName.get(row.name)?.state ?? "unset";
-              const status = presentation[state];
-              const complete = row.config.every(
-                (key) => (values[row.id]?.[key.key] ?? "").trim() !== "",
-              );
+              const state = readinessByName.get(row.name)?.state ?? "unknown";
               return (
-                <Card key={row.id} component="section" aria-label={row.name} variant="outlined">
-                  <CardContent>
-                    <Stack spacing={2}>
-                      <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
-                        <Typography component="h3" variant="subtitle1">
-                          {row.name}
-                        </Typography>
-                        <StatusChip label={status.label} tone={status.tone} appearance="soft" />
-                      </Box>
-                      {row.description && (
-                        <Typography variant="body2" color="text.secondary">
-                          {row.description}
-                        </Typography>
-                      )}
-                      {state === "not-provisioned" ? (
-                        <Typography variant="body2" color="text.secondary">
-                          The platform is provisioning this connection. Values can be
-                          saved once platform provisioning is complete.
-                        </Typography>
-                      ) : (
-                        <ConnectionValueFields
-                          config={row.config}
-                          values={values[row.id] ?? {}}
-                          onValueChange={(key, value) =>
-                            setValues((current) => ({
-                              ...current,
-                              [row.id]: { ...current[row.id], [key]: value },
-                            }))
-                          }
-                        />
-                      )}
-                      {save.isError && (
-                        <Alert severity="error">
-                          {save.error instanceof Error && save.error.message
-                            ? save.error.message
-                            : "Failed to save the connection's values"}
-                        </Alert>
-                      )}
-                      <Box>
-                        <Button
-                          variant="contained"
-                          disabled={!status.canSave || !complete || save.isPending}
-                          onClick={() =>
-                            save.mutate({
-                              name: row.name,
-                              environment: "development",
-                              values: values[row.id] ?? {},
-                            })
-                          }
-                        >
-                          {save.isPending ? "Saving…" : `Save ${row.name} values`}
-                        </Button>
-                      </Box>
-                    </Stack>
-                  </CardContent>
-                </Card>
+                <ConnectionConfigurationCard
+                  key={row.id}
+                  projectName={projectName}
+                  row={row}
+                  state={state}
+                  values={values[row.id] ?? {}}
+                  onValueChange={(key, value) =>
+                    setValues((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], [key]: value },
+                    }))
+                  }
+                />
               );
             })}
           </Stack>
