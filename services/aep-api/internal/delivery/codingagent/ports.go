@@ -46,15 +46,6 @@ type Identities interface {
 	IdentityFor(ctx context.Context, ocOrgID string) (name, email, login string, err error)
 }
 
-// DeployObserver is notified when a component deploys (a build Execution
-// succeeds). The provisioning feature uses it to grant any pending cross-project
-// access request targeting the just-deployed provider component (the grant
-// cascade). Wired at the composition root; nil → skipped. Primitives-only so this
-// feature holds no provisioning import.
-type DeployObserver interface {
-	OnComponentDeployed(ctx context.Context, orgID, projectID, component string) error
-}
-
 // SecretRef is one org credential's refs-only SM-API triplet.
 type SecretRef struct {
 	SecretRefName string

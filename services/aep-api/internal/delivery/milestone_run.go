@@ -272,6 +272,10 @@ type MilestoneRun struct {
 	// TerminalReason is set exactly once, when the run settles into a non-success
 	// terminal state. Empty while non-terminal and on a succeeded run.
 	TerminalReason string `gorm:"type:text" json:"terminalReason,omitempty"`
+	// WaitingReason explains an unbounded non-terminal wait. It is cleared when
+	// the run resumes and is never overloaded with terminal failure vocabulary.
+	WaitingReason        string   `gorm:"type:text" json:"waitingReason,omitempty"`
+	BlockingDependencies []string `gorm:"serializer:json;type:jsonb" json:"blockingDependencies,omitempty"`
 
 	// Budget counters. CyclesTotal is checked against CycleCeiling; FixCycles and
 	// ConflictCycles bound the two recovery chains; BuildRetriggers is the

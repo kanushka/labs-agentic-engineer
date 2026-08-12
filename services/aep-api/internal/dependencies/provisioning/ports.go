@@ -136,6 +136,13 @@ type BindingReader interface {
 	GetBinding(ctx context.Context, namespace, name string) (*openchoreo.ResourceReleaseBinding, error)
 }
 
+// ValuesSavedNotifier tells the delivery supervisor the fact that external
+// values were saved. The consumer re-derives readiness; this port carries no
+// deploy command and keeps provisioning independent of delivery/run.
+type ValuesSavedNotifier interface {
+	ValuesSaved(ctx context.Context, orgID, projectID string) error
+}
+
 // ProviderResolver resolves a dependency's provider endpoint in OpenChoreo. It
 // has two readers with different visibility rules, so all three resolves live on
 // one port (*dependencies.Catalog satisfies all of them):
@@ -155,9 +162,9 @@ type ProviderResolver interface {
 // ProviderBuildTrigger kicks the provider project's build so a not-yet-published
 // org-service provider actually deploys (and, on deploy, publishes org-wide —
 // resolving the consumer's visibility gate). Declared as a provisioning port so
-// this feature never imports build/devflow (that would cycle); the app-root
-// adapter (Task 5) wires the real build start. The trigger is idempotent: if a
-// provider devflow is already running the adapter treats it as success. Nil is a
+// this feature never imports delivery/build (that would cycle); the app-root
+// adapter wires the real build start. The trigger is idempotent: if a
+// provider milestone run is already active the adapter treats it as success. Nil is a
 // documented best-effort no-op (logged) — the funnel still holds the consumer and
 // the sweep heals once the provider deploys by any other path.
 type ProviderBuildTrigger interface {

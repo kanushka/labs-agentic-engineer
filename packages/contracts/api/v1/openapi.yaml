@@ -4064,6 +4064,15 @@ components:
             empty while the run is non-terminal and on a succeeded run. agent-quota-blocked
             explains state=blocked.
           type: string
+        waitingReason:
+          description: Human-facing reason for an unbounded non-terminal wait. Empty outside
+            state=waiting and kept separate from terminalReason because nothing failed.
+          type: string
+        blockingDependencies:
+          description: External dependency names that still need values before deployment.
+          items:
+            type: string
+          type: array
         validation:
           $ref: '#/components/schemas/RunValidation'
       required:

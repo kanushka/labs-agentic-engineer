@@ -19,6 +19,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"go.temporal.io/sdk/temporal"
@@ -44,7 +45,8 @@ type Activities struct {
 	builds     BuildReader
 	validation ValidationCoordinator
 	dispatcher delivery.MilestoneDispatcher
-	apiTraits  APITraitSyncer
+	deployGate DeploymentReadinessChecker
+	deployer   ProjectDeployer
 }
 
 // Deps carries the activity adapters. runs/cycles/milestones are required; the
@@ -58,7 +60,8 @@ type Deps struct {
 	Builds     BuildReader
 	Validation ValidationCoordinator
 	Dispatcher delivery.MilestoneDispatcher
-	APITraits  APITraitSyncer
+	DeployGate DeploymentReadinessChecker
+	Deployer   ProjectDeployer
 }
 
 // NewActivities wires the activity adapters.
@@ -72,7 +75,8 @@ func NewActivities(d Deps) *Activities {
 		builds:     d.Builds,
 		validation: d.Validation,
 		dispatcher: d.Dispatcher,
-		apiTraits:  d.APITraits,
+		deployGate: d.DeployGate,
+		deployer:   d.Deployer,
 	}
 }
 
@@ -80,8 +84,10 @@ func NewActivities(d Deps) *Activities {
 
 // SetRunStateInput moves a run between the two non-terminal states.
 type SetRunStateInput struct {
-	RunID string `json:"runId"`
-	State string `json:"state"`
+	RunID                string   `json:"runId"`
+	State                string   `json:"state"`
+	WaitingReason        string   `json:"waitingReason,omitempty"`
+	BlockingDependencies []string `json:"blockingDependencies,omitempty"`
 }
 
 // SetRunState mirrors the loop's waiting ⇄ running oscillation onto the run
@@ -91,7 +97,35 @@ func (a *Activities) SetRunState(ctx context.Context, in SetRunStateInput) error
 	if a.runs == nil {
 		return errNotConfigured
 	}
+	if in.State == delivery.RunStateWaiting && in.WaitingReason != "" {
+		return a.runs.SetWaiting(ctx, in.RunID, in.WaitingReason, in.BlockingDependencies)
+	}
 	return a.runs.SetState(ctx, in.RunID, in.State)
+}
+
+type DeployGateResult struct {
+	Unconfigured []string `json:"unconfigured,omitempty"`
+}
+
+func (a *Activities) CheckDeployReadiness(ctx context.Context, in ProjectRef) (DeployGateResult, error) {
+	if a.deployGate == nil {
+		return DeployGateResult{}, temporal.NewNonRetryableApplicationError("run: deploy gate not configured", "deploy-gate-not-configured", errNotConfigured)
+	}
+	readiness, err := a.deployGate.DeploymentReadiness(ctx, in.OrgID, in.ProjectID, "development")
+	if err != nil {
+		return DeployGateResult{}, err
+	}
+	if len(readiness.Provisioning) > 0 {
+		return DeployGateResult{}, fmt.Errorf("platform resources still provisioning: %v", readiness.Provisioning)
+	}
+	return DeployGateResult{Unconfigured: readiness.Unconfigured}, nil
+}
+
+func (a *Activities) DeployProject(ctx context.Context, in ProjectRef) error {
+	if a.deployer == nil {
+		return temporal.NewNonRetryableApplicationError("run: project deployer not configured", "project-deployer-not-configured", errNotConfigured)
+	}
+	return a.deployer.DeployProject(ctx, in.OrgID, in.ProjectID, in.RunID)
 }
 
 // SettleRunInput ends a run with its terminal state and reason.
@@ -358,40 +392,12 @@ func (a *Activities) PollCycleBuilds(ctx context.Context, in CycleBuildsInput) (
 	return out, nil
 }
 
-// ---- managed-API traits -----------------------------------------------------
-
 // ProjectRef names the project an activity acts on, for the activities whose
 // scope is the whole project rather than one milestone or one cycle.
 type ProjectRef struct {
 	OrgID     string `json:"orgId"`
 	ProjectID string `json:"projectId"`
-}
-
-// SyncAPITraits lands the per-environment `api-configuration` trait config on
-// every protected component's ReleaseBinding in the project.
-//
-// Called once per cycle at builds-green, which is the earliest point in a run
-// where the write target exists: OpenChoreo creates the ReleaseBinding from the
-// workload the build's last step generates, so before green there may be
-// nothing to patch. The supervisor observes green on a poll up to
-// buildPollInterval after the WorkflowRun actually completed, by which time the
-// deploy chain has long since produced the binding.
-//
-// Degrades to "nothing to do" when unwired, like the other optional
-// collaborators: a deployment with no trait emitter has no managed-API policy
-// to converge, which is a legitimate configuration rather than a failed run.
-func (a *Activities) SyncAPITraits(ctx context.Context, in ProjectRef) error {
-	if a.apiTraits == nil {
-		return nil
-	}
-	if err := a.apiTraits.SyncProjectAPITraits(ctx, in.OrgID, in.ProjectID); err != nil {
-		// Logged here as well as returned: Temporal retries this activity, and the
-		// per-attempt cause is otherwise only visible in workflow history.
-		slog.ErrorContext(ctx, "run: managed-API trait sync failed",
-			"orgID", in.OrgID, "projectID", in.ProjectID, "error", err)
-		return err
-	}
-	return nil
+	RunID     string `json:"runId,omitempty"`
 }
 
 // ---- validation ------------------------------------------------------------

@@ -24,12 +24,13 @@ import (
 	"github.com/wso2/aep/aep-api/internal/delivery"
 	"github.com/wso2/aep/aep-api/internal/delivery/run"
 	"github.com/wso2/aep/aep-api/internal/delivery/validation"
+	"github.com/wso2/aep/aep-api/internal/dependencies/provisioning"
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
 // The composition-root adapters behind the run supervisor's consumer ports.
 // Three of its eight ports are satisfied by the issue service and the design
-// reader with no adapter at all; these are the four that need one.
+// reader with no adapter at all; these are the adapters that need one.
 
 // runRuns projects the milestone-run repository onto the supervisor's RunStore.
 // The repository's guarded mutators return the row they changed (or nil when a
@@ -37,6 +38,36 @@ import (
 // was attempted, so the row is dropped here.
 type runRuns struct {
 	runs delivery.MilestoneRunRepository
+}
+
+type activeRunFinder interface {
+	ActiveRunByProject(ctx context.Context, orgID, projectID string) (*delivery.MilestoneRun, error)
+}
+
+type dependencyRunSignaler interface {
+	SignalRun(ctx context.Context, row *delivery.MilestoneRun, name string, payload delivery.RunSignal) error
+}
+
+// runValuesSavedNotifier bridges provisioning's fact-only notification onto
+// the active milestone supervisor without creating a provisioning→delivery
+// feature import.
+type runValuesSavedNotifier struct {
+	runs     activeRunFinder
+	signaler dependencyRunSignaler
+}
+
+func (a runValuesSavedNotifier) ValuesSaved(ctx context.Context, orgID, projectID string) error {
+	if a.runs == nil || a.signaler == nil {
+		return nil
+	}
+	row, err := a.runs.ActiveRunByProject(ctx, orgID, projectID)
+	if err != nil || row == nil {
+		return err
+	}
+	return a.signaler.SignalRun(ctx, row, delivery.SigRunDependencyValuesSaved, delivery.RunSignal{
+		Signal:          delivery.SigRunDependencyValuesSaved,
+		MilestoneNumber: row.MilestoneNumber,
+	})
 }
 
 func (a runRuns) TryAdmit(ctx context.Context, row *delivery.MilestoneRun) (bool, *delivery.MilestoneRun, error) {
@@ -78,6 +109,21 @@ func (a runRuns) MilestoneSpecTag(ctx context.Context, orgID, projectID string, 
 func (a runRuns) SetState(ctx context.Context, id, state string) error {
 	_, err := a.runs.SetState(ctx, id, state)
 	return err
+}
+
+func (a runRuns) SetWaiting(ctx context.Context, id, reason string, dependencies []string) error {
+	_, err := a.runs.SetWaiting(ctx, id, reason, dependencies)
+	return err
+}
+
+type runDeployReadiness struct{ svc *provisioning.Service }
+
+func (a runDeployReadiness) DeploymentReadiness(ctx context.Context, orgID, projectID, environment string) (run.DeployReadiness, error) {
+	readiness, err := a.svc.DeploymentReadiness(ctx, orgID, projectID, environment)
+	if err != nil {
+		return run.DeployReadiness{}, err
+	}
+	return run.DeployReadiness{Unconfigured: readiness.Unconfigured, Provisioning: readiness.Provisioning}, nil
 }
 
 func (a runRuns) Settle(ctx context.Context, id, state, reason string) error {
@@ -152,7 +198,7 @@ func (a runBuilds) ListBuildRuns(ctx context.Context, orgID, projectID, componen
 
 // runValidation adapts the validation feature onto the supervisor's
 // ValidationCoordinator port: mint the version's validation issue at
-// deployed-green, and read the runner's verdict back afterwards.
+// builds-green, and read the runner's verdict back afterwards.
 //
 // The milestone is the minter's own concern — it rides the create, so there is
 // no assignment step here and no window in which the issue has no version. What

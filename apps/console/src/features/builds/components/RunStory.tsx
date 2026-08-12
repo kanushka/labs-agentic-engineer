@@ -17,6 +17,7 @@
  */
 
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Alert,
   Box,
@@ -153,6 +154,7 @@ export function RunStory({
       openWork: milestone.work.filter((t) => t.derivedStatus === "pending").length,
     },
   );
+  const deployGateDependencies = run.blockingDependencies ?? [];
   const reason = terminalReasonText(run.terminalReason ?? "");
   const spent = spentBudgets(run.budgets);
   const started = runStamp(run.startedAt ?? run.createdAt);
@@ -271,7 +273,26 @@ export function RunStory({
           )}
         </Stack>
 
-        {hold &&
+        {deployGateDependencies.length > 0 ? (
+          <RunHoldNotice
+            tone="warning"
+            title="Configuration required before deploy"
+            body={run.waitingReason || "External dependency values are required before deploy."}
+            action={
+              <Link
+                to="/projects/$projectName/builds"
+                params={{ projectName }}
+                search={{ tag, section: "configuration" }}
+              >
+                <Button size="small" variant="outlined">Configure dependencies</Button>
+              </Link>
+            }
+          >
+            <Typography variant="body2" sx={{ mt: 0.75 }}>
+              Waiting for {deployGateDependencies.join(", ")}
+            </Typography>
+          </RunHoldNotice>
+        ) : hold &&
           (hold.kind === "planning" ? (
             // Planning is progress, not a hold — same rule as the pre-dispatch
             // wait below: no leading-edge rule, spinner sized to the title.

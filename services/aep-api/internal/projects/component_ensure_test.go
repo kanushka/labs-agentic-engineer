@@ -90,9 +90,10 @@ func TestEnsureComponent_ProvisionsOCComponentFromDesign(t *testing.T) {
 	if captured.Type != "deployment/service" {
 		t.Errorf("component type = %q, want deployment/service", captured.Type)
 	}
-	// AutoBuild=false (builds are BFF-driven at the merge SHA), AutoDeploy=true.
-	if captured.AutoBuild || !captured.AutoDeploy {
-		t.Errorf("autoBuild/autoDeploy = %v/%v, want false/true", captured.AutoBuild, captured.AutoDeploy)
+	// AutoBuild=false (builds are BFF-driven at the merge SHA), AutoDeploy=false
+	// (the milestone run owns the one gated deploy).
+	if captured.AutoBuild || captured.AutoDeploy {
+		t.Errorf("autoBuild/autoDeploy = %v/%v, want false/false", captured.AutoBuild, captured.AutoDeploy)
 	}
 	wf := captured.Workflow
 	if wf == nil || wf.Name != "dockerfile-builder" || wf.Kind != "ClusterWorkflow" {

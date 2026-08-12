@@ -64,19 +64,10 @@ type OrgPublisher interface {
 // retry (openchoreo.retryStaleWrite) because OC's own controllers rewrite the
 // objects we patch. The full account of both hazards is at the two write sites.
 //
-// The trigger for (2) is `SyncProjectAPITraits`, called by the run
-// supervisor when a cycle's builds go green (`delivery/run`, activity
-// SyncAPITraits). That trigger is rail-coupled ON PURPOSE-FOR-NOW and it is
-// the known weak point: the previous trigger hung off the ExecWatcher's build
-// terminal and stopped firing — silently, for every project — when builds
-// moved to the Temporal run loop, which writes no `kind=build` execution rows
-// for that watcher to read. A missed write leaves a protected API's gateway
-// passing every request through unauthenticated, so a rail-agnostic reconcile
-// sweep over the component list is what should ultimately make the guarantee.
-// Until then the failure is at least LOUD and retried: SyncProjectAPITraits
-// returns its per-component failures, so the activity fails and Temporal
-// re-runs the sweep. `traitDeployObserver` still routes the old ExecWatcher
-// path here; it is inert for anything the run loop builds.
+// The trigger for (2) is the milestone run's explicit deploy activity. It pins
+// each release Active, then invokes SyncProjectAPITraits as a fatal observer in
+// the same Temporal retry unit. A missed write therefore retries deployment
+// convergence instead of leaving a protected API serving without its policy.
 //
 // Concurrency: every call acquires a per-component mutex keyed by
 // `(orgID, projectID, componentName)`. We use a `sync.Map` of `*sync.Mutex`
@@ -86,11 +77,9 @@ type OrgPublisher interface {
 // is mid-flight must trigger its own read after the dispatch finishes,
 // not piggyback on the dispatch's stale read.
 //
-// Protected components keep `autoDeploy: true`, accept the short
-// first-deploy exposure window, and rely on this emitter + the drift
-// watcher for convergence. autoDeploy is required because OC's project→
-// environment→RB binding logic drives initial RB creation; BFF-managed
-// RBs without autoDeploy are not supported by OC.
+// Protected components use `autoDeploy: false`. The explicit deploy activity
+// creates and pins the ReleaseBinding before invoking the project-wide emitter
+// as a fatal observer, avoiding a first-deploy exposure window.
 type TraitSyncService struct {
 	componentClient openchoreo.ComponentClient
 	store           *spec.ArtifactStore
@@ -131,15 +120,13 @@ func NewTraitSyncService(componentClient openchoreo.ComponentClient, store *spec
 // `componentName` is the user-friendly name (matches design.json component
 // name); the OC client prefixes it with the project name internally.
 //
-// First-deploy race: when no ReleaseBindings exist yet for the component,
-// the per-RB PATCH is a soft no-op (handled inside the OC client). The
-// next dispatch — which is the only path that creates the Component CR
-// with the trait already populated — closes that gap. The drift watcher
-// catches anything that falls through.
+// Before first deploy, when no ReleaseBindings exist yet for the component,
+// the per-RB PATCH is a soft no-op (handled inside the OC client). The explicit
+// deploy activity creates the binding and invokes the project-wide sync again.
 //
 // Errors are returned to the caller. Call sites in dispatch / design PUT
-// log and continue (the design tree is the canonical source; the watcher
-// will reconcile on the next sweep).
+// return the error according to their own boundary; the deploy observer is
+// fatal so Temporal retries release activation and policy convergence together.
 func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, projectID, componentName string) error {
 	if s == nil {
 		return nil
@@ -188,7 +175,7 @@ func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, proje
 	// protected reconcile in an org creates `aep-publisher-<orgID>`
 	// (idempotent on subsequent calls). Failures are non-fatal — the
 	// trait still emits, the API stays reachable; the publisher will
-	// be retried on the next reconcile or via the drift watcher.
+	// be retried by the next deploy or design reconciliation.
 	var issuers []string
 	if desiredEnabled && s.idp != nil {
 		if _, _, _, err := s.idp.EnsureOrgPublisher(ctx, orgID, "trait_sync"); err != nil {
@@ -287,9 +274,8 @@ func (s *TraitSyncService) SyncComponentTraits(ctx context.Context, orgID, proje
 
 	// Tombstones: the instance is off the Component now, so its stale env
 	// config can go. The OC client returns a soft no-op when no ReleaseBinding
-	// exists yet (first-deploy race) — expected, and the dispatch path creates
-	// the RB with the right env config in place via the Component's autoDeploy
-	// reconcile.
+	// exists yet (before first deploy) — expected. The explicit deploy activity
+	// creates the RB and runs this sync again in the same retry unit.
 	if len(removals) > 0 {
 		if err := s.componentClient.UpdateComponentTraitEnvironmentConfigs(ctx, orgID, projectID, componentName, removals); err != nil {
 			return fmt.Errorf("trait_sync: clear trait env configs: %w", err)
@@ -354,20 +340,20 @@ func (s *TraitSyncService) DeleteComponentCascade(ctx context.Context, orgID, pr
 }
 
 // SyncProjectAPITraits re-emits trait state on every service component in the
-// project that needs it, from the dispatch path (when any component lands
-// `deployed`). It covers two cases:
+// project that needs it after the deploy activity pins components Active. It
+// covers two cases:
 //   - API-exposing components (`exposesAPI.auth` set): so every protected API
 //     picks up a freshly-added SPA's sibling origin in `cors.allowedOrigins`
 //     (stale CORS otherwise silently breaks the new SPA's preflight).
 //   - Auto-RCA-eligible components (all service components, unless opted out):
 //     so a fresh deploy provisions the default error→RCA alert-rule trait
-//     immediately, instead of waiting for the next reconcile-watcher sweep.
+//     immediately as part of deployment.
 //
 // Idempotent: a failure on one component logs and continues to the next, so one
 // bad component can't stop the rest of the project from converging. The
 // failures are then JOINED and RETURNED — they are not swallowed. That matters
-// because this is the only trigger: the caller is the Temporal SyncAPITraits
-// activity, and returning the error is what makes Temporal retry the sweep. A
+// because this is the fatal observer in the Temporal deploy activity, and
+// returning the error is what makes Temporal retry the whole deploy unit. A
 // dropped write here leaves a protected API's gateway passing every request
 // through unauthenticated, which is not a "log it and move on" outcome.
 //
@@ -398,8 +384,7 @@ func (s *TraitSyncService) SyncProjectAPITraits(ctx context.Context, orgID, proj
 		// API (api-configuration) or the default error→RCA alert rule
 		// (observability-alert-rule). Including auto-RCA-eligible components
 		// here — not just API-exposing ones — makes a fresh deploy provision
-		// the alert rule immediately via the dispatch path, instead of waiting
-		// for the next reconcile-watcher sweep.
+		// the alert rule immediately as part of deployment.
 		if !spec.ResolveAPISecurityEnabled(c) && !spec.ResolveAutoRCAEnabled(c) {
 			continue
 		}

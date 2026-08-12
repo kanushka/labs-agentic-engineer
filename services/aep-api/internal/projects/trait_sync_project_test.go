@@ -241,7 +241,7 @@ func TestSyncProjectAPITraits_PerComponentErrorContinuesThenSurfaces(t *testing.
 
 	// api-a's SyncComponentTraits errors; the loop continues so api-b still
 	// converges — but the failure is then RETURNED, not swallowed. That return
-	// is what fails the Temporal SyncAPITraits activity and gets the sweep
+	// is what fails the Temporal deploy activity and gets the sweep
 	// retried; swallowing it left protected APIs serving unauthenticated
 	// traffic with nothing but a WARN to show for it.
 	err := svc.SyncProjectAPITraits(ctx, "acme", "proj")

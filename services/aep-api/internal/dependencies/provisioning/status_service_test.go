@@ -97,6 +97,43 @@ func TestStatus_ZeroKeyExternalMatchesProjectReadiness(t *testing.T) {
 	}
 }
 
+func TestDeploymentReadinessSeparatesUserAndPlatformWork(t *testing.T) {
+	design := fakeDesign{comps: []spec.DesignComponent{{
+		Name: "api",
+		Dependencies: []spec.Dependency{
+			{Kind: spec.DependencyKindExternal, Name: "stripe", Config: []spec.ConfigKey{{Key: "API_KEY"}}},
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"},
+			// A duplicate consumer must not duplicate a project-level gate entry.
+			{Kind: spec.DependencyKindPlatformResource, Name: "orders-db", ResourceType: "postgres-cnpg"},
+		},
+	}}}
+	bindings := &fakeBindings{byName: map[string]*openchoreo.ResourceReleaseBinding{
+		ocname.ExternalResourceBindingName("proj", "stripe", "development"): bindingConfig(t, map[string]string{"API_KEY": ""}),
+		ocname.ExternalResourceBindingName("proj", "orders-db", "development"): {
+			Status: &openchoreo.ResourceReleaseBindingStatus{Conditions: []openchoreo.OCCondition{{Type: "Ready", Status: "False"}}},
+		},
+	}}
+	svc := NewService(Deps{Design: design, Bindings: bindings})
+
+	got, err := svc.DeploymentReadiness(context.Background(), "acme", "proj", "development")
+	if err != nil {
+		t.Fatalf("DeploymentReadiness: %v", err)
+	}
+	if !reflect.DeepEqual(got.Unconfigured, []string{"stripe"}) {
+		t.Fatalf("Unconfigured = %v", got.Unconfigured)
+	}
+	if !reflect.DeepEqual(got.Provisioning, []string{"orders-db"}) {
+		t.Fatalf("Provisioning = %v", got.Provisioning)
+	}
+
+	bindings.byName[ocname.ExternalResourceBindingName("proj", "stripe", "development")] = bindingConfig(t, map[string]string{"API_KEY": "set"})
+	bindings.byName[ocname.ExternalResourceBindingName("proj", "orders-db", "development")] = readyBinding()
+	got, err = svc.DeploymentReadiness(context.Background(), "acme", "proj", "development")
+	if err != nil || len(got.Unconfigured) != 0 || len(got.Provisioning) != 0 {
+		t.Fatalf("ready project = (%+v, %v)", got, err)
+	}
+}
+
 func bindingConfig(t *testing.T, values map[string]string) *openchoreo.ResourceReleaseBinding {
 	t.Helper()
 	raw, err := json.Marshal(values)

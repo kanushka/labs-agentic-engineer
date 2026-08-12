@@ -86,12 +86,14 @@ func (r *Reads) RunsForTag(ctx context.Context, orgID, projectID, tag string) (*
 // cycles re-enter earlier phases and a flat phase enum would lie mid-loop.
 func runView(row *delivery.MilestoneRun, cycles []delivery.RunCycle) gen.MilestoneRunView {
 	view := gen.MilestoneRunView{
-		ID:              row.ID,
-		MilestoneNumber: int64(row.MilestoneNumber),
-		MilestoneTitle:  row.MilestoneTitle,
-		Origin:          gen.MilestoneRunViewOrigin(row.Origin),
-		State:           gen.MilestoneRunViewState(row.State),
-		TerminalReason:  row.TerminalReason,
+		ID:                   row.ID,
+		MilestoneNumber:      int64(row.MilestoneNumber),
+		MilestoneTitle:       row.MilestoneTitle,
+		Origin:               gen.MilestoneRunViewOrigin(row.Origin),
+		State:                gen.MilestoneRunViewState(row.State),
+		TerminalReason:       row.TerminalReason,
+		WaitingReason:        row.WaitingReason,
+		BlockingDependencies: append([]string(nil), row.BlockingDependencies...),
 		Budgets: gen.RunBudgets{
 			CyclesTotal:      int64(row.CyclesTotal),
 			CycleCeiling:     int64(row.CycleCeiling),

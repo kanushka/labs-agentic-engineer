@@ -211,7 +211,7 @@ type BuildRun struct {
 // is DERIVED from OpenChoreo on read and never stored, so the runs themselves
 // are the record of how many times a (component, commit) pair has been built —
 // which is exactly the automatic re-trigger budget. Deploy needs no verb here:
-// components carry AutoDeploy, so a green build deploys itself.
+// the milestone supervisor owns release activation after the whole fan-out.
 type BuildTrigger interface {
 	// StageBuildCredential provisions the org's git clone credential and returns
 	// the reference the builds triggered against it must carry.

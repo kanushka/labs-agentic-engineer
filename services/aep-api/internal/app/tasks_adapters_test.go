@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wso2/aep/aep-api/internal/delivery/codingagent"
+	"github.com/wso2/aep/aep-api/internal/projects"
 )
 
 // fakeProjectTraitSyncer records the (orgID, projectID) pairs the deploy
@@ -37,9 +37,9 @@ func (f *fakeProjectTraitSyncer) SyncProjectAPITraits(_ context.Context, orgID, 
 	return f.err
 }
 
-// traitDeployObserver satisfies the codingagent.DeployObserver port so the
+// traitDeployObserver satisfies the projects deploy observer port so the
 // fan-out can drive it — pinned at compile time.
-var _ codingagent.DeployObserver = traitDeployObserver{}
+var _ projects.ComponentDeployObserver = traitDeployObserver{}
 
 // The observer ignores the deployed component name and fans a project-wide
 // re-emit (mirroring spaDeployObserver): a sibling SPA's deploy resolves a
@@ -57,9 +57,8 @@ func TestTraitDeployObserver_ForwardsProjectWideSync(t *testing.T) {
 	}
 }
 
-// The adapter returns the syncer's error verbatim; the MultiDeployObserver
-// fan-out is what swallows+logs it (best-effort), so a trait-sync failure
-// never re-drives the ExecWatcher's terminal build-success write.
+// The adapter returns the syncer's error verbatim so its fatal deployment
+// registration makes Temporal retry the release pin and trait convergence.
 func TestTraitDeployObserver_PropagatesErrorToFanOut(t *testing.T) {
 	f := &fakeProjectTraitSyncer{err: errors.New("read design: boom")}
 	o := traitDeployObserver{svc: f}

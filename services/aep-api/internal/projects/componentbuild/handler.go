@@ -83,8 +83,8 @@ func (h *Handler) GetBuildLogs(ctx context.Context, request gen.GetBuildLogsRequ
 }
 
 // --- Deploy operations (read-only) --------------------------------------------
-// OC's Component controller drives the deploy chain via AutoDeploy. The list
-// reflects materialised ReleaseBindings for this component.
+// The milestone deploy activity materialises ReleaseBindings. This handler only
+// projects their current state.
 
 func (h *Handler) ListDeployments(ctx context.Context, request gen.ListDeploymentsRequestObject) (gen.ListDeploymentsResponseObject, error) {
 	org := tenant.BoundOrgFromContext(ctx)

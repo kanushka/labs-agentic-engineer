@@ -34,3 +34,18 @@ AEP's external ResourceType deliberately authors `${true}` for its
 Therefore a binding can be Ready while every external value is unset. AEP's
 project readiness endpoint derives `configured` independently from the current
 design union schema and binding values; it never gates on the Ready condition.
+
+## Component releases are explicitly pinned
+
+AEP creates components with `autoDeploy: false`; a successful build only makes a
+release available. Once the milestone run's dependency gate is ready, its deploy
+activity reads the Component's latest release (or generates one when none exists),
+ensures the development ReleaseBinding points at that release, and sets the
+binding state to `Active`. Ensuring an existing binding is not a no-op: it
+re-pins the release under stale-write retry, because a retried deploy must
+converge even when a prior binding points at an older release.
+
+The deploy activity then invokes every project-wide convergence observer. The
+managed-API trait observer is fatal so a protected API is not considered
+deployed without its gateway policy; access-grant and SPA runtime-config
+observers remain best-effort and have periodic/readiness convergence paths.

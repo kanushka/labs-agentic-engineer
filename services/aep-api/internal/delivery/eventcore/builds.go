@@ -47,8 +47,8 @@ const redBuildLimit = mergeBuildLimit + delivery.RunMaxBuildRetriggersPerCompone
 // either a repo-root concern or a design that has drifted from the tree, and
 // the second one is a component that quietly stops being rebuilt.
 //
-// Deployment needs no step here: components carry AutoDeploy, so a green build
-// deploys itself.
+// Deployment deliberately does not happen here: the milestone supervisor waits
+// for the complete fan-out and owns the project-wide deploy gate.
 func (e *Events) fanOutBuilds(ctx context.Context, orgID, projectID string, run *delivery.MilestoneRun,
 	prNumber int, mergeSHA string) error {
 	if e.p.Builds == nil || e.p.PRs == nil || e.p.Design == nil || mergeSHA == "" {

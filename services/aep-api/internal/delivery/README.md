@@ -95,7 +95,7 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
 | `ComponentEnsurer` | needs | `eventcore` → the projects component service + the runtime-config emitter. Provision a component's OpenChoreo CR immediately before its first build; see the invariant below |
 | `RunReader` · `CycleReader` · `CycleLogReader` · `RunCanceller` · `Revalidator` | needs | `runread` → the root run/cycle repositories, `codingagent`'s cycle-log reader (the pod's log through the OC API while it lives, the observer's archive while the Component is retained), `*run.Supervisor` and the event plane. Four reads and two writes, which is the whole dependency surface of the read model. `Revalidator` is a port for the same reason `RunCanceller` is: deciding a revalidation needs GitHub (is there open work?) and the project repo (is there an oracle?), and this surface must stay free-to-poll |
 | `RunSignaler` · `RunStarter` | needs | `eventcore` and `build` → the run supervisor. Signal a run, start one. Interfaces, which is what keeps both the event plane and the build click free of a workflow engine; both are declared over the root `StartRunRequest`, and `*run.Supervisor` satisfies both |
-| `RunStore` · `CycleStore` · `MilestoneReader` · `PRReader` · `DesignReader` · `BuildReader` · `ValidationCoordinator` | needs | `run` → the root repositories, `sourcecontrol`, the design reader, `clients/openchoreo` and `delivery/validation`. Every I/O the loop performs, named once; `BuildReader` is read-ONLY because the supervisor never triggers a build |
+| `RunStore` · `CycleStore` · `MilestoneReader` · `PRReader` · `DesignReader` · `BuildReader` · `ValidationCoordinator` · `DeploymentReadinessChecker` · `ProjectDeployer` | needs | `run` → the root repositories, `sourcecontrol`, the design reader, `clients/openchoreo`, `delivery/validation`, dependency readiness, and the projects deploy authority. Every I/O the loop performs, named once; `BuildReader` is read-ONLY because the supervisor never triggers a build |
 | `MilestoneClient` (mint · list a milestone's issues · close issue · close milestone) | needs | `build` → `sourcecontrol`. The plan path's whole GitHub surface: create `v<N>` idempotently, and supersede `v<N-1>` |
 | `MilestoneRunStore` (active-run read · admit · settle · list) | needs | `build` → the root run repository. The 409 pre-check and the admission that arms the spec-run mutex |
 | `SpecPlanner` (`PlanIntoMilestone`) | needs | `build` → `task`. The planning turn, reached through the root exactly as `TaskReader` is, so `build` names no sibling |
@@ -314,7 +314,7 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   the field UNTYPED and a chip keyed on an unknown string renders as nothing. Anything richer belongs on
   the run's cycle timeline, which is where the loop's real position lives.
 - **Validation is the run's last CYCLE and never builds.** The supervisor mints the validation issue at
-  deployed-green (never at plan time — an issue nothing can work until every component deploys would hold
+  builds-green (never at plan time — an issue nothing can work until every component builds would hold
   every cycle boundary open), dispatches one cycle at it with `AEP_TASK_KIND=validation`, and reads the
   committed report back as the run's VERDICT. The acceptance oracle
   `specs/validation/validation-criteria.json` is read-only input authored in the design phase (spec domain).
@@ -323,6 +323,11 @@ is the one package allowed to name them, so `httpapi.Deps` + `httpapi.New` is wh
   the body embeds the criteria as they stood at mint time, so adopting an older version's issue would
   hand this version's agent the wrong oracle, and re-filing it would erase it from the ledger of the
   version it actually validated. The version's own open issue is looked up by milestone, and only there.
+- **A successful run deploys only after its dependency gate is ready.** The workflow derives that gate
+  after builds and validation have succeeded. Platform dependencies retry while provisioning; missing
+  external values persist a live waiting reason plus dependency names and park until a value-save signal
+  or polling re-check. Cancellation from that park settles without deployment. Release activation and its
+  convergence observers then execute as one retried activity before the run row becomes terminal.
 - **A version can be judged more than once, and the NEWEST run owns its verdict.** `revalidate` is the
   third run origin (`POST .../builds/{tag}/revalidate`): a fresh run over an already-shipped version's
   milestone that ENTERS THE LOOP AT VALIDATION, because its working set is already empty. Nothing is

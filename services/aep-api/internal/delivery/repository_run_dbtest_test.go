@@ -221,6 +221,49 @@ func TestMilestoneRunRepository_SpecRunMutex(t *testing.T) {
 	}
 }
 
+func TestMilestoneRunRepository_ActiveRunByProjectIncludesEveryOrigin(t *testing.T) {
+	t.Parallel()
+	db := dbtest.New(t)
+	repo := delivery.NewMilestoneRunRepository(db)
+	ctx := context.Background()
+
+	_, specActive, err := repo.TryAdmit(ctx, specRun("orga", "spec-project", 1, "v1"))
+	if err != nil {
+		t.Fatalf("TryAdmit(spec): %v", err)
+	}
+	_, incidentActive, err := repo.TryAdmit(ctx, incidentRun("orga", "incident-project", 2, "v2"))
+	if err != nil {
+		t.Fatalf("TryAdmit(incident): %v", err)
+	}
+	revalidate := incidentRun("orga", "revalidate-project", 3, "v3")
+	revalidate.Origin = delivery.RunOriginRevalidate
+	_, revalidateActive, err := repo.TryAdmit(ctx, revalidate)
+	if err != nil {
+		t.Fatalf("TryAdmit(revalidate): %v", err)
+	}
+
+	for project, want := range map[string]*delivery.MilestoneRun{
+		"spec-project":       specActive,
+		"incident-project":   incidentActive,
+		"revalidate-project": revalidateActive,
+	} {
+		got, lookupErr := repo.ActiveRunByProject(ctx, "orga", project)
+		if lookupErr != nil || got == nil || got.ID != want.ID {
+			t.Fatalf("ActiveRunByProject(%s) = (%+v, %v), want %s", project, got, lookupErr, want.ID)
+		}
+	}
+
+	if _, err := repo.Settle(ctx, incidentActive.ID, delivery.RunStateSucceeded, ""); err != nil {
+		t.Fatalf("Settle(incident): %v", err)
+	}
+	if got, err := repo.ActiveRunByProject(ctx, "orga", "incident-project"); err != nil || got != nil {
+		t.Fatalf("ActiveRunByProject(terminal) = (%+v, %v), want nil", got, err)
+	}
+	if got, err := repo.ActiveRunByProject(ctx, "other-org", "spec-project"); err != nil || got != nil {
+		t.Fatalf("ActiveRunByProject(cross-org) = (%+v, %v), want nil", got, err)
+	}
+}
+
 // TestMilestoneRunRepository_SpecRunMutexCoversPlanning pins the widened index
 // predicate. The plan path admits PLANNING and only leaves it minutes later,
 // once the milestone is filled — which is precisely the window a double-click
@@ -283,10 +326,15 @@ func TestMilestoneRunRepository_Transitions(t *testing.T) {
 	}
 	startedAt := *running.StartedAt
 
-	// Back to waiting at the cycle boundary, then running again: started_at is
-	// the run's FIRST start, not the latest cycle's.
-	if _, err := repo.SetState(ctx, run.ID, delivery.RunStateWaiting); err != nil {
-		t.Fatalf("SetState(waiting): %v", err)
+	// Back to waiting at the deploy gate, with its live explanation persisted,
+	// then running again: started_at is the run's FIRST start, not the latest
+	// cycle's, and leaving the gate clears its presentation fields.
+	waiting, err := repo.SetWaiting(ctx, run.ID, "External dependency values are required before deploy.", []string{"stripe", "sendgrid"})
+	if err != nil || waiting == nil {
+		t.Fatalf("SetWaiting = (%+v, %v)", waiting, err)
+	}
+	if waiting.WaitingReason == "" || len(waiting.BlockingDependencies) != 2 {
+		t.Fatalf("SetWaiting did not persist the deploy gate: %+v", waiting)
 	}
 	again, err := repo.SetState(ctx, run.ID, delivery.RunStateRunning)
 	if err != nil || again == nil {
@@ -294,6 +342,9 @@ func TestMilestoneRunRepository_Transitions(t *testing.T) {
 	}
 	if again.StartedAt == nil || !again.StartedAt.Equal(startedAt) {
 		t.Fatalf("re-entering running moved started_at: %v, want %v", again.StartedAt, startedAt)
+	}
+	if again.WaitingReason != "" || len(again.BlockingDependencies) != 0 {
+		t.Fatalf("leaving the deploy gate retained waiting detail: %+v", again)
 	}
 
 	// SetState refuses a terminal state — that is Settle's job.
@@ -307,6 +358,9 @@ func TestMilestoneRunRepository_Transitions(t *testing.T) {
 	if _, err := repo.Settle(ctx, run.ID, delivery.RunStateSucceeded, delivery.RunReasonNoProgress); err == nil {
 		t.Fatalf("Settle(succeeded, reason) succeeded, want a rejection")
 	}
+	if _, err := repo.SetWaiting(ctx, run.ID, "still waiting", []string{"stripe"}); err != nil {
+		t.Fatalf("SetWaiting before settle: %v", err)
+	}
 
 	settled, err := repo.Settle(ctx, run.ID, delivery.RunStateFailed, delivery.RunReasonCycleCeiling)
 	if err != nil || settled == nil {
@@ -315,6 +369,9 @@ func TestMilestoneRunRepository_Transitions(t *testing.T) {
 	if settled.State != delivery.RunStateFailed ||
 		settled.TerminalReason != delivery.RunReasonCycleCeiling || settled.EndedAt == nil {
 		t.Fatalf("settled row = %+v, want failed/cycle-ceiling/ended", settled)
+	}
+	if settled.WaitingReason != "" || len(settled.BlockingDependencies) != 0 {
+		t.Fatalf("settled row retained waiting detail: %+v", settled)
 	}
 
 	// Every guarded write on a settled run is a no-op returning (nil, nil): a

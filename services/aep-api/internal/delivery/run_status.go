@@ -53,8 +53,10 @@ type RunStatus struct {
 
 	// State is one of the RunState* values; TerminalReason is a RunReason* and
 	// is empty until the run settles into a non-success terminal state.
-	State          string `json:"state"`
-	TerminalReason string `json:"terminalReason,omitempty"`
+	State                string   `json:"state"`
+	TerminalReason       string   `json:"terminalReason,omitempty"`
+	WaitingReason        string   `json:"waitingReason,omitempty"`
+	BlockingDependencies []string `json:"blockingDependencies,omitempty"`
 
 	// Phase names what the run is doing inside a cycle (RunPhase*). It is empty
 	// while the run is waiting.

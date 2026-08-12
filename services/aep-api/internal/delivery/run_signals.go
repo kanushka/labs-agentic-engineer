@@ -40,6 +40,10 @@ const (
 	// SigRunConflict — the cycle's pull request could not be merged and a
 	// conflict issue naming it was minted into the milestone.
 	SigRunConflict = "run-conflict"
+	// SigRunDependencyValuesSaved — external dependency values were saved for
+	// the project. The supervisor treats this as a wake-up fact and re-checks
+	// deployment readiness itself.
+	SigRunDependencyValuesSaved = "run-dependency-values-saved"
 	// SigRunCancel — a human abandoned the increment. It is the ONLY expiry the
 	// unbounded wait state has, and the only signal in this set that is an
 	// instruction rather than a fact: everything else the supervisor re-derives

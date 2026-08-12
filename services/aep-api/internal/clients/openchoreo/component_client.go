@@ -35,12 +35,10 @@ import (
 // plus the projectName that scopes it. The client applies ScopedComponentName
 // internally so callers never deal with the prefixed k8s name.
 //
-// Deploy chain: with AutoDeploy=true set on the Component (see
-// dispatch_service.ensureOCComponent), OC's Component controller owns the
-// Workload → ComponentRelease → ReleaseBinding fan-out for USER components.
-// Ephemeral platform components (coding-agent) have no build WorkflowRun —
-// the BFF drives EnsureWorkload / EnsureRelease / EnsureReleaseBinding
-// explicitly instead.
+// Deploy chain: user Components have autoDeploy disabled. Builds author the
+// Workload; the milestone deploy activity cuts a stable ComponentRelease and
+// pins/activates its ReleaseBinding. Ephemeral coding-agent Components have no
+// build WorkflowRun, so dispatch drives the same explicit chain directly.
 type ComponentClient interface {
 	ListComponents(ctx context.Context, orgName, projectName string, limit int, cursor string) (*gen.ComponentList, error)
 	GetComponent(ctx context.Context, orgName, projectName, componentName string) (*gen.Component, error)
@@ -57,14 +55,14 @@ type ComponentClient interface {
 	// Drives the retention reaper.
 	ListInternalComponents(ctx context.Context, orgName, projectName string) ([]InternalComponent, error)
 
-	// The explicit deploy chain for the platform's own ephemeral components:
-	// Workload → ComponentRelease → ReleaseBinding. User components ride
-	// AutoDeploy instead (see the interface header); an agent cycle has no
-	// build to post a Workload, so the BFF drives all three writes. Every one
-	// treats 409 as success so a crashed dispatch resumes.
+	// Explicit deploy-chain writes shared by user deployment and the platform's
+	// ephemeral components. Every ensure treats 409 as success so retries resume.
 	EnsureWorkload(ctx context.Context, orgName, projectName string, in WorkloadInput) error
 	EnsureRelease(ctx context.Context, orgName, projectName, componentName, releaseName string) (releaseNameOut string, err error)
+	GenerateRelease(ctx context.Context, orgName, projectName, componentName string) (releaseName string, err error)
+	LatestComponentRelease(ctx context.Context, orgName, projectName, componentName string) (releaseName string, err error)
 	EnsureReleaseBinding(ctx context.Context, orgName, projectName, componentName, environment, releaseName string) error
+	SetReleaseBindingState(ctx context.Context, orgName, projectName, componentName, environment, state string) error
 
 	// UpdateComponentWorkflowEnvVars writes per-component env vars onto each
 	// of the component's ReleaseBindings at

@@ -39,11 +39,17 @@ var _ openchoreo.ComponentClient = &ComponentClientMock{}
 //			EnsureWorkloadFunc: func(ctx context.Context, orgName string, projectName string, in openchoreo.WorkloadInput) error {
 //				panic("mock out the EnsureWorkload method")
 //			},
+//			GenerateReleaseFunc: func(ctx context.Context, orgName string, projectName string, componentName string) (string, error) {
+//				panic("mock out the GenerateRelease method")
+//			},
 //			GetComponentFunc: func(ctx context.Context, orgName string, projectName string, componentName string) (*gen.Component, error) {
 //				panic("mock out the GetComponent method")
 //			},
 //			GetWorkflowRunFunc: func(ctx context.Context, orgName string, runName string) (*gen.WorkflowRun, error) {
 //				panic("mock out the GetWorkflowRun method")
+//			},
+//			LatestComponentReleaseFunc: func(ctx context.Context, orgName string, projectName string, componentName string) (string, error) {
+//				panic("mock out the LatestComponentRelease method")
 //			},
 //			ListComponentsFunc: func(ctx context.Context, orgName string, projectName string, limit int, cursor string) (*gen.ComponentList, error) {
 //				panic("mock out the ListComponents method")
@@ -62,6 +68,9 @@ var _ openchoreo.ComponentClient = &ComponentClientMock{}
 //			},
 //			ListWorkflowRunsFunc: func(ctx context.Context, orgName string, projectName string, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error) {
 //				panic("mock out the ListWorkflowRuns method")
+//			},
+//			SetReleaseBindingStateFunc: func(ctx context.Context, orgName string, projectName string, componentName string, environment string, state string) error {
+//				panic("mock out the SetReleaseBindingState method")
 //			},
 //			TriggerBuildFunc: func(ctx context.Context, orgName string, projectName string, componentName string, secretRef string, runName string) (*gen.WorkflowRun, error) {
 //				panic("mock out the TriggerBuild method")
@@ -106,11 +115,17 @@ type ComponentClientMock struct {
 	// EnsureWorkloadFunc mocks the EnsureWorkload method.
 	EnsureWorkloadFunc func(ctx context.Context, orgName string, projectName string, in openchoreo.WorkloadInput) error
 
+	// GenerateReleaseFunc mocks the GenerateRelease method.
+	GenerateReleaseFunc func(ctx context.Context, orgName string, projectName string, componentName string) (string, error)
+
 	// GetComponentFunc mocks the GetComponent method.
 	GetComponentFunc func(ctx context.Context, orgName string, projectName string, componentName string) (*gen.Component, error)
 
 	// GetWorkflowRunFunc mocks the GetWorkflowRun method.
 	GetWorkflowRunFunc func(ctx context.Context, orgName string, runName string) (*gen.WorkflowRun, error)
+
+	// LatestComponentReleaseFunc mocks the LatestComponentRelease method.
+	LatestComponentReleaseFunc func(ctx context.Context, orgName string, projectName string, componentName string) (string, error)
 
 	// ListComponentsFunc mocks the ListComponents method.
 	ListComponentsFunc func(ctx context.Context, orgName string, projectName string, limit int, cursor string) (*gen.ComponentList, error)
@@ -129,6 +144,9 @@ type ComponentClientMock struct {
 
 	// ListWorkflowRunsFunc mocks the ListWorkflowRuns method.
 	ListWorkflowRunsFunc func(ctx context.Context, orgName string, projectName string, componentName string, limit int, cursor string) (*gen.WorkflowRunList, error)
+
+	// SetReleaseBindingStateFunc mocks the SetReleaseBindingState method.
+	SetReleaseBindingStateFunc func(ctx context.Context, orgName string, projectName string, componentName string, environment string, state string) error
 
 	// TriggerBuildFunc mocks the TriggerBuild method.
 	TriggerBuildFunc func(ctx context.Context, orgName string, projectName string, componentName string, secretRef string, runName string) (*gen.WorkflowRun, error)
@@ -220,6 +238,17 @@ type ComponentClientMock struct {
 			// In is the in argument value.
 			In openchoreo.WorkloadInput
 		}
+		// GenerateRelease holds details about calls to the GenerateRelease method.
+		GenerateRelease []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// OrgName is the orgName argument value.
+			OrgName string
+			// ProjectName is the projectName argument value.
+			ProjectName string
+			// ComponentName is the componentName argument value.
+			ComponentName string
+		}
 		// GetComponent holds details about calls to the GetComponent method.
 		GetComponent []struct {
 			// Ctx is the ctx argument value.
@@ -239,6 +268,17 @@ type ComponentClientMock struct {
 			OrgName string
 			// RunName is the runName argument value.
 			RunName string
+		}
+		// LatestComponentRelease holds details about calls to the LatestComponentRelease method.
+		LatestComponentRelease []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// OrgName is the orgName argument value.
+			OrgName string
+			// ProjectName is the projectName argument value.
+			ProjectName string
+			// ComponentName is the componentName argument value.
+			ComponentName string
 		}
 		// ListComponents holds details about calls to the ListComponents method.
 		ListComponents []struct {
@@ -309,6 +349,21 @@ type ComponentClientMock struct {
 			Limit int
 			// Cursor is the cursor argument value.
 			Cursor string
+		}
+		// SetReleaseBindingState holds details about calls to the SetReleaseBindingState method.
+		SetReleaseBindingState []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// OrgName is the orgName argument value.
+			OrgName string
+			// ProjectName is the projectName argument value.
+			ProjectName string
+			// ComponentName is the componentName argument value.
+			ComponentName string
+			// Environment is the environment argument value.
+			Environment string
+			// State is the state argument value.
+			State string
 		}
 		// TriggerBuild holds details about calls to the TriggerBuild method.
 		TriggerBuild []struct {
@@ -401,14 +456,17 @@ type ComponentClientMock struct {
 	lockEnsureRelease                          sync.RWMutex
 	lockEnsureReleaseBinding                   sync.RWMutex
 	lockEnsureWorkload                         sync.RWMutex
+	lockGenerateRelease                        sync.RWMutex
 	lockGetComponent                           sync.RWMutex
 	lockGetWorkflowRun                         sync.RWMutex
+	lockLatestComponentRelease                 sync.RWMutex
 	lockListComponents                         sync.RWMutex
 	lockListDeployments                        sync.RWMutex
 	lockListInternalComponents                 sync.RWMutex
 	lockListProjectReleaseBindings             sync.RWMutex
 	lockListProjectWorkflowRuns                sync.RWMutex
 	lockListWorkflowRuns                       sync.RWMutex
+	lockSetReleaseBindingState                 sync.RWMutex
 	lockTriggerBuild                           sync.RWMutex
 	lockTriggerBuildAtCommit                   sync.RWMutex
 	lockUpdateComponentTraitEnvironmentConfigs sync.RWMutex
@@ -689,6 +747,50 @@ func (mock *ComponentClientMock) EnsureWorkloadCalls() []struct {
 	return calls
 }
 
+// GenerateRelease calls GenerateReleaseFunc.
+func (mock *ComponentClientMock) GenerateRelease(ctx context.Context, orgName string, projectName string, componentName string) (string, error) {
+	if mock.GenerateReleaseFunc == nil {
+		panic("ComponentClientMock.GenerateReleaseFunc: method is nil but ComponentClient.GenerateRelease was just called")
+	}
+	callInfo := struct {
+		Ctx           context.Context
+		OrgName       string
+		ProjectName   string
+		ComponentName string
+	}{
+		Ctx:           ctx,
+		OrgName:       orgName,
+		ProjectName:   projectName,
+		ComponentName: componentName,
+	}
+	mock.lockGenerateRelease.Lock()
+	mock.calls.GenerateRelease = append(mock.calls.GenerateRelease, callInfo)
+	mock.lockGenerateRelease.Unlock()
+	return mock.GenerateReleaseFunc(ctx, orgName, projectName, componentName)
+}
+
+// GenerateReleaseCalls gets all the calls that were made to GenerateRelease.
+// Check the length with:
+//
+//	len(mockedComponentClient.GenerateReleaseCalls())
+func (mock *ComponentClientMock) GenerateReleaseCalls() []struct {
+	Ctx           context.Context
+	OrgName       string
+	ProjectName   string
+	ComponentName string
+} {
+	var calls []struct {
+		Ctx           context.Context
+		OrgName       string
+		ProjectName   string
+		ComponentName string
+	}
+	mock.lockGenerateRelease.RLock()
+	calls = mock.calls.GenerateRelease
+	mock.lockGenerateRelease.RUnlock()
+	return calls
+}
+
 // GetComponent calls GetComponentFunc.
 func (mock *ComponentClientMock) GetComponent(ctx context.Context, orgName string, projectName string, componentName string) (*gen.Component, error) {
 	if mock.GetComponentFunc == nil {
@@ -770,6 +872,50 @@ func (mock *ComponentClientMock) GetWorkflowRunCalls() []struct {
 	mock.lockGetWorkflowRun.RLock()
 	calls = mock.calls.GetWorkflowRun
 	mock.lockGetWorkflowRun.RUnlock()
+	return calls
+}
+
+// LatestComponentRelease calls LatestComponentReleaseFunc.
+func (mock *ComponentClientMock) LatestComponentRelease(ctx context.Context, orgName string, projectName string, componentName string) (string, error) {
+	if mock.LatestComponentReleaseFunc == nil {
+		panic("ComponentClientMock.LatestComponentReleaseFunc: method is nil but ComponentClient.LatestComponentRelease was just called")
+	}
+	callInfo := struct {
+		Ctx           context.Context
+		OrgName       string
+		ProjectName   string
+		ComponentName string
+	}{
+		Ctx:           ctx,
+		OrgName:       orgName,
+		ProjectName:   projectName,
+		ComponentName: componentName,
+	}
+	mock.lockLatestComponentRelease.Lock()
+	mock.calls.LatestComponentRelease = append(mock.calls.LatestComponentRelease, callInfo)
+	mock.lockLatestComponentRelease.Unlock()
+	return mock.LatestComponentReleaseFunc(ctx, orgName, projectName, componentName)
+}
+
+// LatestComponentReleaseCalls gets all the calls that were made to LatestComponentRelease.
+// Check the length with:
+//
+//	len(mockedComponentClient.LatestComponentReleaseCalls())
+func (mock *ComponentClientMock) LatestComponentReleaseCalls() []struct {
+	Ctx           context.Context
+	OrgName       string
+	ProjectName   string
+	ComponentName string
+} {
+	var calls []struct {
+		Ctx           context.Context
+		OrgName       string
+		ProjectName   string
+		ComponentName string
+	}
+	mock.lockLatestComponentRelease.RLock()
+	calls = mock.calls.LatestComponentRelease
+	mock.lockLatestComponentRelease.RUnlock()
 	return calls
 }
 
@@ -1042,6 +1188,58 @@ func (mock *ComponentClientMock) ListWorkflowRunsCalls() []struct {
 	mock.lockListWorkflowRuns.RLock()
 	calls = mock.calls.ListWorkflowRuns
 	mock.lockListWorkflowRuns.RUnlock()
+	return calls
+}
+
+// SetReleaseBindingState calls SetReleaseBindingStateFunc.
+func (mock *ComponentClientMock) SetReleaseBindingState(ctx context.Context, orgName string, projectName string, componentName string, environment string, state string) error {
+	if mock.SetReleaseBindingStateFunc == nil {
+		panic("ComponentClientMock.SetReleaseBindingStateFunc: method is nil but ComponentClient.SetReleaseBindingState was just called")
+	}
+	callInfo := struct {
+		Ctx           context.Context
+		OrgName       string
+		ProjectName   string
+		ComponentName string
+		Environment   string
+		State         string
+	}{
+		Ctx:           ctx,
+		OrgName:       orgName,
+		ProjectName:   projectName,
+		ComponentName: componentName,
+		Environment:   environment,
+		State:         state,
+	}
+	mock.lockSetReleaseBindingState.Lock()
+	mock.calls.SetReleaseBindingState = append(mock.calls.SetReleaseBindingState, callInfo)
+	mock.lockSetReleaseBindingState.Unlock()
+	return mock.SetReleaseBindingStateFunc(ctx, orgName, projectName, componentName, environment, state)
+}
+
+// SetReleaseBindingStateCalls gets all the calls that were made to SetReleaseBindingState.
+// Check the length with:
+//
+//	len(mockedComponentClient.SetReleaseBindingStateCalls())
+func (mock *ComponentClientMock) SetReleaseBindingStateCalls() []struct {
+	Ctx           context.Context
+	OrgName       string
+	ProjectName   string
+	ComponentName string
+	Environment   string
+	State         string
+} {
+	var calls []struct {
+		Ctx           context.Context
+		OrgName       string
+		ProjectName   string
+		ComponentName string
+		Environment   string
+		State         string
+	}
+	mock.lockSetReleaseBindingState.RLock()
+	calls = mock.calls.SetReleaseBindingState
+	mock.lockSetReleaseBindingState.RUnlock()
 	return calls
 }
 

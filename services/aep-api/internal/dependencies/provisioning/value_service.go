@@ -112,6 +112,15 @@ func (s *Service) SaveValues(ctx context.Context, orgID, ocOrgID, projectID, dep
 		s.completeProvisionRow(ctx, orgID, projectID, depName, issueNumber, execID,
 			fmt.Sprintf("External resource `%s` configured (OC binding `%s`).", depName, ref))
 	}
+	if s.valuesSaved != nil {
+		if err := s.valuesSaved.ValuesSaved(ctx, orgID, projectID); err != nil {
+			// The values are already durable. A signalling failure must not turn a
+			// successful save into an apparent failure; the workflow's poll
+			// backstop will re-derive readiness.
+			slog.WarnContext(ctx, "provisioning: notify run after values saved failed",
+				"org", orgID, "project", projectID, "error", err)
+		}
+	}
 	return nil
 }
 

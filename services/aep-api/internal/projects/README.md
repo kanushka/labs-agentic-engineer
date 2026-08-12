@@ -24,7 +24,7 @@ flowchart LR
 
 ## Structure — flat-root domain
 Unlike `delivery` (kernel-root), `projects` is the flat-root-of-services shape `spec`/`organization` use: the
-services (`Service`, `ComponentService`, `ConfigService`, `TraitSyncService`) live in the root package
+services (`Service`, `ComponentService`, `ConfigService`, `TraitSyncService`, `DeploymentService`) live in the root package
 `projects`, so `Deps` sits in the root and `httpapi/` assembles the slices from it. The two merged features
 (project + component) had zero symbol collisions, so the domain is one flat package plus its HTTP slices.
 
@@ -50,11 +50,13 @@ delivery's kernel: shared behaviour belongs in the root the slices import.
 | build/exec status (`SetStageSources` port) | needs | `delivery` — the build/deploy columns of the Stage aggregate, wired at the root |
 | `runAbandoner` (`SetRunAbandoner`) | needs | `delivery` — ends the supervisors of a deleted project's live runs, wired at the root (nil is a no-op) |
 | per-project agent usage (`UsageService`) | needs | `delivery` — the agent-usage ledger, keyed by lifetime (`contracts.UsageScope`) |
-| OC `Project`/`Component`/`ReleaseBinding` CRUD | needs | `openchoreo` client — OC is the store |
+| OC `Project`/`Component`/`ComponentRelease`/`ReleaseBinding` CRUD | needs | `openchoreo` client — OC is the store |
 | `Service` · `ComponentService` · `ConfigService` | offers | the edge (the 14 public ops) |
+| `DeploymentService` | offers | `delivery/run` — project-wide release creation, development binding pin, activation, and deploy observers |
 
 ## Owns
-- The OC `Project`/`Component` aggregate roots (OC is the store) and `ReleaseBinding` write-authority; the
+- The OC `Project`/`Component` aggregate roots (OC is the store) and explicit
+  `ComponentRelease`/`ReleaseBinding` deploy write-authority; the
   `ComponentConfig` env-var rows.
 - **Persistence**: the `component_config` gorm and its entities live in this domain (`repository_config.go`
   over `component_config.go`), single write-authority.
@@ -76,6 +78,13 @@ delivery's kernel: shared behaviour belongs in the root the slices import.
   bindings — with no GitHub API, Temporal query, or origin fetch. Any source failure fails the whole read
   (the console keeps last-good); the one carve-out: a deploy tag missing from the local mirror degrades to
   a 0 denominator, not a 500.
+- **Build success does not deploy.** Components are created with `autoDeploy: false`. After every
+  component build in a milestone is green, the run derives dependency readiness from the current design:
+  platform resources retry until Ready; external dependencies park the run with their names until values
+  are saved. Only then does one retried deploy activity select or generate each component's newest release,
+  pin the development `ReleaseBinding` Active, and run the access-grant, SPA runtime-config, and managed-API
+  trait observers. Trait convergence is fatal to that retry unit; the other idempotent observers are
+  best-effort.
 - **The build stage carries NO task counts** — not zeroed ones, none at all. Their only honest source is
   the version's milestone on GitHub, and a 5s poll may not spend GitHub rate, so the field is absent from
   the contract rather than present and always zero; the console renders counts from the list-tasks

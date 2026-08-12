@@ -52,6 +52,7 @@ type RunStore interface {
 	MilestoneSpecTag(ctx context.Context, orgID, projectID string, milestoneNumber int) (string, error)
 	// SetState moves the run between waiting and running.
 	SetState(ctx context.Context, id, state string) error
+	SetWaiting(ctx context.Context, id, reason string, dependencies []string) error
 	// Settle writes the terminal state and its reason, once.
 	Settle(ctx context.Context, id, state, reason string) error
 	// BumpBudget increments one counter — bookkeeping for the read model, never
@@ -178,20 +179,15 @@ type Dispatcher interface {
 	Dispatch(ctx context.Context, req delivery.MilestoneDispatch) (jobRef string, err error)
 }
 
-// APITraitSyncer lands the per-environment `api-configuration` trait config —
-// the `jwtAuth` policy the gateway enforces and the sibling-SPA CORS allowlist
-// — on each protected component's ReleaseBinding. projects.TraitSyncService
-// satisfies it.
-//
-// Why the supervisor drives this at all: the config's write target is the
-// ReleaseBinding, which OpenChoreo creates only once a build has produced a
-// workload. The Component CR's trait SHAPE is set far earlier (at component
-// ensure, pre-build) and is what makes OpenChoreo render the RestApi; this is
-// the other half, and it cannot be written before the deploy chain has run.
-// Builds settling green is the first moment in the run where that is true.
-//
-// Idempotent and convergent: re-running it re-asserts the same desired state,
-// so a cycle that syncs twice costs a round trip and changes nothing.
-type APITraitSyncer interface {
-	SyncProjectAPITraits(ctx context.Context, orgID, projectID string) error
+type DeployReadiness struct {
+	Unconfigured []string
+	Provisioning []string
+}
+
+type DeploymentReadinessChecker interface {
+	DeploymentReadiness(ctx context.Context, orgID, projectID, environment string) (DeployReadiness, error)
+}
+
+type ProjectDeployer interface {
+	DeployProject(ctx context.Context, orgID, projectID, runID string) error
 }

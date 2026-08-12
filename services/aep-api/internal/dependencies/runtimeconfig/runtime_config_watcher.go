@@ -36,13 +36,13 @@ type DeployedProjectLister interface {
 // mirror of TraitSyncWatcher for runtime config.
 //
 // Why this exists: env-config.js is emitted eagerly on the coding-dispatch
-// pre-flight and again on each component's build-success (spaDeployObserver).
+// pre-flight and again by the explicit deploy activity (spaDeployObserver).
 // But a web-app's OWN public URL — required for the consumer-url-env-config
 // callback patch of a thunder-app dependency — only becomes available after
-// its ReleaseBinding endpoint resolves, which is LATER than the build-success
-// event that would emit it. When that URL is still empty the emit gate returns
+// its ReleaseBinding endpoint resolves, which may be later than the deploy-time
+// observer. When that URL is still empty the emit gate returns
 // ready=false and skips the whole write (all-or-nothing). Because a web-app is
-// dispatched last (it depends on its sibling service), no further build-success
+// dispatched last (it depends on its sibling service), no further deploy event
 // fires to re-trigger the emit, so the deferral is permanent and window._env_
 // is never written — the SPA renders blank.
 //
@@ -50,9 +50,8 @@ type DeployedProjectLister interface {
 // project with dispatched components. EmitForProjectSPAs is idempotent and
 // convergent (it only writes when the assembled config actually changed), so
 // re-running it every tick is safe; it simply lands the env-config once the
-// SPA's URL finally resolves. It replaces the periodic reconcile backstop that
-// was dropped when the trait_sync drift watcher moved to the ExecWatcher deploy
-// path (see the note in internal/app/app.go).
+// SPA's URL finally resolves. It is the convergence backstop for the explicit
+// deploy activity's best-effort runtime-config observer.
 type Watcher struct {
 	projects          DeployedProjectLister
 	svc               *RuntimeConfigService

@@ -265,6 +265,28 @@ func TestListBuildRuns_ResolvesTheTagThroughRunRows(t *testing.T) {
 	}
 }
 
+func TestListBuildRuns_ProjectsDeployGateDetail(t *testing.T) {
+	row := specRun("r1", delivery.RunStateWaiting)
+	row.WaitingReason = "External dependency values are required before deploy."
+	row.BlockingDependencies = []string{"stripe", "sendgrid"}
+	h := newHarness(t, []delivery.MilestoneRun{row}, nil, nil, nil)
+
+	rec := h.AsOrg("acme").Get(runsPath)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code %d (%s)", rec.Code, rec.Body.String())
+	}
+	var got gen.BuildRunList
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v — %s", err, rec.Body.String())
+	}
+	if len(got.Runs) != 1 || got.Runs[0].WaitingReason != row.WaitingReason {
+		t.Fatalf("waiting reason not projected: %+v", got.Runs)
+	}
+	if deps := got.Runs[0].BlockingDependencies; len(deps) != 2 || deps[0] != "stripe" || deps[1] != "sendgrid" {
+		t.Fatalf("blocking dependencies = %v, want stripe/sendgrid", deps)
+	}
+}
+
 // A tag with no run row is a 404 — "no such version" and "never built" are the
 // same answer, and neither invents an empty list.
 func TestListBuildRuns_UnknownTag_404(t *testing.T) {

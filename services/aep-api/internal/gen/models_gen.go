@@ -1057,6 +1057,9 @@ type Lineage struct {
 
 // MilestoneRunView One run of the milestone loop, with the cycle records that make up its timeline. Loop POSITION is deliberately absent — it renders from the latest cycle, because fix and conflict cycles re-enter earlier phases and a stored phase enum would lie mid-loop.
 type MilestoneRunView struct {
+	// BlockingDependencies External dependency names that still need values before deployment.
+	BlockingDependencies []string `json:"blockingDependencies,omitempty"`
+
 	// Budgets The run's budget counters as the supervisor wrote them out. Read-model bookkeeping — the loop counts its own budgets and never reads these back.
 	Budgets   RunBudgets `json:"budgets"`
 	CreatedAt time.Time  `json:"createdAt"`
@@ -1082,6 +1085,9 @@ type MilestoneRunView struct {
 
 	// Validation The run's validation outcome. The verdict is a RUN property, not a per-issue one, and this is where the deployment surface reads it.
 	Validation RunValidation `json:"validation"`
+
+	// WaitingReason Human-facing reason for an unbounded non-terminal wait. Empty outside state=waiting and kept separate from terminalReason because nothing failed.
+	WaitingReason string `json:"waitingReason,omitempty"`
 }
 
 // MilestoneRunViewOrigin Why this run was started. `revalidate` asks a version's criteria again against the already-deployed system; it enters the loop at validation rather than at the working set, and is deliberately outside the one-active-spec-run mutex so it never holds up the next build.

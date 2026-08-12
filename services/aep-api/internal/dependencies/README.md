@@ -61,6 +61,8 @@ slices.
 | IssueClient (aep:provision gate · endpoint-wiring comment) | needs | `sourcecontrol` — gate issues closed via a no-secrets reference, and the ADR-0004 endpoint comment + its `aep:wired` completeness marker on the working set |
 | ProviderResolver (endpoint targets) | needs | root `Catalog` — any-visibility provider lookup for an access request, namespace/project-visible resolves for the wiring block |
 | DesignReader / DesignBundleReader | needs | `spec` — design at HEAD (what to provision) + provider design bundles |
+| ValuesSavedNotifier | needs | `delivery/run` — wakes any active project run after external values are saved; the supervisor re-derives readiness |
+| DeploymentReadiness | offers | `delivery/run` — one design-derived verdict separating user-unconfigured externals from still-provisioning platform resources |
 | the 8 public ops | offers | the edge (`dependenciesHandlers`) |
 
 ## Owns

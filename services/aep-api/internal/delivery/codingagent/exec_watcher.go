@@ -59,10 +59,6 @@ type ExecWatcher struct {
 	buildRetrier BuildRetrier
 	authBudget   int
 
-	// deployObserver is notified when a component deploys (build success), so the
-	// provisioning feature can grant pending cross-project access (nil → skipped).
-	deployObserver DeployObserver
-
 	// buildObserver receives every BUILD terminal this watcher settles, through
 	// the root port. It is how the event plane learns a build finished without
 	// either package importing the other: this watcher stays here (it shares
@@ -107,13 +103,6 @@ func (w *ExecWatcher) WithBuildRetrier(retrier BuildRetrier, budget int) *ExecWa
 		budget = defaultBuildAuthRetryBudget
 	}
 	w.authBudget = budget
-	return w
-}
-
-// WithDeployObserver enables the deploy-cascade notification on build success
-// (nil → skipped). Returns the receiver for chained construction.
-func (w *ExecWatcher) WithDeployObserver(o DeployObserver) *ExecWatcher {
-	w.deployObserver = o
 	return w
 }
 
@@ -214,13 +203,6 @@ func (w *ExecWatcher) reconcile(ctx context.Context, row *delivery.Execution, ru
 			}
 			if exec == nil {
 				return // lost the race — another replica already finished
-			}
-			if w.deployObserver != nil {
-				// The component deployed — grant any pending cross-project access
-				// request targeting it (best-effort; the grant read no-ops otherwise).
-				if derr := w.deployObserver.OnComponentDeployed(ctx, row.OrgID, row.ProjectID, row.Component); derr != nil {
-					slog.WarnContext(ctx, "exec watcher: deploy observer failed", "component", row.Component, "error", derr)
-				}
 			}
 			w.notifier.Notify(row.Repo, row.IssueNumber)
 			w.notifyBuildTerminal(ctx, row, true, "")

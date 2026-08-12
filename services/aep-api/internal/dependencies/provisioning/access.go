@@ -116,7 +116,7 @@ func (s *Service) ListAccessRequests(ctx context.Context, orgID, consumerProject
 	return s.access.ListByConsumerProject(ctx, orgID, consumerProjectID)
 }
 
-// OnComponentDeployed is the deploy-observer entry point (codingagent.DeployObserver):
+// OnComponentDeployed is the project deploy-observer entry point:
 // a component just deployed, so grant any pending cross-project access request
 // targeting it. Delegates to GrantByProviderComponent.
 func (s *Service) OnComponentDeployed(ctx context.Context, orgID, projectID, component string) error {

@@ -313,6 +313,20 @@ func (f fakeProjects) ListProjects(_ context.Context, orgID string) ([]ProjectRe
 	return out, nil
 }
 
+type fakeValuesSavedNotifier struct {
+	calls     int
+	orgID     string
+	projectID string
+	err       error
+}
+
+func (f *fakeValuesSavedNotifier) ValuesSaved(_ context.Context, orgID, projectID string) error {
+	f.calls++
+	f.orgID = orgID
+	f.projectID = projectID
+	return f.err
+}
+
 type fakeProviders struct {
 	byName map[string]openchoreo.WorkloadEndpointInfo
 	// nsVisible / projectEP back the two visibility-scoped resolves the ADR-0004
@@ -570,6 +584,34 @@ func TestSaveValues_ProvisionsAndClosesGate(t *testing.T) {
 	// No secret value appears in the close comment.
 	if strings.Contains(issues.closed[10], "sk_live_x") {
 		t.Fatalf("secret leaked into the close comment: %q", issues.closed[10])
+	}
+}
+
+func TestSaveValues_NotifiesActiveRunAfterValuesArePersisted(t *testing.T) {
+	ext := &fakeExtProv{}
+	notifier := &fakeValuesSavedNotifier{}
+	svc := newTestService(newFakeIssues(nil), &fakeExecStore{}, fakeDesign{comps: designWithDeps()}, ext, &fakePlatProv{}, &fakeBindings{})
+	svc.SetValuesSavedNotifier(notifier)
+
+	if err := svc.SaveValues(context.Background(), "org", "oc-org", "proj", "stripe", map[string]map[string]string{
+		"development": {"api_key": "secret", "region": "us"},
+	}); err != nil {
+		t.Fatalf("SaveValues: %v", err)
+	}
+	if ext.calls != 1 || notifier.calls != 1 {
+		t.Fatalf("persist/notify calls = %d/%d, want 1/1", ext.calls, notifier.calls)
+	}
+	if notifier.orgID != "org" || notifier.projectID != "proj" {
+		t.Fatalf("notified scope = %s/%s, want org/proj", notifier.orgID, notifier.projectID)
+	}
+}
+
+func TestSaveValues_NilNotifierIsNoop(t *testing.T) {
+	svc := newTestService(newFakeIssues(nil), &fakeExecStore{}, fakeDesign{comps: designWithDeps()}, &fakeExtProv{}, &fakePlatProv{}, &fakeBindings{})
+	if err := svc.SaveValues(context.Background(), "org", "oc-org", "proj", "stripe", map[string]map[string]string{
+		"development": {"api_key": "secret", "region": "us"},
+	}); err != nil {
+		t.Fatalf("SaveValues with nil notifier: %v", err)
 	}
 }
 

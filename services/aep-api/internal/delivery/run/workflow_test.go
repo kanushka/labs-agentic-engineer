@@ -17,6 +17,7 @@
 package run
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -29,6 +30,13 @@ import (
 
 	"github.com/wso2/aep/aep-api/internal/delivery"
 )
+
+func TestCheckDeployReadinessNilGateFailsClosed(t *testing.T) {
+	acts := NewActivities(Deps{})
+	if _, err := acts.CheckDeployReadiness(context.Background(), ProjectRef{OrgID: testOrg, ProjectID: testProject}); err == nil {
+		t.Fatal("nil deploy gate was treated as ready")
+	}
+}
 
 // The run loop is tested end-to-end with the Temporal Go SDK test suite: every
 // activity is mocked, so there is no Temporal server, no database, no GitHub
@@ -66,15 +74,13 @@ type harness struct {
 	// every call and silently mask the test's own sequence.
 	set map[string]bool
 
-	mu         sync.Mutex
-	dispatches []delivery.MilestoneDispatch
-	finishes   []FinishCycleInput
-	states     []string
-	settle     SettleRunInput
-	verdicts   []string
-	// traitSyncs records every managed-API trait convergence the loop asked for,
-	// so a test can assert WHEN it fires rather than merely that it was wired.
-	traitSyncs []ProjectRef
+	mu          sync.Mutex
+	dispatches  []delivery.MilestoneDispatch
+	finishes    []FinishCycleInput
+	states      []string
+	stateInputs []SetRunStateInput
+	settle      SettleRunInput
+	verdicts    []string
 	// verdictWrites keeps the full payload so a test can assert on what was
 	// PERSISTED (verdict + issue), not merely on the verdict the run returned.
 	verdictWrites []SetValidationVerdictInput
@@ -83,6 +89,7 @@ type harness struct {
 	// than merely that it did not settle.
 	repairMints []MintValidationRepairIssuesInput
 	closed      int
+	deploys     []ProjectRef
 }
 
 // newHarness registers the activities whose behaviour never varies — the
@@ -110,7 +117,8 @@ func newHarness(t *testing.T) *harness {
 	h.env.RegisterActivity(acts.ReadValidationVerdict)
 	h.env.RegisterActivity(acts.MintValidationRepairIssues)
 	h.env.RegisterActivity(acts.DispatchAgent)
-	h.env.RegisterActivity(acts.SyncAPITraits)
+	h.env.RegisterActivity(acts.CheckDeployReadiness)
+	h.env.RegisterActivity(acts.DeployProject)
 
 	h.env.OnActivity(acts.SetRunState, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
@@ -118,6 +126,7 @@ func newHarness(t *testing.T) *harness {
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			h.states = append(h.states, in.State)
+			h.stateInputs = append(h.stateInputs, in)
 		}).Return(nil)
 	h.env.OnActivity(acts.SettleRun, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
@@ -152,10 +161,8 @@ func newHarness(t *testing.T) *harness {
 }
 
 // dispatchIs pins what launching the cycle's agent answers. Registered per test
-// rather than as a constructor default for the reason traitSyncIs gives: the
-// harness consumes expectations in registration order, so an unlimited default
-// set in newHarness would swallow the override. Every dispatch is recorded
-// either way, so the budget assertions hold for a failing dispatch too.
+// so an unlimited constructor default cannot swallow a test's override. Every
+// dispatch is recorded either way, so budget assertions hold on failures too.
 func (h *harness) dispatchIs(jobRef string, err error) {
 	h.set["dispatch"] = true
 	h.env.OnActivity(h.acts.DispatchAgent, mock.Anything, mock.Anything).
@@ -166,25 +173,29 @@ func (h *harness) dispatchIs(jobRef string, err error) {
 		}).Return(jobRef, err)
 }
 
-// traitSyncIs pins what the managed-API convergence answers. Registered per
-// test rather than as a constructor default so a test can make it fail — the
-// harness consumes expectations in registration order, so an unlimited default
-// set in newHarness would swallow the override.
-func (h *harness) traitSyncIs(err error) {
-	h.set["traits"] = true
-	h.env.OnActivity(h.acts.SyncAPITraits, mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) {
-			h.mu.Lock()
-			defer h.mu.Unlock()
-			h.traitSyncs = append(h.traitSyncs, args.Get(1).(ProjectRef))
-		}).Return(err)
+func (h *harness) gateIs(results ...DeployGateResult) {
+	h.set["deploy-gate"] = true
+	for i, result := range results {
+		call := h.env.OnActivity(h.acts.CheckDeployReadiness, mock.Anything, mock.Anything).Return(result, nil)
+		if i < len(results)-1 {
+			call.Once()
+		}
+	}
 }
 
-// traitSyncCount is the convergence tally, read safely.
-func (h *harness) traitSyncCount() int {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return len(h.traitSyncs)
+func (h *harness) deployAttemptsAre(errs ...error) {
+	h.set["deploy"] = true
+	for i, deployErr := range errs {
+		call := h.env.OnActivity(h.acts.DeployProject, mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				h.mu.Lock()
+				defer h.mu.Unlock()
+				h.deploys = append(h.deploys, args.Get(1).(ProjectRef))
+			}).Return(deployErr)
+		if i < len(errs)-1 {
+			call.Once()
+		}
+	}
 }
 
 // milestoneIs queues the cycle-boundary polls, in order. The last one repeats
@@ -288,8 +299,11 @@ func (h *harness) applyDefaults() {
 	if !h.set["milestone"] {
 		h.milestoneIs(MilestoneSnapshot{})
 	}
-	if !h.set["traits"] {
-		h.traitSyncIs(nil)
+	if !h.set["deploy-gate"] {
+		h.gateIs(DeployGateResult{})
+	}
+	if !h.set["deploy"] {
+		h.deployAttemptsAre(nil)
 	}
 }
 
@@ -429,31 +443,21 @@ func TestFixCycle_RedBuildBecomesTheNextCyclesWork(t *testing.T) {
 	require.Equal(t, []string{delivery.CycleKindCoding, delivery.CycleKindFix}, h.dispatchKinds())
 }
 
-// TestBuildsGreen_ConvergesTheManagedAPIGatewayPolicy pins the trigger this
-// loop now owns. The `api-configuration` trait's per-environment half — the
-// `jwtAuth` policy the gateway enforces — is written to the ReleaseBinding,
-// which OpenChoreo creates from the workload the build's last step generates.
-// Builds going green is therefore the first moment in a run where the write has
-// a target, and the loop must take it: nothing else on this rail does, which is
-// how protected APIs came to serve unauthenticated.
-func TestBuildsGreen_ConvergesTheManagedAPIGatewayPolicy(t *testing.T) {
+func TestSucceededRunDeploysOnceAfterTerminalBuilds(t *testing.T) {
 	h := newHarness(t)
 	h.milestoneIs(MilestoneSnapshot{Work: 1, Total: 1}, MilestoneSnapshot{})
+	h.buildsAre(CycleBuildState{Expected: 2, Settled: 1}, CycleBuildState{Expected: 2, Settled: 2})
 	h.merges(1)
+	h.signal(delivery.SigRunBuildTerminal, 2*time.Second)
 
 	h.run(delivery.RunOriginSpecBuild, 0)
 	res := h.result(t)
 
 	h.assertSettled(t, res, delivery.RunStateSucceeded, "")
-	require.Equal(t, []ProjectRef{{OrgID: testOrg, ProjectID: testProject}}, h.traitSyncs,
-		"a green cycle converges the project's managed-API policy exactly once")
+	require.Equal(t, []ProjectRef{{OrgID: testOrg, ProjectID: testProject, RunID: testRunID}}, h.deploys)
 }
 
-// TestRedBuild_ConvergesOnlyOnceItGoesGreen: a red cycle produced no new
-// ReleaseBinding, so there is nothing to converge and the loop must not spend a
-// round trip pretending otherwise. The fix cycle that follows passes through the
-// same green path and does the write then.
-func TestRedBuild_ConvergesOnlyOnceItGoesGreen(t *testing.T) {
+func TestRedBuildDeploysOnlyAfterFixCycleSucceeds(t *testing.T) {
 	h := newHarness(t)
 	h.milestoneIs(
 		MilestoneSnapshot{Work: 1, Total: 1},
@@ -470,26 +474,99 @@ func TestRedBuild_ConvergesOnlyOnceItGoesGreen(t *testing.T) {
 	res := h.result(t)
 
 	h.assertSettled(t, res, delivery.RunStateSucceeded, "")
-	require.Equal(t, 1, h.traitSyncCount(),
-		"only the green cycle converges; the red one had no binding to write to")
+	require.Len(t, h.deploys, 1)
 }
 
-// TestTraitSyncFailure_DoesNotFailTheRun pins the deliberate asymmetry: the
-// convergence is retried under its own deadline, but its exhaustion is logged,
-// not fatal. Failing the cycle would not undo the exposure — the component is
-// already deployed and serving by the time this runs — so a red run would add
-// noise without removing it. Only a later convergence removes it.
-func TestTraitSyncFailure_DoesNotFailTheRun(t *testing.T) {
+func TestDeployActivityFailureRetriesWholeUnit(t *testing.T) {
 	h := newHarness(t)
 	h.milestoneIs(MilestoneSnapshot{Work: 1, Total: 1}, MilestoneSnapshot{})
-	h.traitSyncIs(errors.New("openchoreo unreachable"))
+	h.deployAttemptsAre(errors.New("trait sync failed"), nil)
 	h.merges(1)
 
 	h.run(delivery.RunOriginSpecBuild, 0)
 	res := h.result(t)
 
 	h.assertSettled(t, res, delivery.RunStateSucceeded, "")
-	require.Positive(t, h.traitSyncCount(), "the convergence was attempted")
+	require.Len(t, h.deploys, 2, "Temporal retries the complete deploy activity")
+}
+
+func TestDeployGateParksWithReasonThenSignalWakesAndDeploys(t *testing.T) {
+	h := newHarness(t)
+	h.milestoneIs(MilestoneSnapshot{Work: 1, Total: 1}, MilestoneSnapshot{})
+	h.gateIs(
+		DeployGateResult{Unconfigured: []string{"stripe", "sendgrid"}},
+		DeployGateResult{},
+	)
+	h.merges(1)
+
+	var waiting delivery.RunStatus
+	h.env.RegisterDelayedCallback(func() {
+		resp, err := h.env.QueryWorkflow(delivery.QueryRunStatus)
+		require.NoError(t, err)
+		require.NoError(t, resp.Get(&waiting))
+		h.env.SignalWorkflow(delivery.SigRunDependencyValuesSaved, delivery.RunSignal{
+			Signal: delivery.SigRunDependencyValuesSaved, MilestoneNumber: testMilepost,
+		})
+	}, 2*time.Second)
+
+	h.run(delivery.RunOriginIncidentAdoption, 0)
+	res := h.result(t)
+
+	h.assertSettled(t, res, delivery.RunStateSucceeded, "")
+	require.Equal(t, delivery.RunStateWaiting, waiting.State)
+	require.Contains(t, waiting.WaitingReason, "required before deploy")
+	require.Equal(t, []string{"stripe", "sendgrid"}, waiting.BlockingDependencies)
+	require.Len(t, h.deploys, 1)
+}
+
+func TestDeployGatePlatformProvisioningRetriesWithoutParking(t *testing.T) {
+	h := newHarness(t)
+	h.milestoneIs(MilestoneSnapshot{Work: 1, Total: 1}, MilestoneSnapshot{})
+	h.set["deploy-gate"] = true
+	h.env.OnActivity(h.acts.CheckDeployReadiness, mock.Anything, mock.Anything).
+		Return(DeployGateResult{}, errors.New("platform resources still provisioning")).Once()
+	h.env.OnActivity(h.acts.CheckDeployReadiness, mock.Anything, mock.Anything).
+		Return(DeployGateResult{}, nil)
+	h.merges(1)
+
+	h.run(delivery.RunOriginIncidentAdoption, 0)
+	res := h.result(t)
+
+	h.assertSettled(t, res, delivery.RunStateSucceeded, "")
+	for _, state := range h.stateInputs {
+		require.Empty(t, state.WaitingReason, "platform work retries the activity rather than parking")
+	}
+}
+
+func TestCancelAtDeployGateNeverDeploys(t *testing.T) {
+	h := newHarness(t)
+	h.milestoneIs(MilestoneSnapshot{Work: 1, Total: 1}, MilestoneSnapshot{})
+	h.gateIs(DeployGateResult{Unconfigured: []string{"stripe"}})
+	h.merges(1)
+	h.signal(delivery.SigRunCancel, 2*time.Second)
+
+	h.run(delivery.RunOriginIncidentAdoption, 0)
+	res := h.result(t)
+
+	h.assertSettled(t, res, delivery.RunStateCancelled, "")
+	require.Empty(t, h.deploys)
+}
+
+func TestCancelDuringReadyGateNeverDeploys(t *testing.T) {
+	h := newHarness(t)
+	h.milestoneIs(MilestoneSnapshot{Work: 1, Total: 1}, MilestoneSnapshot{})
+	h.set["deploy-gate"] = true
+	h.env.OnActivity(h.acts.CheckDeployReadiness, mock.Anything, mock.Anything).
+		After(2*time.Second).
+		Return(DeployGateResult{}, nil)
+	h.merges(1)
+	h.signal(delivery.SigRunCancel, time.Second)
+
+	h.run(delivery.RunOriginIncidentAdoption, 0)
+	res := h.result(t)
+
+	h.assertSettled(t, res, delivery.RunStateCancelled, "")
+	require.Empty(t, h.deploys)
 }
 
 // TestConflictCycle_AnUnmergeablePRBecomesTheNextCyclesWork is the same shape
@@ -1017,6 +1094,7 @@ func TestRedispatchBudget_AgentDeathEndsTheRun(t *testing.T) {
 	h.assertSettled(t, res, delivery.RunStateFailed, delivery.RunReasonRedispatchBudget)
 	require.Equal(t, delivery.RunMaxRedispatchPerCycle, h.dispatchCount())
 	require.Equal(t, "", h.finishes[0].MergeSHA)
+	require.Empty(t, h.deploys, "a failed run must never reach deployment")
 }
 
 // TestAgentQuotaBlocked_SettlesBlockedWithoutSpendingTheBudget is the

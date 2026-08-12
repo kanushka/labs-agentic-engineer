@@ -232,12 +232,12 @@ func (r runnerSecretResolver) ResolveRunnerSecrets(ctx context.Context, orgID, p
 	return out, nil
 }
 
-// spaDeployObserver adapts the runtime-config emitter onto the codingagent
-// DeployObserver port: when any component deploys, re-emit env-config.js across
+// spaDeployObserver adapts the runtime-config emitter onto the project deploy
+// observer port: when any component deploys, re-emit env-config.js across
 // every SPA in the project (a sibling backend's deploy can resolve a SPA's dep
 // URL — project-wide, mirroring the retired dispatch cascade). The deployed
 // component name is unused; emission fans over the project's web-apps. Satisfies
-// codingagent.DeployObserver.
+// projects.ComponentDeployObserver.
 type spaDeployObserver struct {
 	svc *runtimeconfig.RuntimeConfigService
 }
@@ -255,7 +255,7 @@ type projectTraitSyncer interface {
 }
 
 // traitDeployObserver adapts the api-configuration trait emitter onto the
-// codingagent DeployObserver port: when any component deploys, re-emit the
+// project deploy observer port: when any component deploys, re-emit the
 // jwtAuth/CORS traitEnvironmentConfigs across every protected API in the
 // project. The deployed component name is unused — emission fans over the
 // project's protected services, mirroring spaDeployObserver.
@@ -263,10 +263,9 @@ type projectTraitSyncer interface {
 // Deploy-time is the seam because EnsureComponent sets only the Component CR's
 // trait *shape* at create (so OC renders the RestApi); the per-env
 // traitEnvironmentConfigs PATCH — which carries the jwtAuth policy the gateway
-// enforces — needs the ReleaseBinding, and OC's autoDeploy has created that by
-// the time a build succeeds and this observer fires. A sibling SPA's deploy
+// enforces — needs the ReleaseBinding created by the deploy activity. A sibling SPA's deploy
 // also routes here so a newly-deployed SPA's origin lands in each protected
-// API's CORS allowlist. Satisfies codingagent.DeployObserver.
+// API's CORS allowlist. Satisfies projects.ComponentDeployObserver.
 type traitDeployObserver struct{ svc projectTraitSyncer }
 
 func (o traitDeployObserver) OnComponentDeployed(ctx context.Context, orgID, projectID, _ string) error {

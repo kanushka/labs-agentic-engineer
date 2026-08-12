@@ -47,13 +47,6 @@ const (
 	// "the agent died" (including a Job that exited without opening a pull
 	// request) is a named failure class with a named budget.
 	cycleLandingTimeout = 2 * time.Hour
-
-	// traitSyncTimeout bounds the WHOLE managed-API trait sync including its
-	// retries. It is bounded rather than left to Temporal's unlimited default
-	// because the sync is a convergence step, not a step the version depends on:
-	// a cycle must not hang on it. See syncAPITraits for what happens when it
-	// runs out.
-	traitSyncTimeout = 5 * time.Minute
 )
 
 // RunInput starts a supervisor over one milestone. Everything in it is already
@@ -109,11 +102,12 @@ type loop struct {
 	in RunInput
 	st delivery.RunStatus
 
-	cancel   workflow.ReceiveChannel
-	workable workflow.ReceiveChannel
-	merged   workflow.ReceiveChannel
-	builds   workflow.ReceiveChannel
-	conflict workflow.ReceiveChannel
+	cancel      workflow.ReceiveChannel
+	workable    workflow.ReceiveChannel
+	merged      workflow.ReceiveChannel
+	builds      workflow.ReceiveChannel
+	conflict    workflow.ReceiveChannel
+	valuesSaved workflow.ReceiveChannel
 
 	// lastResult is what the previous cycle produced — it selects the next
 	// cycle's kind and feeds the no-progress rule.
@@ -165,6 +159,7 @@ func newLoop(ctx workflow.Context, in RunInput) *loop {
 		merged:                workflow.GetSignalChannel(ctx, delivery.SigRunPRMerged),
 		builds:                workflow.GetSignalChannel(ctx, delivery.SigRunBuildTerminal),
 		conflict:              workflow.GetSignalChannel(ctx, delivery.SigRunConflict),
+		valuesSaved:           workflow.GetSignalChannel(ctx, delivery.SigRunDependencyValuesSaved),
 		st: delivery.RunStatus{
 			RunID:           in.RunID,
 			MilestoneNumber: in.MilestoneNumber,
@@ -507,6 +502,21 @@ func (l *loop) settle(ctx workflow.Context, state, reason string) (RunResult, er
 	// DeleteComponent), not here: a Temporal-durable stop was tried on main and
 	// dropped in favour of that best-effort reap (phase-08 Cancel B1).
 	if state == delivery.RunStateSucceeded {
+		cancelled, gateErr := l.awaitDeployment(ctx)
+		if gateErr != nil {
+			return l.result(), gateErr
+		}
+		if cancelled {
+			state = delivery.RunStateCancelled
+			l.st.Phase = delivery.RunPhaseSettling
+		} else if l.cancelRequested() {
+			state = delivery.RunStateCancelled
+			l.st.Phase = delivery.RunPhaseSettling
+		} else if err := l.deployProject(ctx); err != nil {
+			return l.result(), err
+		}
+	}
+	if state == delivery.RunStateSucceeded {
 		if l.st.ValidationVerdict == "" {
 			// "The run finished and did not validate" is an honest verdict; an
 			// empty one would read as "not yet". An empty verdict here means no
@@ -524,9 +534,34 @@ func (l *loop) settle(ctx workflow.Context, state, reason string) (RunResult, er
 	}
 	l.st.State = state
 	l.st.TerminalReason = reason
+	l.st.WaitingReason = ""
+	l.st.BlockingDependencies = nil
 	l.st.CycleKind = ""
 	l.st.CycleAttempt = 0
 	return l.result(), nil
+}
+
+func (l *loop) awaitDeployment(ctx workflow.Context) (bool, error) {
+	for {
+		gate, err := l.checkDeployReadiness(ctx)
+		if err != nil {
+			return false, err
+		}
+		if len(gate.Unconfigured) == 0 {
+			if l.cancelRequested() {
+				return true, nil
+			}
+			l.st.Phase = delivery.RunPhaseSettling
+			return false, nil
+		}
+		if err := l.setWaiting(ctx, "External dependency values are required before deploy.", gate.Unconfigured); err != nil {
+			return false, err
+		}
+		l.st.Phase = delivery.RunPhaseWaiting
+		if l.await(ctx) {
+			return true, nil
+		}
+	}
 }
 
 func (l *loop) result() RunResult {
@@ -566,7 +601,7 @@ func (l *loop) await(ctx workflow.Context) (cancelled bool) {
 		c.Receive(ctx, nil)
 		cancelled = true
 	})
-	for _, ch := range []workflow.ReceiveChannel{l.workable, l.merged, l.builds, l.conflict} {
+	for _, ch := range []workflow.ReceiveChannel{l.workable, l.merged, l.builds, l.conflict, l.valuesSaved} {
 		sel.AddReceive(ch, func(c workflow.ReceiveChannel, _ bool) { c.Receive(ctx, nil) })
 	}
 	sel.AddFuture(workflow.NewTimer(timerCtx, waitPollInterval), func(workflow.Future) {})
@@ -616,7 +651,32 @@ func (l *loop) setState(ctx workflow.Context, state string) error {
 		return err
 	}
 	l.st.State = state
+	l.st.WaitingReason = ""
+	l.st.BlockingDependencies = nil
 	return nil
+}
+
+func (l *loop) setWaiting(ctx workflow.Context, reason string, dependencies []string) error {
+	if err := workflow.ExecuteActivity(activityCtx(ctx), (*Activities).SetRunState,
+		SetRunStateInput{RunID: l.in.RunID, State: delivery.RunStateWaiting, WaitingReason: reason, BlockingDependencies: dependencies}).Get(ctx, nil); err != nil {
+		return err
+	}
+	l.st.State = delivery.RunStateWaiting
+	l.st.WaitingReason = reason
+	l.st.BlockingDependencies = append([]string(nil), dependencies...)
+	return nil
+}
+
+func (l *loop) checkDeployReadiness(ctx workflow.Context) (DeployGateResult, error) {
+	var out DeployGateResult
+	err := workflow.ExecuteActivity(activityCtx(ctx), (*Activities).CheckDeployReadiness,
+		ProjectRef{OrgID: l.in.OrgID, ProjectID: l.in.ProjectID}).Get(ctx, &out)
+	return out, err
+}
+
+func (l *loop) deployProject(ctx workflow.Context) error {
+	return workflow.ExecuteActivity(activityCtx(ctx), (*Activities).DeployProject,
+		ProjectRef{OrgID: l.in.OrgID, ProjectID: l.in.ProjectID, RunID: l.in.RunID}).Get(ctx, nil)
 }
 
 func (l *loop) settleRun(ctx workflow.Context, state, reason string) error {
@@ -708,42 +768,4 @@ func dispatchActivityCtx(ctx workflow.Context) workflow.Context {
 		StartToCloseTimeout: activityTimeout,
 		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
 	})
-}
-
-// traitSyncActivityCtx retries the managed-API trait sync under an overall
-// deadline. Retries are wanted — the failures this sees are transient
-// OpenChoreo round trips, and the previous owner of this write dropped them
-// silently — but they are bounded, because no part of delivering the version
-// depends on the answer.
-func traitSyncActivityCtx(ctx workflow.Context) workflow.Context {
-	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		StartToCloseTimeout:    activityTimeout,
-		ScheduleToCloseTimeout: traitSyncTimeout,
-	})
-}
-
-// syncAPITraits converges the managed-API gateway policy for the project after
-// a cycle's builds go green.
-//
-// It NEVER fails the cycle. The reason is not that the write is unimportant —
-// an unset `jwtAuth` leaves a protected API's gateway passing every request
-// through unauthenticated — but that failing here would not undo it: the
-// component is already deployed and serving by the time this runs, so a red
-// cycle would add noise without removing exposure. Only convergence removes it,
-// which is why the outcome is logged loudly and left to be re-asserted.
-//
-// This is the interim trigger. It is coupled to THIS build rail, which is
-// exactly how its predecessor died — the trait sync used to hang off the
-// ExecWatcher's build terminal, and stopped firing the moment builds moved to
-// this loop and stopped writing the execution rows that watcher reads. A
-// rail-agnostic reconcile sweep is what makes the guarantee; this only makes it
-// prompt.
-func (l *loop) syncAPITraits(ctx workflow.Context) {
-	err := workflow.ExecuteActivity(traitSyncActivityCtx(ctx), (*Activities).SyncAPITraits,
-		ProjectRef{OrgID: l.in.OrgID, ProjectID: l.in.ProjectID}).Get(ctx, nil)
-	if err != nil {
-		workflow.GetLogger(ctx).Error(
-			"managed-API trait sync did not converge; protected APIs in this project may be serving unauthenticated",
-			"orgID", l.in.OrgID, "projectID", l.in.ProjectID, "error", err)
-	}
 }

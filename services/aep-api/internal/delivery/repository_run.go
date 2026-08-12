@@ -88,11 +88,17 @@ type MilestoneRunRepository interface {
 	// answer with a useful conflict instead of a bare insert failure.
 	ActiveSpecRunByProject(ctx context.Context, orgID, projectID string) (*MilestoneRun, error)
 
+	// ActiveRunByProject returns the newest non-terminal run regardless of
+	// origin. Value-save notification uses this sibling read because incident
+	// and revalidation runs can reach the deploy gate too.
+	ActiveRunByProject(ctx context.Context, orgID, projectID string) (*MilestoneRun, error)
+
 	// SetState moves a non-terminal run between waiting and running (the loop
 	// oscillates across cycle boundaries) and stamps started_at on the first
 	// transition to running. It refuses a terminal state — that is Settle's job
 	// — and returns (nil, nil) when the run is already terminal.
 	SetState(ctx context.Context, id, state string) (*MilestoneRun, error)
+	SetWaiting(ctx context.Context, id, reason string, dependencies []string) (*MilestoneRun, error)
 
 	// Settle ends a run: it writes a terminal state plus its terminal reason and
 	// stamps ended_at, guarded on the run still being non-terminal so the first
@@ -191,17 +197,40 @@ func (r *milestoneRunRepository) ActiveSpecRunByProject(ctx context.Context, org
 	return &row, nil
 }
 
+func (r *milestoneRunRepository) ActiveRunByProject(ctx context.Context, orgID, projectID string) (*MilestoneRun, error) {
+	var row MilestoneRun
+	err := r.db.WithContext(ctx).
+		Where("org_id = ? AND project_id = ? AND state IN ?", orgID, projectID, nonTerminalRunStates).
+		Order("created_at DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 func (r *milestoneRunRepository) SetState(ctx context.Context, id, state string) (*MilestoneRun, error) {
 	if state != RunStateWaiting && state != RunStateRunning {
 		return nil, fmt.Errorf("milestone run: SetState takes a non-terminal state, got %q (use Settle)", state)
 	}
-	updates := map[string]any{"state": state}
+	updates := map[string]any{"state": state, "waiting_reason": "", "blocking_dependencies": nil}
 	if state == RunStateRunning {
 		// COALESCE so a re-entry into running keeps the ORIGINAL start stamp:
 		// started_at marks when the run first did work, not the latest cycle.
 		updates["started_at"] = gorm.Expr("COALESCE(started_at, ?)", time.Now().UTC())
 	}
 	return r.updateNonTerminal(ctx, id, updates)
+}
+
+func (r *milestoneRunRepository) SetWaiting(ctx context.Context, id, reason string, dependencies []string) (*MilestoneRun, error) {
+	return r.updateNonTerminal(ctx, id, map[string]any{
+		"state":                 RunStateWaiting,
+		"waiting_reason":        reason,
+		"blocking_dependencies": dependencies,
+	})
 }
 
 func (r *milestoneRunRepository) Settle(ctx context.Context, id, state, terminalReason string) (*MilestoneRun, error) {
@@ -212,9 +241,11 @@ func (r *milestoneRunRepository) Settle(ctx context.Context, id, state, terminal
 		return nil, fmt.Errorf("milestone run: a succeeded run carries no terminal reason, got %q", terminalReason)
 	}
 	return r.updateNonTerminal(ctx, id, map[string]any{
-		"state":           state,
-		"terminal_reason": terminalReason,
-		"ended_at":        time.Now().UTC(),
+		"state":                 state,
+		"terminal_reason":       terminalReason,
+		"waiting_reason":        "",
+		"blocking_dependencies": nil,
+		"ended_at":              time.Now().UTC(),
 	})
 }
 

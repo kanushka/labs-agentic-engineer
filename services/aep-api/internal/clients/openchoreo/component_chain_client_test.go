@@ -177,6 +177,44 @@ func TestEnsureRelease_ServerErrorWrapsSentinel(t *testing.T) {
 	}
 }
 
+func TestGenerateRelease_ReturnsControllerGeneratedName(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(t, w, http.StatusCreated, map[string]any{"metadata": map[string]any{"name": "widgets-api-r17"}})
+	}))
+	defer srv.Close()
+
+	c := newTestComponentClient(t, srv)
+	got, err := c.GenerateRelease(context.Background(), chainTestOrg, chainTestProject, chainTestComp)
+	if err != nil || got != "widgets-api-r17" {
+		t.Fatalf("GenerateRelease = (%q, %v)", got, err)
+	}
+	if _, named := body["releaseName"]; named {
+		t.Fatalf("auto-generated release request carried a name: %v", body)
+	}
+}
+
+func TestLatestComponentRelease_ReadsComponentStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, http.StatusOK, map[string]any{
+			"metadata": map[string]any{"name": chainScopedName()},
+			"spec": map[string]any{
+				"componentType": map[string]any{"name": "deployment/service"},
+				"owner":         map[string]any{"projectName": chainTestProject},
+			},
+			"status": map[string]any{"latestRelease": map[string]any{"name": "widgets-api-r18"}},
+		})
+	}))
+	defer srv.Close()
+
+	c := newTestComponentClient(t, srv)
+	got, err := c.LatestComponentRelease(context.Background(), chainTestOrg, chainTestProject, chainTestComp)
+	if err != nil || got != "widgets-api-r18" {
+		t.Fatalf("LatestComponentRelease = (%q, %v)", got, err)
+	}
+}
+
 // ---- EnsureReleaseBinding ---------------------------------------------------
 
 func TestEnsureReleaseBinding_Create(t *testing.T) {
@@ -211,12 +249,33 @@ func TestEnsureReleaseBinding_Create(t *testing.T) {
 	}
 }
 
-func TestEnsureReleaseBinding_ConflictIsSuccess(t *testing.T) {
+func TestEnsureReleaseBinding_ConflictRepinsExistingBinding(t *testing.T) {
+	requests := 0
+	bindingName := chainScopedName() + "-" + chainTestEnv
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Fatalf("unexpected method %s", r.Method)
+		requests++
+		switch {
+		case requests == 1 && r.Method == http.MethodPost:
+			writeJSON(t, w, http.StatusConflict, map[string]string{"error": "already exists"})
+		case r.Method == http.MethodGet:
+			writeJSON(t, w, http.StatusOK, map[string]any{
+				"metadata": map[string]any{"name": bindingName},
+				"spec": map[string]any{
+					"environment": chainTestEnv,
+					"owner":       map[string]any{"componentName": chainScopedName(), "projectName": chainTestProject},
+					"releaseName": "old-release",
+				},
+			})
+		case r.Method == http.MethodPut:
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["spec"].(map[string]any)["releaseName"] != chainTestRelease {
+				t.Fatalf("releaseName = %v", body["spec"].(map[string]any)["releaseName"])
+			}
+			writeJSON(t, w, http.StatusOK, body)
+		default:
+			t.Fatalf("unexpected request %d: %s", requests, r.Method)
 		}
-		writeJSON(t, w, http.StatusConflict, map[string]string{"error": "already exists"})
 	}))
 	defer srv.Close()
 
@@ -224,6 +283,9 @@ func TestEnsureReleaseBinding_ConflictIsSuccess(t *testing.T) {
 	if err := c.EnsureReleaseBinding(context.Background(), chainTestOrg, chainTestProject,
 		chainTestComp, chainTestEnv, chainTestRelease); err != nil {
 		t.Fatalf("EnsureReleaseBinding on 409: %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want POST+GET+PUT", requests)
 	}
 }
 
@@ -241,5 +303,43 @@ func TestEnsureReleaseBinding_ServerErrorWrapsSentinel(t *testing.T) {
 	}
 	if !errors.Is(err, ErrInternalServerError) {
 		t.Errorf("expected ErrInternalServerError, got %v", err)
+	}
+}
+
+func TestSetReleaseBindingState_ActivatesExistingBinding(t *testing.T) {
+	requests := 0
+	bindingName := chainScopedName() + "-" + chainTestEnv
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(t, w, http.StatusOK, map[string]any{
+				"metadata": map[string]any{"name": bindingName},
+				"spec": map[string]any{
+					"environment": chainTestEnv,
+					"owner":       map[string]any{"componentName": chainScopedName(), "projectName": chainTestProject},
+					"releaseName": chainTestRelease,
+				},
+			})
+		case http.MethodPut:
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			specBody := body["spec"].(map[string]any)
+			if specBody["state"] != "Active" {
+				t.Fatalf("state = %v", specBody["state"])
+			}
+			writeJSON(t, w, http.StatusOK, body)
+		default:
+			t.Fatalf("unexpected %s", r.Method)
+		}
+	}))
+	defer srv.Close()
+
+	c := newTestComponentClient(t, srv)
+	if err := c.SetReleaseBindingState(context.Background(), chainTestOrg, chainTestProject, chainTestComp, chainTestEnv, "Active"); err != nil {
+		t.Fatalf("SetReleaseBindingState: %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want GET+PUT", requests)
 	}
 }

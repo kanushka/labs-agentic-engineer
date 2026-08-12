@@ -36,11 +36,9 @@ import (
 // with projectName internally (see ScopedComponentName) because OC components
 // share a single k8s namespace across all projects in an org.
 //
-// Deploy chain: every Component is created with AutoDeploy=true (see
-// dispatch_service.ensureOCComponent), so OC drives Workload →
-// ComponentRelease → ReleaseBinding from the build. The build workflow's
-// generate-workload-cr step is the only writer of the Workload CR. The
-// BFF reads ReleaseBindings via ListDeployments.
+// Deploy chain: every user Component is created with AutoDeploy=false. The
+// build workflow writes the Workload; DeploymentService cuts the release and
+// pins/activates its ReleaseBinding at successful milestone settle.
 type ComponentService interface {
 	ListComponents(ctx context.Context, orgName, projectName string, limit int, cursor string) (*gen.ComponentList, error)
 	GetComponent(ctx context.Context, orgName, projectName, componentName string) (*gen.Component, error)
@@ -53,7 +51,7 @@ type ComponentService interface {
 	EnsureComponent(ctx context.Context, orgName, projectName, componentName string) error
 	UpdateWorkflowEnvVars(ctx context.Context, orgName, projectName, componentName string, envVars []openchoreo.WorkflowEnvVarRef) error
 
-	// Deploy (read-only — autoDeploy on the Component drives the chain)
+	// Deploy read model. Deployment writes belong to DeploymentService.
 	ListDeployments(ctx context.Context, orgName, projectName, componentName string) (*gen.DeploymentList, error)
 
 	// OpenAPI for the Test tab. Reads the spec from
@@ -133,9 +131,8 @@ func (s *componentService) CreateComponent(ctx context.Context, orgName, project
 // component) needed for the build to fire when the merge push arrives. Ported
 // from the legacy dispatch service's ensureOCComponent pre-flight (the piece the
 // tasks-github-native rebuild dropped): AutoBuild=false (every build is driven by
-// the BFF pinning a WorkflowRun to the merge SHA), AutoDeploy=true (OC's
-// controller creates the ReleaseBinding into the first pipeline environment once
-// the build posts a Workload). Idempotent — the OC client refetches on 409, so a
+// the BFF pinning a WorkflowRun to the merge SHA), AutoDeploy=false (the
+// milestone run creates and pins the release only after its deploy gate). Idempotent — the OC client refetches on 409, so a
 // re-dispatch of the same component is a no-op. Reads the design facts (app path,
 // component type, api-security) via the artifact store and the repo row via
 // repoSvc; both are the existing feature ports.
@@ -183,7 +180,7 @@ func (s *componentService) EnsureComponent(ctx context.Context, orgName, project
 		Description: comp.Name,
 		Type:        ocEntrypoint(comp.ComponentType),
 		AutoBuild:   false,
-		AutoDeploy:  true,
+		AutoDeploy:  false,
 		Workflow: &openchoreo.ComponentWorkflowSpec{
 			Kind: "ClusterWorkflow",
 			Name: "dockerfile-builder",

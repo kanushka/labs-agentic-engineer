@@ -30,7 +30,24 @@ type TaskView = components["schemas"]["TaskView"];
 // what the gate hold's deep link uses, so it has to survive the stub.
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
+  Link: ({
+    to = "#",
+    params,
+    search,
+    children,
+  }: {
+    to?: string;
+    params?: Record<string, string>;
+    search?: Record<string, string>;
+    children?: React.ReactNode;
+  }) => {
+    const path = Object.entries(params ?? {}).reduce(
+      (acc, [k, v]) => acc.replace(`$${k}`, v),
+      to,
+    );
+    const query = new URLSearchParams(search ?? {}).toString();
+    return <a href={query ? `${path}?${query}` : path}>{children}</a>;
+  },
   // The delivered result routes on to the deployments and validation boards.
   useNavigate: () => navigate,
   createLink: (Component: React.ElementType) =>
@@ -298,6 +315,26 @@ describe("BuildsPage — one version's story", () => {
     // primary action.
     fireEvent.click(screen.getByRole("button", { name: /Cancel run/ }));
     expect(cancelMutate).toHaveBeenCalledWith("run-1");
+  });
+
+  it("names deploy-gate dependencies and links to configuration", () => {
+    mockBuilds = [build("v2", "in_progress")];
+    mockRuns = [
+      run({
+        state: "waiting",
+        waitingReason: "External dependency values are required before deploy.",
+        blockingDependencies: ["stripe", "sendgrid"],
+      }),
+    ];
+    mockIssues = withOpenWork();
+    renderPage();
+
+    expect(screen.getByText("Configuration required before deploy")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for stripe, sendgrid")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Configure dependencies" })).toHaveAttribute(
+      "href",
+      "/projects/acme/builds?tag=v2&section=configuration",
+    );
   });
 
   // The reported bug: a build busy writing its milestone announced itself as

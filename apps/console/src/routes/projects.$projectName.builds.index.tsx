@@ -23,16 +23,20 @@ import { BuildsPage } from "../features/builds/components/BuildsPage";
 // param is validated as "a non-empty string" only — an unknown tag falls
 // back to newest inside BuildsPage rather than erroring the route.
 export const Route = createFileRoute("/projects/$projectName/builds/")({
-  validateSearch: (search: Record<string, unknown>): { tag?: string } => {
+  validateSearch: (search: Record<string, unknown>): { tag?: string; section?: "configuration" } => {
     const tag = search.tag;
-    return typeof tag === "string" && tag !== "" ? { tag } : {};
+    const section = search.section === "configuration" ? "configuration" : undefined;
+    return {
+      ...(typeof tag === "string" && tag !== "" ? { tag } : {}),
+      ...(section ? { section } : {}),
+    };
   },
   component: BuildsRoute,
 });
 
 function BuildsRoute() {
   const { projectName } = Route.useParams();
-  const { tag } = Route.useSearch();
+  const { tag, section } = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
     <BuildsPage
@@ -40,7 +44,10 @@ function BuildsRoute() {
       tag={tag}
       onTagChange={(next) =>
         void navigate({
-          search: next ? { tag: next } : {},
+          search: {
+            ...(next ? { tag: next } : {}),
+            ...(section ? { section } : {}),
+          },
           replace: true,
         })
       }
