@@ -31,6 +31,7 @@ import { firstEndpointUrl } from "../lib/deploymentUrl";
 import { deploymentsAreMoving } from "../lib/deploymentRows";
 import { projectKeys } from "./keys";
 import { apiErrorMessage } from "../../../api/errors";
+import { specKeys } from "../../spec/api/keys";
 
 type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
 type BuildRequest = components["schemas"]["BuildRequest"];
@@ -252,6 +253,7 @@ export function useComponentOpenApi(
 // manager and re-authors the OC resource — values never echo back, so this
 // is write-only by design. No automatic retry (a failed write is surfaced).
 export function useSaveConnectionValues(projectName: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       name,
@@ -273,6 +275,42 @@ export function useSaveConnectionValues(projectName: string) {
       // and an empty-body success must not read as a failure.
       if (error) {
         throw new Error(apiErrorMessage(error, "Failed to save the connection's values"));
+      }
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: projectKeys.dependencyReadiness(projectName),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: specKeys.dependencies(projectName),
+      });
+    },
+  });
+}
+
+// Build configuration is environment-specific. The Builds page consumes this
+// cache entry to show unresolved external values before a build is started.
+export function useProjectDependencyReadiness(
+  projectName: string,
+  environment = "development",
+) {
+  return useQuery({
+    queryKey: projectKeys.dependencyReadiness(projectName),
+    queryFn: async () => {
+      const { data, error } = await client.GET(
+        "/projects/{projectName}/dependencies/readiness",
+        {
+          params: {
+            path: { projectName },
+            query: { environment },
+          },
+        },
+      );
+      if (error || data === undefined) {
+        throw new Error(
+          apiErrorMessage(error, "Failed to load dependency readiness"),
+        );
       }
       return data;
     },
