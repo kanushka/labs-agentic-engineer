@@ -36,8 +36,11 @@ vi.mock("../../../api/client", () => ({
 
 // Imported after the HTTP boundary is stubbed so the real query and mutation
 // implementations retain their normal QueryClient behavior.
-const { useProjectDependencyReadiness, useSaveConnectionValues } =
-  await import("./queries");
+const {
+  useComponentDependencyStatuses,
+  useProjectDependencyReadiness,
+  useSaveConnectionValues,
+} = await import("./queries");
 
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -79,6 +82,107 @@ describe("project dependency readiness", () => {
   });
 });
 
+describe("component dependency statuses", () => {
+  beforeEach(() => {
+    mockGET.mockReset();
+    mockPOST.mockReset();
+  });
+
+  it("reads each generated per-component status endpoint in development", async () => {
+    mockGET
+      .mockResolvedValueOnce({
+        data: {
+          outputs: [],
+          ready: true,
+          status: "Ready",
+          valueState: "configured",
+        },
+        error: undefined,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          outputs: [],
+          ready: false,
+          status: "Pending",
+          valueState: "unset",
+        },
+        error: undefined,
+      });
+    const queryClient = new QueryClient();
+
+    const { result } = renderHook(
+      () =>
+        useComponentDependencyStatuses("acme", [
+          { componentName: "storefront", dependencyName: "stripe" },
+          { componentName: "worker", dependencyName: "stripe" },
+        ]),
+      { wrapper: wrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(result.current.statuses).toEqual([
+      {
+        componentName: "storefront",
+        dependencyName: "stripe",
+        status: {
+          outputs: [],
+          ready: true,
+          status: "Ready",
+          valueState: "configured",
+        },
+      },
+      {
+        componentName: "worker",
+        dependencyName: "stripe",
+        status: {
+          outputs: [],
+          ready: false,
+          status: "Pending",
+          valueState: "unset",
+        },
+      },
+    ]);
+    expect(mockGET).toHaveBeenNthCalledWith(
+      1,
+      "/projects/{projectName}/components/{componentName}/dependencies/{depName}/status",
+      {
+        params: {
+          path: {
+            projectName: "acme",
+            componentName: "storefront",
+            depName: "stripe",
+          },
+          query: { environment: "development" },
+        },
+      },
+    );
+    expect(mockGET).toHaveBeenNthCalledWith(
+      2,
+      "/projects/{projectName}/components/{componentName}/dependencies/{depName}/status",
+      {
+        params: {
+          path: {
+            projectName: "acme",
+            componentName: "worker",
+            depName: "stripe",
+          },
+          query: { environment: "development" },
+        },
+      },
+    );
+    expect(
+      queryClient.getQueryData(
+        projectKeys.componentDependencyStatus(
+          "acme",
+          "storefront",
+          "stripe",
+          "development",
+        ),
+      ),
+    ).toMatchObject({ valueState: "configured" });
+  });
+});
+
 describe("useSaveConnectionValues", () => {
   beforeEach(() => {
     mockPOST.mockResolvedValue({ data: undefined, error: undefined });
@@ -101,6 +205,9 @@ describe("useSaveConnectionValues", () => {
 
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: projectKeys.dependencyReadiness("acme"),
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: projectKeys.componentDependencyStatuses("acme"),
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: specKeys.dependencies("acme"),

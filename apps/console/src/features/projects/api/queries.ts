@@ -35,6 +35,12 @@ import { specKeys } from "../../spec/api/keys";
 
 type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
 type BuildRequest = components["schemas"]["BuildRequest"];
+type DependencyStatus = components["schemas"]["DependencyStatus"];
+
+export interface ComponentDependencyRef {
+  componentName: string;
+  dependencyName: string;
+}
 
 export function useProjectsList(search = "", limit?: number) {
   return useInfiniteQuery({
@@ -247,6 +253,52 @@ export function useComponentOpenApi(
   });
 }
 
+// Read development value readiness from the generated per-component status
+// endpoint. useQueries keeps the hook count stable while the selected design
+// or project dependency set changes, and each component/dependency pair owns
+// an independently invalidatable cache entry.
+export function useComponentDependencyStatuses(
+  projectName: string,
+  dependencies: readonly ComponentDependencyRef[],
+  environment = "development",
+) {
+  return useQueries({
+    queries: dependencies.map(({ componentName, dependencyName }) => ({
+      queryKey: projectKeys.componentDependencyStatus(
+        projectName,
+        componentName,
+        dependencyName,
+        environment,
+      ),
+      queryFn: async (): Promise<DependencyStatus> => {
+        const { data, error } = await client.GET(
+          "/projects/{projectName}/components/{componentName}/dependencies/{depName}/status",
+          {
+            params: {
+              path: { projectName, componentName, depName: dependencyName },
+              query: { environment },
+            },
+          },
+        );
+        if (error || data === undefined) {
+          throw new Error(
+            apiErrorMessage(error, "Failed to load dependency status"),
+          );
+        }
+        return data;
+      },
+    })),
+    combine: (results) => ({
+      isPending: results.some((result) => result.isPending),
+      failedCount: results.filter((result) => result.isError).length,
+      statuses: results.map((result, index) => ({
+        ...dependencies[index]!,
+        status: result.data,
+      })),
+    }),
+  });
+}
+
 // Re-collect an external connection's values (#395: dummy values at build
 // time, real ones later). POST …/external-resources/{name}/values re-splits
 // plain/secret by the design's schema, rewrites secrets to the secret
@@ -281,6 +333,9 @@ export function useSaveConnectionValues(projectName: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: projectKeys.dependencyReadiness(projectName),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: projectKeys.componentDependencyStatuses(projectName),
       });
       void queryClient.invalidateQueries({
         queryKey: specKeys.dependencies(projectName),
