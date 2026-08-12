@@ -60,6 +60,49 @@ func kindsByDep(items []PreflightItem) map[string][]string {
 
 // ----- tests -------------------------------------------------------------------
 
+// An external-config item carries its schema for later collection, but it is
+// not a design-resolution blocker.
+func TestPreflight_ExternalConfigSchemaDoesNotRequireResolution(t *testing.T) {
+	svc := NewPreflightService(PreflightDeps{
+		Design: fakeDesign{comps: []spec.DesignComponent{{
+			Name: "orders",
+			Dependencies: []spec.Dependency{{
+				Kind:   spec.DependencyKindExternal,
+				Name:   "stripe",
+				Config: []spec.ConfigKey{{Key: "STRIPE_KEY", Secret: true}},
+			}},
+		}}},
+		Status: fakeStatus{},
+	})
+
+	pf, err := svc.Preflight(context.Background(), "acme", "shop")
+	require.NoError(t, err)
+	require.True(t, pf.NeedsInput)
+	require.False(t, pf.NeedsResolution)
+	require.Equal(t, "external-config", pf.Items[0].Kind)
+}
+
+// An unresolved external dependency remains a design-resolution blocker.
+func TestPreflight_UnresolvedExternalRequiresResolution(t *testing.T) {
+	svc := NewPreflightService(PreflightDeps{
+		Design: fakeDesign{comps: []spec.DesignComponent{{
+			Name: "orders",
+			Dependencies: []spec.Dependency{{
+				Kind:   spec.DependencyKindExternal,
+				Name:   "stripe",
+				Status: spec.DependencyStatusUnresolved,
+				Reason: spec.DependencyReasonNeedsInput,
+			}},
+		}}},
+		Status: fakeStatus{},
+	})
+
+	pf, err := svc.Preflight(context.Background(), "acme", "shop")
+	require.NoError(t, err)
+	require.True(t, pf.NeedsResolution)
+	require.Equal(t, "external-unresolved", pf.Items[0].Kind)
+}
+
 func TestPreflight_ItemsPerKind(t *testing.T) {
 	comps := []spec.DesignComponent{{Name: "orders", ComponentType: spec.ComponentTypeService,
 		Dependencies: []spec.Dependency{

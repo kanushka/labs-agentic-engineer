@@ -2833,8 +2833,11 @@ components:
           nullable: true
         needsInput:
           type: boolean
+        needsResolution:
+          type: boolean
       required:
       - needsInput
+      - needsResolution
       - items
       type: object
     BuildRequest:
