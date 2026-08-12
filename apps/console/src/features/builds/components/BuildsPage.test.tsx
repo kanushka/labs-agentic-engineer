@@ -23,7 +23,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../../../generated/aep-api";
 
 type BuildSummary = components["schemas"]["BuildSummary"];
+type ComponentDependencies = components["schemas"]["ComponentDependencies"];
 type MilestoneRunView = components["schemas"]["MilestoneRunView"];
+type ProjectDependencyReadiness =
+  components["schemas"]["ProjectDependencyReadiness"];
 type TaskView = components["schemas"]["TaskView"];
 
 // Router stubbed to plain anchors — no RouterProvider needed. createLink is
@@ -84,8 +87,36 @@ vi.mock("../../tasks/api/queries", () => ({
 // rather than issuing a second request.
 // The platform records a CLONE url — it carries a `.git` suffix.
 const mockRepoUrl = "https://github.com/acme/demo.git";
+let mockConnectionDependencies: ComponentDependencies[] = [];
+let mockDependencyReadiness: ProjectDependencyReadiness = {
+  configured: true,
+  dependencies: [],
+};
 vi.mock("../../projects/api/queries", () => ({
   useProjectStatus: () => ({ data: { repoUrl: mockRepoUrl } }),
+  useProjectDependencyReadiness: () => ({
+    data: mockDependencyReadiness,
+    isPending: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSaveConnectionValues: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
+vi.mock("../../spec/api/queries", () => ({
+  useDesignDependencies: () => ({
+    data: mockConnectionDependencies,
+    isPending: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 let mockBuilds: BuildSummary[] = [];
@@ -117,14 +148,6 @@ vi.mock("../api/queries", () => ({
   }),
   useCancelRun: () => ({ mutate: cancelMutate, ...cancelState }),
   useCycleBuilds: () => ({ data: mockCycleBuilds, isPending: false }),
-}));
-
-vi.mock("./ConnectionConfiguration", () => ({
-  ConnectionConfiguration: ({ open }: { open: boolean }) => (
-    <section aria-label="Connection configuration" data-open={open}>
-      <h2>Connection configuration</h2>
-    </section>
-  ),
 }));
 
 import { BuildsPage } from "./BuildsPage";
@@ -202,6 +225,8 @@ afterEach(() => {
   mockRuns = [];
   mockIssues = [];
   mockIssuesError = false;
+  mockConnectionDependencies = [];
+  mockDependencyReadiness = { configured: true, dependencies: [] };
   mockCycleBuilds = [];
   cancelState.isPending = false;
   cancelState.isError = false;
@@ -233,11 +258,29 @@ describe("BuildsPage — one version's story", () => {
   });
 
   it("keeps project connection configuration expanded without build history", () => {
+    mockConnectionDependencies = [
+      {
+        componentName: "checkout-api",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [{ key: "REGION", defaultValue: "us-east-1" }],
+          },
+        ],
+      },
+    ];
+    mockDependencyReadiness = {
+      configured: false,
+      dependencies: [{ name: "stripe", state: "unset", missingKeys: [] }],
+    };
     renderPage(undefined, vi.fn(), true);
 
     expect(
-      screen.getByRole("region", { name: "Connection configuration" }),
-    ).toHaveAttribute("data-open", "true");
+      screen.getByRole("button", { name: /Connection configuration/i }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("region", { name: "stripe" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("us-east-1")).toBeInTheDocument();
   });
 
   it("defaults to the newest version, not to a ledger list", () => {
