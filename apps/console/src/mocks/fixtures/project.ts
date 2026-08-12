@@ -19,6 +19,8 @@ type ComponentDependencies = components["schemas"]["ComponentDependencies"];
 type FileMeta = components["schemas"]["FileMeta"];
 type FileContent = components["schemas"]["FileContent"];
 type ApiError = components["schemas"]["Error"];
+type ProjectDependencyReadiness =
+  components["schemas"]["ProjectDependencyReadiness"];
 
 // Scenario switch for the project overview (#77/#183) and spec view (#80).
 // Toggle in devtools:
@@ -433,6 +435,84 @@ export function projectDependencies(
 ): ComponentDependencies[] {
   // No design yet, nothing to declare dependencies.
   return s === "fresh" || s === "repo-error" ? [] : designDependencies;
+}
+
+// Build configuration is a project-level read, independent from whether a
+// version has ever been built. The scenario ladder shows all three server
+// states the page has to distinguish: an absent OpenChoreo resource, one that
+// exists but needs values, and a configured connection. A successful values
+// write changes the current scenario's entry so MSW behaves like the real
+// refresh after useSaveConnectionValues invalidates readiness.
+const readinessByScenario: Record<
+  Exclude<ProjectScenario, "error">,
+  ProjectDependencyReadiness
+> = {
+  fresh: { configured: true, dependencies: [] },
+  spec: {
+    configured: false,
+    dependencies: [
+      { name: "stripe", state: "not-provisioned", missingKeys: [] },
+    ],
+  },
+  "spec-failed": {
+    configured: false,
+    dependencies: [
+      { name: "stripe", state: "not-provisioned", missingKeys: [] },
+    ],
+  },
+  building: {
+    configured: false,
+    dependencies: [
+      {
+        name: "stripe",
+        state: "unset",
+        missingKeys: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+      },
+    ],
+  },
+  deploying: {
+    configured: false,
+    dependencies: [
+      {
+        name: "stripe",
+        state: "unset",
+        missingKeys: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+      },
+    ],
+  },
+  deployed: {
+    configured: true,
+    dependencies: [{ name: "stripe", state: "configured", missingKeys: [] }],
+  },
+  "deploy-failed": {
+    configured: true,
+    dependencies: [{ name: "stripe", state: "configured", missingKeys: [] }],
+  },
+  "repo-error": { configured: true, dependencies: [] },
+};
+
+const configuredReadiness = new Set<string>();
+
+export function projectDependencyReadiness(
+  scenario: Exclude<ProjectScenario, "error">,
+): ProjectDependencyReadiness {
+  const readiness = readinessByScenario[scenario];
+  const dependencies = readiness.dependencies.map((dependency) =>
+    configuredReadiness.has(`${scenario}:${dependency.name}`)
+      ? { name: dependency.name, state: "configured" as const, missingKeys: [] }
+      : { ...dependency, missingKeys: [...dependency.missingKeys] },
+  );
+  return {
+    configured: dependencies.every((dependency) => dependency.state === "configured"),
+    dependencies,
+  };
+}
+
+export function markConnectionConfigured(
+  scenario: Exclude<ProjectScenario, "error">,
+  name: string,
+) {
+  configuredReadiness.add(`${scenario}:${name}`);
 }
 
 
