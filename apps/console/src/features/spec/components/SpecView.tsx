@@ -297,14 +297,45 @@ export function SpecView({ projectName }: { projectName: string }) {
   );
   const valueStateByName = useMemo(
     () =>
-      new Map(
-        componentValueStatuses.statuses.map((entry) => [
-          entry.dependencyName,
-          entry.status?.valueState,
-        ]),
-      ),
-    [componentValueStatuses.statuses],
+      componentValueStatuses.isPending || componentValueStatuses.failedCount > 0
+        ? new Map<string, undefined>()
+        : new Map(
+            componentValueStatuses.statuses.map((entry) => [
+              entry.dependencyName,
+              entry.status?.valueState,
+            ]),
+          ),
+    [
+      componentValueStatuses.failedCount,
+      componentValueStatuses.isPending,
+      componentValueStatuses.statuses,
+    ],
   );
+  const connectionReadinessNotice =
+    externalDependencyRefs.length === 0 ? null : componentValueStatuses.isPending ? (
+      <Alert
+        severity="info"
+        icon={<CircularProgress size={18} aria-hidden />}
+        sx={{ mb: 2 }}
+      >
+        Loading connection readiness…
+      </Alert>
+    ) : componentValueStatuses.failedCount > 0 ? (
+      <Alert
+        severity="error"
+        sx={{ mb: 2 }}
+        action={
+          <Button
+            aria-label="Retry connection readiness"
+            onClick={() => void componentValueStatuses.refetch()}
+          >
+            Retry
+          </Button>
+        }
+      >
+        Failed to load connection readiness
+      </Alert>
+    ) : null;
   // Keyed by dependency name for DesignView's optional dependencyStatus prop.
   // Resolution status/reason and external valueState are read-time fields;
   // candidates/config remain in the raw design.json DesignView parses itself.
@@ -995,12 +1026,15 @@ export function SpecView({ projectName }: { projectName: string }) {
                     ) : isValidationCriteriaFile ? (
                       <ValidationView criteria={structuredLive} />
                     ) : (
-                      <DesignView
-                        design={structuredLive}
-                        dependencyStatus={dependencyStatus}
-                        dependencyUsedBy={dependencyUsedBy}
-                        onResolveDependency={handleResolveDependency}
-                      />
+                      <>
+                        {connectionReadinessNotice}
+                        <DesignView
+                          design={structuredLive}
+                          dependencyStatus={dependencyStatus}
+                          dependencyUsedBy={dependencyUsedBy}
+                          onResolveDependency={handleResolveDependency}
+                        />
+                      </>
                     )
                   ) : content.data ? (
                     isOpenApiFile ? (
@@ -1014,13 +1048,16 @@ export function SpecView({ projectName }: { projectName: string }) {
                         criteria={content.data.content}
                       />
                     ) : (
-                      <DesignView
-                        key={content.data.sha}
-                        design={content.data.content}
-                        dependencyStatus={dependencyStatus}
-                        dependencyUsedBy={dependencyUsedBy}
-                        onResolveDependency={handleResolveDependency}
-                      />
+                      <>
+                        {connectionReadinessNotice}
+                        <DesignView
+                          key={content.data.sha}
+                          design={content.data.content}
+                          dependencyStatus={dependencyStatus}
+                          dependencyUsedBy={dependencyUsedBy}
+                          onResolveDependency={handleResolveDependency}
+                        />
+                      </>
                     )
                   ) : agentBusy ? (
                     // Mid-generation the committed fetch is suppressed (the

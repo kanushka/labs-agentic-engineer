@@ -16,23 +16,16 @@
  * under the License.
  */
 
-// @vitest-environment jsdom
-
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ConnectionValueFields } from "./ConnectionValueFields";
 
 describe("ConnectionValueFields", () => {
-  it("preserves shared field semantics without exposing secret values as text", () => {
+  it("renders Oxygen fields with descriptions and masks secret input", () => {
     render(
       <ConnectionValueFields
         config={[
-          {
-            key: "REGION",
-            secret: false,
-            description: "Cloud region",
-            defaultValue: "us-east-1",
-          },
+          { key: "REGION", description: "Cloud region" },
           { key: "API_KEY", secret: true, description: "Provider key" },
         ]}
         values={{ REGION: "us-east-1", API_KEY: "" }}
@@ -46,5 +39,22 @@ describe("ConnectionValueFields", () => {
       "type",
       "password",
     );
+  });
+
+  it("reports the edited key and value", () => {
+    const onValueChange = vi.fn();
+    render(
+      <ConnectionValueFields
+        config={[{ key: "REGION" }]}
+        values={{}}
+        onValueChange={onValueChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("REGION"), {
+      target: { value: "eu-west-1" },
+    });
+
+    expect(onValueChange).toHaveBeenCalledWith("REGION", "eu-west-1");
   });
 });

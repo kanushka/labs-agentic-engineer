@@ -165,6 +165,7 @@ vi.mock("@aep/ui-design-view", () => ({
 const mockMutateAsync = vi.fn();
 const mockPreflightRefetch = vi.fn();
 const mockUseComponentDependencyStatuses = vi.fn();
+const mockComponentStatusRefetch = vi.fn();
 vi.mock("../../projects/api/queries", () => ({
   useProject: () => ({ data: { displayName: "Test Project" } }),
   useProjectStatus: () => ({ data: { specStatus: "approved" } }),
@@ -318,6 +319,7 @@ beforeEach(() => {
     isPending: false,
     failedCount: 0,
     statuses: [],
+    refetch: mockComponentStatusRefetch,
   });
 });
 
@@ -668,6 +670,48 @@ describe("SpecView dependency wiring (#252 Task 9)", () => {
       "proj1",
       [{ componentName: "checkout-api", dependencyName: "stripe" }],
     );
+  });
+
+  it("shows component-local readiness loading without inventing a value state", () => {
+    mockUseComponentDependencyStatuses.mockReturnValue({
+      isPending: true,
+      failedCount: 0,
+      statuses: [],
+      refetch: mockComponentStatusRefetch,
+    });
+
+    render(<SpecView projectName="proj1" />);
+
+    expect(screen.getByText("Loading connection readiness…")).toBeInTheDocument();
+    const status = JSON.parse(
+      screen.getByTestId("design-view-status").textContent ?? "{}",
+    );
+    expect(status.stripe).not.toHaveProperty("valueState");
+  });
+
+  it("shows a component-local readiness error and retries every status read", () => {
+    mockUseComponentDependencyStatuses.mockReturnValue({
+      isPending: false,
+      failedCount: 1,
+      statuses: [
+        {
+          componentName: "checkout-api",
+          dependencyName: "stripe",
+          status: undefined,
+        },
+      ],
+      refetch: mockComponentStatusRefetch,
+    });
+
+    render(<SpecView projectName="proj1" />);
+
+    expect(screen.getByText("Failed to load connection readiness")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry connection readiness" }));
+    expect(mockComponentStatusRefetch).toHaveBeenCalledTimes(1);
+    const status = JSON.parse(
+      screen.getByTestId("design-view-status").textContent ?? "{}",
+    );
+    expect(status.stripe).not.toHaveProperty("valueState");
   });
 
   it('"Resolve in chat" fires the resolve callback with the component name, the full endpoint dependency entry, and the RESOLVE intent', () => {

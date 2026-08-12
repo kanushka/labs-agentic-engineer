@@ -21,6 +21,9 @@ type FileContent = components["schemas"]["FileContent"];
 type ApiError = components["schemas"]["Error"];
 type ProjectDependencyReadiness =
   components["schemas"]["ProjectDependencyReadiness"];
+type DependencyStatus = components["schemas"]["DependencyStatus"];
+type ExternalDependencyValueState =
+  components["schemas"]["ExternalDependencyValueState"];
 
 // Scenario switch for the project overview (#77/#183) and spec view (#80).
 // Toggle in devtools:
@@ -513,6 +516,65 @@ export function markConnectionConfigured(
   name: string,
 ) {
   configuredReadiness.add(`${scenario}:${name}`);
+}
+
+// Per-component development value readiness. Toggle independently from the
+// broader project story in devtools:
+//   localStorage.setItem('aep:mock:component-dependency-status',
+//     'configured' | 'unset' | 'not-provisioned' | 'empty' | 'error')
+// `empty` is a successful contract response with no valueState, exercising the
+// UI's neutral/unknown path without turning absence into a false readiness fact.
+export type ComponentDependencyStatusScenario =
+  | ExternalDependencyValueState
+  | "empty"
+  | "error";
+
+export const componentDependencyStatusFixtures: Record<
+  Exclude<ComponentDependencyStatusScenario, "error">,
+  DependencyStatus
+> = {
+  configured: {
+    outputs: [],
+    ready: true,
+    status: "Ready",
+    valueState: "configured",
+  },
+  unset: {
+    outputs: [],
+    ready: false,
+    status: "Pending",
+    valueState: "unset",
+  },
+  "not-provisioned": {
+    outputs: [],
+    ready: false,
+    status: "Pending",
+    valueState: "not-provisioned",
+  },
+  empty: { outputs: [], ready: false, status: "unknown" },
+};
+
+export const componentDependencyStatusError: ApiError = {
+  code: "dependency_status_error",
+  message: "Mock error loading component dependency status",
+};
+
+export function projectComponentDependencyStatus(
+  projectScenario: Exclude<ProjectScenario, "error">,
+): DependencyStatus {
+  if (projectScenario === "spec" || projectScenario === "spec-failed") {
+    return componentDependencyStatusFixtures["not-provisioned"];
+  }
+  if (projectScenario === "building" || projectScenario === "deploying") {
+    return componentDependencyStatusFixtures.unset;
+  }
+  if (
+    projectScenario === "deployed" ||
+    projectScenario === "deploy-failed"
+  ) {
+    return componentDependencyStatusFixtures.configured;
+  }
+  return componentDependencyStatusFixtures.empty;
 }
 
 

@@ -28,9 +28,9 @@ import {
   Typography,
 } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
+import { ConnectionValueFields } from "@aep/ui-connection-value-fields";
 import { useSaveConnectionValues } from "../api/queries";
 import type { ConnectionRow } from "../lib/promotion";
-import { ConnectionValueFields } from "./ConnectionValueFields";
 
 // Update an external connection's values for an environment (#395: the
 // build-time drawer collected them once — often as placeholders — and this

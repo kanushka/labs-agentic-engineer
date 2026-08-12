@@ -4,12 +4,15 @@ type ApiError = components["schemas"]["Error"];
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import {
   componentDeployments,
+  componentDependencyStatusError,
+  componentDependencyStatusFixtures,
   componentOpenApi,
   projectBuildRuns,
   projectCycleBuilds,
   projectBuilds,
   projectComponents,
   projectDependencies,
+  projectComponentDependencyStatus,
   projectDependencyReadiness,
   markConnectionConfigured,
   projectSectionError,
@@ -21,6 +24,7 @@ import {
   specFileMetas,
   specFileNotFound,
   type ProjectScenario,
+  type ComponentDependencyStatusScenario,
 } from "../fixtures/project";
 import {
   findTask,
@@ -51,6 +55,19 @@ function scenario(): ProjectScenario {
   // one devtools key is enough to see it: the base defaults to the deployed story
   // rather than the usual mid-build one.
   return validationScenario() ? "deployed" : "building";
+}
+
+function componentDependencyStatusScenario(): ComponentDependencyStatusScenario | null {
+  const selected = localStorage.getItem(
+    "aep:mock:component-dependency-status",
+  );
+  return selected === "configured" ||
+    selected === "unset" ||
+    selected === "not-provisioned" ||
+    selected === "empty" ||
+    selected === "error"
+    ? selected
+    : null;
 }
 
 // The validation override (aep:mock:validation), or null when the project
@@ -118,6 +135,24 @@ export const projectHandlers = [
   // status chips and the Deployments page's promotion connections.
   http.get("*/api/v1/projects/:projectName/design/dependencies", () =>
     respond((s) => projectDependencies(s)),
+  ),
+  // Generated per-component dependency status. The fixture knob is separate
+  // from the project story so configured/unset/platform-pending plus neutral
+  // empty and error states are all deliberate development scenarios.
+  http.get(
+    "*/api/v1/projects/:projectName/components/:componentName/dependencies/:depName/status",
+    () => {
+      const selected = componentDependencyStatusScenario();
+      if (selected === "error") {
+        return HttpResponse.json(componentDependencyStatusError, {
+          status: 500,
+        });
+      }
+      if (selected) {
+        return HttpResponse.json(componentDependencyStatusFixtures[selected]);
+      }
+      return respond((s) => projectComponentDependencyStatus(s));
+    },
   ),
   // Builds-page connection configuration: the platform reports external
   // resources that still need its own provisioning separately from resources

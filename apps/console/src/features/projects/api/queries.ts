@@ -295,6 +295,7 @@ export function useComponentDependencyStatuses(
         ...dependencies[index]!,
         status: result.data,
       })),
+      refetch: () => Promise.all(results.map((result) => result.refetch())),
     }),
   });
 }
@@ -305,9 +306,17 @@ export function useComponentDependencyStatuses(
 // schema, rewrites secrets to the secret manager and re-authors the OC resource
 // — values never echo back, so this is write-only by design. No automatic retry
 // (a failed write is surfaced).
-export function useSaveConnectionValues(projectName: string) {
+export function useSaveConnectionValues(
+  projectName: string,
+  connectionName?: string,
+) {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: [
+      ...projectKeys.dependencyReadiness(projectName),
+      "save-values",
+      connectionName,
+    ],
     mutationFn: async ({
       name,
       environment,
