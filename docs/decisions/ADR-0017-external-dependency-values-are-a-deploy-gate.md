@@ -109,8 +109,9 @@ credential that coding does not consume.
 - OpenChoreo binding Ready and AEP value readiness intentionally remain
   separate facts; code must not substitute one for the other.
 - An external secret with an empty remote reference may report errors in the
-  secret operator between provisioning and configuration. Nothing consumes it
-  in that interval, but platform dashboards can show the transient error.
+  secret operator between provisioning and configuration. Coding does not
+  consume it, but the operator or an auto-deployed workload may observe missing
+  or incomplete values; platform dashboards can show the resulting failures.
 - The read-then-write merge used to preserve existing values is not atomic. A
   concurrent value save in its narrow read/write window can be lost; this is an
   accepted #441 limitation.
