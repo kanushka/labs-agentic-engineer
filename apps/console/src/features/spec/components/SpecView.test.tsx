@@ -186,7 +186,12 @@ vi.mock("../api/queries", () => ({
 // Continue/Cancel so tests can drive SpecView's routing without re-deriving
 // real dependency-form state. ------------------------------------------
 const STUB_INPUTS: BuildInputItem[] = [
-  { component: "checkout-api", dependency: "postgres", kind: "platform-resource", approved: true },
+  {
+    component: "checkout-api",
+    dependency: "partner-api",
+    kind: "external-spec",
+    specUrl: "https://partner.example/openapi.yaml",
+  },
 ];
 vi.mock("./BuildDependencyDrawer", () => ({
   BuildDependencyDrawer: ({
@@ -200,38 +205,44 @@ vi.mock("./BuildDependencyDrawer", () => ({
     items: PreflightItem[];
     onClose: () => void;
     onContinue: (inputs: BuildInputItem[]) => void;
-    onResolveDependency?: (
-      item: PreflightItem,
-      intent: "resolve" | "reconsider",
-    ) => void;
+    onResolveDependency?: (item: PreflightItem) => void;
   }) =>
     open ? (
       <div data-testid="dependency-drawer">
         <button onClick={() => onContinue(STUB_INPUTS)}>Drawer Continue</button>
         <button onClick={onClose}>Drawer Cancel</button>
         {items[0] ? (
-          <button onClick={() => onResolveDependency?.(items[0]!, "resolve")}>
+          <button onClick={() => onResolveDependency?.(items[0]!)}>
             Resolve drawer item
-          </button>
-        ) : null}
-        {items[0] ? (
-          <button onClick={() => onResolveDependency?.(items[0]!, "reconsider")}>
-            Reconsider drawer item
           </button>
         ) : null}
       </div>
     ) : null,
 }));
 
-const PREFLIGHT_ITEMS: PreflightItem[] = [
-  {
-    component: "checkout-api",
-    dependency: "postgres",
-    kind: "platform-resource",
-    description: "Postgres database",
-    resourceType: "postgres",
-  },
-];
+const EXTERNAL_CONFIG_ITEM: PreflightItem = {
+  component: "checkout-api",
+  dependency: "stripe-config",
+  kind: "external-config",
+  description: "Stripe API credentials",
+  config: [{ key: "STRIPE_API_KEY", secret: true }],
+};
+
+const PLATFORM_RESOURCE_ITEM: PreflightItem = {
+  component: "checkout-api",
+  dependency: "postgres",
+  kind: "platform-resource",
+  description: "Postgres database",
+  resourceType: "postgres",
+  parameters: { storage: "10Gi" },
+};
+
+const RESOLUTION_ITEM: PreflightItem = {
+  component: "checkout-api",
+  dependency: "stripe",
+  kind: "external-unresolved",
+  description: "Needs information only you can provide.",
+};
 
 function clickBuild() {
   fireEvent.click(screen.getByRole("button", { name: "Build" }));
@@ -251,8 +262,8 @@ beforeEach(() => {
   // a one-shot value a test queued but never consumed survives into the NEXT
   // test and answers its first call. That turns one failure into two — the
   // drawer tests below queue one-shots, so a single missed refetch strands a
-  // `needsInput:false`, which then tells the following test's Build click that
-  // nothing is unresolved and its drawer never opens. Reset the queue instead,
+  // `needsResolution:false`, which then tells the following test's Build click
+  // that nothing is unresolved and its drawer never opens. Reset the queue instead,
   // so each test starts from an empty one and a failure stays where it began.
   mockPreflightRefetch.mockReset();
   mockUseSpecFiles.mockReturnValue({
@@ -292,8 +303,10 @@ describe("SpecView onBuild routing (#164)", () => {
     );
   });
 
-  it("needsInput:false — shows the Cut-version ceremony; confirming builds and navigates (#370/#372)", async () => {
-    mockPreflightRefetch.mockResolvedValue({ data: { needsInput: false, items: [] } });
+  it("needsResolution:false — shows the Cut-version ceremony; confirming builds and navigates (#370/#372)", async () => {
+    mockPreflightRefetch.mockResolvedValue({
+      data: { needsInput: false, needsResolution: false, items: [] },
+    });
     mockMutateAsync.mockResolvedValue({ tag: "v1" } satisfies BuildResponse);
 
     render(<SpecView projectName="proj1" />);
@@ -310,8 +323,9 @@ describe("SpecView onBuild routing (#164)", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ inputs: [] }),
     );
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/projects/$projectName",
+      to: "/projects/$projectName/builds",
       params: { projectName: "proj1" },
+      search: { connections: "open" },
     });
     expect(screen.queryByTestId("dependency-drawer")).not.toBeInTheDocument();
   });
@@ -332,9 +346,113 @@ describe("SpecView onBuild routing (#164)", () => {
     expect(screen.queryByTestId("dependency-drawer")).not.toBeInTheDocument();
   });
 
-  it("needsInput:true — opens the dependency drawer and does not build", async () => {
+  it("does not reintroduce pre-build credential panels when config exists but needsResolution is false", async () => {
     mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, items: PREFLIGHT_ITEMS },
+      data: {
+        needsInput: true,
+        needsResolution: false,
+        items: [EXTERNAL_CONFIG_ITEM],
+      },
+    });
+    mockMutateAsync.mockResolvedValue({ tag: "v2" } satisfies BuildResponse);
+
+    render(<SpecView projectName="proj1" />);
+    clickBuild();
+
+    const dialog = await screen.findByTestId("cut-version-dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: /cut v\d+ & build/i,
+        hidden: true,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith({ inputs: [] }),
+    );
+    expect(screen.queryByTestId("dependency-drawer")).not.toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/projects/$projectName/builds",
+      params: { projectName: "proj1" },
+      search: { connections: "open" },
+    });
+  });
+
+  it("preserves automatic platform-resource approvals and parameters without opening the drawer", async () => {
+    mockPreflightRefetch.mockResolvedValue({
+      data: {
+        needsInput: true,
+        needsResolution: false,
+        items: [PLATFORM_RESOURCE_ITEM],
+      },
+    });
+    mockMutateAsync.mockResolvedValue({ tag: "v2" } satisfies BuildResponse);
+
+    render(<SpecView projectName="proj1" />);
+    clickBuild();
+
+    const dialog = await screen.findByTestId("cut-version-dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: /cut v\d+ & build/i,
+        hidden: true,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        inputs: [
+          {
+            component: "checkout-api",
+            dependency: "postgres",
+            kind: "platform-resource",
+            approved: true,
+            parameters: { storage: "10Gi" },
+          },
+        ],
+      }),
+    );
+    expect(screen.queryByTestId("dependency-drawer")).not.toBeInTheDocument();
+  });
+
+  it("does not navigate when an automatic platform-resource input is rejected", async () => {
+    mockPreflightRefetch.mockResolvedValue({
+      data: {
+        needsInput: true,
+        needsResolution: false,
+        items: [PLATFORM_RESOURCE_ITEM],
+      },
+    });
+    mockMutateAsync.mockResolvedValue({
+      failures: [{ dependency: "postgres", reason: "provisioning timed out" }],
+    } satisfies BuildResponse);
+
+    render(<SpecView projectName="proj1" />);
+    clickBuild();
+
+    const dialog = await screen.findByTestId("cut-version-dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: /cut v\d+ & build/i,
+        hidden: true,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/postgres: provisioning timed out/i),
+      ).toBeInTheDocument(),
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("needsResolution:true — opens the dependency drawer and does not build", async () => {
+    mockPreflightRefetch.mockResolvedValue({
+      data: {
+        needsInput: true,
+        needsResolution: true,
+        items: [RESOLUTION_ITEM],
+      },
     });
 
     render(<SpecView projectName="proj1" />);
@@ -348,7 +466,11 @@ describe("SpecView onBuild routing (#164)", () => {
 
   it("drawer Continue with a clean BuildResponse — builds with the drawer's inputs, closes, navigates", async () => {
     mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, items: PREFLIGHT_ITEMS },
+      data: {
+        needsInput: true,
+        needsResolution: true,
+        items: [RESOLUTION_ITEM, PLATFORM_RESOURCE_ITEM],
+      },
     });
     mockMutateAsync.mockResolvedValue({ tag: "v2" } satisfies BuildResponse);
 
@@ -361,18 +483,30 @@ describe("SpecView onBuild routing (#164)", () => {
     fireEvent.click(screen.getByText("Drawer Continue"));
 
     await waitFor(() =>
-      expect(mockMutateAsync).toHaveBeenCalledWith({ inputs: STUB_INPUTS }),
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        inputs: [
+          ...STUB_INPUTS,
+          {
+            component: "checkout-api",
+            dependency: "postgres",
+            kind: "platform-resource",
+            approved: true,
+            parameters: { storage: "10Gi" },
+          },
+        ],
+      }),
     );
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: "/projects/$projectName",
+      to: "/projects/$projectName/builds",
       params: { projectName: "proj1" },
+      search: { connections: "open" },
     });
     expect(screen.queryByTestId("dependency-drawer")).not.toBeInTheDocument();
   });
 
   it("drawer Continue with failures — keeps the drawer open and surfaces the failure reasons", async () => {
     mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, items: PREFLIGHT_ITEMS },
+      data: { needsInput: true, needsResolution: true, items: [RESOLUTION_ITEM] },
     });
     mockMutateAsync.mockResolvedValue({
       failures: [{ dependency: "postgres", reason: "provisioning timed out" }],
@@ -549,7 +683,7 @@ describe("SpecView build dependency drawer (#252 Task 10)", () => {
 
   it("resolves a drawer blocker item to its full Dependency entry and fires the seeded chat flow", async () => {
     mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, items: DRAWER_PREFLIGHT_ITEMS },
+      data: { needsInput: true, needsResolution: true, items: DRAWER_PREFLIGHT_ITEMS },
     });
 
     render(<SpecView projectName="proj1" />);
@@ -572,37 +706,14 @@ describe("SpecView build dependency drawer (#252 Task 10)", () => {
     );
   });
 
-  // #252 Task 17: the drawer's hamburger ("Discuss in chat & modify") — same
-  // lookup, but the RECONSIDER intent, and it also closes the drawer.
-  it("resolves a drawer hamburger action to its full Dependency entry, fires the RECONSIDER intent, and closes the drawer", async () => {
-    mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, items: DRAWER_PREFLIGHT_ITEMS },
-    });
-
-    render(<SpecView projectName="proj1" />);
-    clickBuild();
-    await waitFor(() =>
-      expect(screen.getByTestId("dependency-drawer")).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByText("Reconsider drawer item"));
-
-    expect(mockResolveViaChat).toHaveBeenCalledWith(
-      "checkout-api",
-      CHECKOUT_DEPS[0]!.dependencies![0],
-      "reconsider",
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId("dependency-drawer")).not.toBeInTheDocument(),
-    );
-  });
-
   it("refetches preflight and updates the still-open drawer's items when a chat turn ends", async () => {
     mockPreflightRefetch
       .mockResolvedValueOnce({
-        data: { needsInput: true, items: DRAWER_PREFLIGHT_ITEMS },
+        data: { needsInput: true, needsResolution: true, items: DRAWER_PREFLIGHT_ITEMS },
       })
-      .mockResolvedValueOnce({ data: { needsInput: false, items: [] } });
+      .mockResolvedValueOnce({
+        data: { needsInput: false, needsResolution: false, items: [] },
+      });
 
     render(<SpecView projectName="proj1" />);
     clickBuild();
@@ -651,7 +762,7 @@ describe("SpecView build dependency drawer (#252 Task 10)", () => {
   // handler's job, alongside firing the seeded chat flow.
   it('closes the dependency drawer when "Resolve via chat" is clicked, so the seeded chat is visible', async () => {
     mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, items: DRAWER_PREFLIGHT_ITEMS },
+      data: { needsInput: true, needsResolution: true, items: DRAWER_PREFLIGHT_ITEMS },
     });
 
     render(<SpecView projectName="proj1" />);
