@@ -119,6 +119,14 @@ vi.mock("../api/queries", () => ({
   useCycleBuilds: () => ({ data: mockCycleBuilds, isPending: false }),
 }));
 
+vi.mock("./ConnectionConfiguration", () => ({
+  ConnectionConfiguration: ({ open }: { open: boolean }) => (
+    <section aria-label="Connection configuration" data-open={open}>
+      <h2>Connection configuration</h2>
+    </section>
+  ),
+}));
+
 import { BuildsPage } from "./BuildsPage";
 
 function build(tag: string, status: BuildSummary["status"]): BuildSummary {
@@ -202,9 +210,18 @@ afterEach(() => {
   invalidateQueries.mockClear();
 });
 
-function renderPage(tag?: string, onTagChange = vi.fn()) {
+function renderPage(
+  tag?: string,
+  onTagChange = vi.fn(),
+  connectionsOpen = false,
+) {
   render(
-    <BuildsPage projectName="acme" tag={tag} onTagChange={onTagChange} />,
+    <BuildsPage
+      projectName="acme"
+      tag={tag}
+      onTagChange={onTagChange}
+      connectionsOpen={connectionsOpen}
+    />,
   );
   return onTagChange;
 }
@@ -213,6 +230,14 @@ describe("BuildsPage — one version's story", () => {
   it("invites the first build when there is none", () => {
     renderPage();
     expect(screen.getByText(/No builds yet/)).toBeInTheDocument();
+  });
+
+  it("keeps project connection configuration expanded without build history", () => {
+    renderPage(undefined, vi.fn(), true);
+
+    expect(
+      screen.getByRole("region", { name: "Connection configuration" }),
+    ).toHaveAttribute("data-open", "true");
   });
 
   it("defaults to the newest version, not to a ledger list", () => {
@@ -796,7 +821,12 @@ describe("BuildsPage — one version's story", () => {
     mockBuilds = [build("v2", "in_progress")];
     mockRuns = [run({ state: "running" })];
     const { rerender } = render(
-      <BuildsPage projectName="acme" tag={undefined} onTagChange={vi.fn()} />,
+      <BuildsPage
+        projectName="acme"
+        tag={undefined}
+        onTagChange={vi.fn()}
+        connectionsOpen={false}
+      />,
     );
     expect(invalidateQueries).not.toHaveBeenCalled();
 
@@ -804,13 +834,23 @@ describe("BuildsPage — one version's story", () => {
     // the writes that settle a version can land in the same instant.
     mockRuns = [run({ state: "succeeded" })];
     rerender(
-      <BuildsPage projectName="acme" tag={undefined} onTagChange={vi.fn()} />,
+      <BuildsPage
+        projectName="acme"
+        tag={undefined}
+        onTagChange={vi.fn()}
+        connectionsOpen={false}
+      />,
     );
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
 
     // A further render on the same settled state must not re-read.
     rerender(
-      <BuildsPage projectName="acme" tag={undefined} onTagChange={vi.fn()} />,
+      <BuildsPage
+        projectName="acme"
+        tag={undefined}
+        onTagChange={vi.fn()}
+        connectionsOpen={false}
+      />,
     );
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
   });

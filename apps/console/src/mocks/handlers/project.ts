@@ -10,6 +10,8 @@ import {
   projectBuilds,
   projectComponents,
   projectDependencies,
+  projectDependencyReadiness,
+  markConnectionConfigured,
   projectSectionError,
   projectSpecFiles,
   projectStatuses,
@@ -117,15 +119,23 @@ export const projectHandlers = [
   http.get("*/api/v1/projects/:projectName/design/dependencies", () =>
     respond((s) => projectDependencies(s)),
   ),
+  // Builds-page connection configuration: the platform reports external
+  // resources that still need its own provisioning separately from resources
+  // whose user-owned values are missing.
+  http.get("*/api/v1/projects/:projectName/dependencies/readiness", () =>
+    respond((s) => projectDependencyReadiness(s)),
+  ),
   // Re-collect an external connection's values (#395 follow-up). Values are
   // write-only on the real platform (secrets go to the secret manager and
   // never echo), so the mock just acknowledges.
   http.post(
     "*/api/v1/projects/:projectName/dependencies/external-resources/:name/values",
-    () => {
-      if (scenario() === "error") {
+    ({ params }) => {
+      const current = scenario();
+      if (current === "error") {
         return HttpResponse.json(projectSectionError, { status: 500 });
       }
+      markConnectionConfigured(current, String(params.name));
       return HttpResponse.json({ status: "provisioned" });
     },
   ),
