@@ -76,12 +76,14 @@ type PreflightItem struct {
 	Parameters   map[string]any `json:"parameters,omitempty"`
 }
 
-// BuildPreflight is the get-build-preflight response: whether the console
-// must open the dependencies drawer before Build, and the items to render in
-// it.
+// BuildPreflight is the get-build-preflight response. NeedsInput reports
+// whether preflight emitted items, while NeedsResolution reports whether any
+// emitted item blocks design resolution before Build. Items carries both the
+// schema-bearing and resolution-blocking entries.
 type BuildPreflight struct {
-	NeedsInput bool            `json:"needsInput"`
-	Items      []PreflightItem `json:"items"`
+	NeedsInput      bool            `json:"needsInput"`
+	NeedsResolution bool            `json:"needsResolution"`
+	Items           []PreflightItem `json:"items"`
 }
 
 // PreflightDeps carries the preflight service's ports.
@@ -144,7 +146,28 @@ func (s *PreflightService) Preflight(ctx context.Context, orgID, projectID strin
 		}
 	}
 
-	return BuildPreflight{NeedsInput: len(items) > 0, Items: items}, nil
+	needsResolution := false
+	for _, item := range items {
+		if itemNeedsResolution(item) {
+			needsResolution = true
+			break
+		}
+	}
+
+	return BuildPreflight{
+		NeedsInput:      len(items) > 0,
+		NeedsResolution: needsResolution,
+		Items:           items,
+	}, nil
+}
+
+func itemNeedsResolution(item PreflightItem) bool {
+	switch item.Kind {
+	case "external-ambiguous", "external-unresolved", "external-spec", "org-service":
+		return true
+	default:
+		return false
+	}
 }
 
 // itemsFor computes the 0, 1, or 2 drawer items a single dependency raises.
