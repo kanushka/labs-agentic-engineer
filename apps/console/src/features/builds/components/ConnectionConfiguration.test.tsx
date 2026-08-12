@@ -106,6 +106,68 @@ describe("ConnectionConfiguration", () => {
     expect(screen.getAllByRole("heading", { name: "stripe" })).toHaveLength(1);
   });
 
+  it("shows the external dependency description on its card", () => {
+    dependencies = externalDependencies("stripe");
+    readiness = {
+      configured: false,
+      dependencies: [
+        { name: "stripe", state: "unset", missingKeys: ["API_KEY"] },
+      ],
+    };
+
+    renderConfiguration();
+
+    expect(
+      within(screen.getByRole("region", { name: "stripe" })).getByText(
+        "stripe connection",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the union of keys declared by a shared external dependency", () => {
+    dependencies = [
+      {
+        componentName: "checkout-api",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [{ key: "REGION", secret: false }],
+          },
+        ],
+      },
+      {
+        componentName: "checkout-worker",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [{ key: "API_KEY", secret: true }],
+          },
+        ],
+      },
+    ];
+    readiness = {
+      configured: false,
+      dependencies: [
+        {
+          name: "stripe",
+          state: "unset",
+          missingKeys: ["REGION", "API_KEY"],
+        },
+      ],
+    };
+
+    renderConfiguration();
+
+    const card = screen.getByRole("region", { name: "stripe" });
+    expect(within(card).getByLabelText("REGION")).toBeInTheDocument();
+    expect(within(card).getByLabelText("API_KEY")).toHaveAttribute(
+      "type",
+      "password",
+    );
+  });
+
   it("shows configured and missing-value statuses on their own cards", () => {
     dependencies = externalDependencies("stripe", "twilio");
     readiness = {

@@ -174,9 +174,9 @@ export function ConnectionConfiguration({
                         </Typography>
                         <StatusChip label={status.label} tone={status.tone} appearance="soft" />
                       </Box>
-                      {row.detail && (
+                      {row.description && (
                         <Typography variant="body2" color="text.secondary">
-                          {row.detail}
+                          {row.description}
                         </Typography>
                       )}
                       {state === "not-provisioned" ? (
