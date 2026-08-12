@@ -45,6 +45,7 @@ import type { components } from "../../../generated/aep-api";
 import {
   useBuildPreflight,
   useBuildProject,
+  useComponentDependencyStatuses,
   useProjectStatus,
   useProjectTags,
 } from "../../projects/api/queries";
@@ -278,20 +279,48 @@ export function SpecView({ projectName }: { projectName: string }) {
         ?.dependencies ?? [],
     [dependencies.data, selectedComponentName],
   );
-  // Keyed by dependency name for DesignView's optional dependencyStatus prop
-  // — status/reason are the ONLY fields this map carries. candidates/config
-  // are already in the raw design.json DesignView parses itself; see
-  // DesignViewProps.dependencyStatus's comment for why status/reason can't
-  // join them.
+  const externalDependencyRefs = useMemo(
+    () =>
+      selectedComponentName
+        ? componentDependencies
+            .filter((dependency) => dependency.kind === "external")
+            .map((dependency) => ({
+              componentName: selectedComponentName,
+              dependencyName: dependency.name,
+            }))
+        : [],
+    [componentDependencies, selectedComponentName],
+  );
+  const componentValueStatuses = useComponentDependencyStatuses(
+    projectName,
+    externalDependencyRefs,
+  );
+  const valueStateByName = useMemo(
+    () =>
+      new Map(
+        componentValueStatuses.statuses.map((entry) => [
+          entry.dependencyName,
+          entry.status?.valueState,
+        ]),
+      ),
+    [componentValueStatuses.statuses],
+  );
+  // Keyed by dependency name for DesignView's optional dependencyStatus prop.
+  // Resolution status/reason and external valueState are read-time fields;
+  // candidates/config remain in the raw design.json DesignView parses itself.
   const dependencyStatus = useMemo<Record<string, DependencyStatusInfo>>(
     () =>
       Object.fromEntries(
         componentDependencies.map((d) => [
           d.name,
-          { status: d.status, reason: d.reason },
+          {
+            status: d.status,
+            reason: d.reason,
+            valueState: valueStateByName.get(d.name),
+          },
         ]),
       ),
-    [componentDependencies],
+    [componentDependencies, valueStateByName],
   );
   // #252 Task 15: cross-component "Used by" for the selected component's own
   // cards — computed across EVERY component's dependencies (dependencies.data

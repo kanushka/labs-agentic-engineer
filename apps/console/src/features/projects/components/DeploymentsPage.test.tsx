@@ -79,6 +79,12 @@ const DEFAULT_DEPENDENCIES: ComponentDependencies[] = [
   },
 ];
 let mockDependencies: ComponentDependencies[] = DEFAULT_DEPENDENCIES;
+const mockUseComponentDependencyStatuses = vi.fn();
+let mockComponentDependencyStatuses: Array<{
+  componentName: string;
+  dependencyName: string;
+  status: components["schemas"]["DependencyStatus"];
+}> = [];
 
 function status(): ProjectStatus {
   return {
@@ -128,6 +134,14 @@ vi.mock("../api/queries", () => ({
     failedCount: 0,
   }),
   useProjectStatus: () => ({ data: status() }),
+  useComponentDependencyStatuses: (...args: unknown[]) => {
+    mockUseComponentDependencyStatuses(...args);
+    return {
+      isPending: false,
+      failedCount: 0,
+      statuses: mockComponentDependencyStatuses,
+    };
+  },
 }));
 
 vi.mock("../../spec/api/queries", () => ({
@@ -155,6 +169,7 @@ beforeEach(() => {
   mockVerdict = "";
   mockMutate.mockClear();
   mockDependencies = DEFAULT_DEPENDENCIES;
+  mockComponentDependencyStatuses = [];
 });
 
 describe("DeploymentsPage — validation", () => {
@@ -316,6 +331,240 @@ describe("DeploymentsPage — story rail", () => {
 });
 
 describe("DeploymentsPage — connections", () => {
+  it("shows each development connection's real readiness and keeps correctable externals configurable", () => {
+    mockDeploy = {
+      version: "v1",
+      status: "deployed",
+      components: { total: 1, ready: 1 },
+      validation: "passed",
+    };
+    mockDependencies = [
+      {
+        componentName: "storefront",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [{ key: "STRIPE_SECRET_KEY", secret: true }],
+          },
+          {
+            kind: "external",
+            name: "twilio",
+            config: [{ key: "TWILIO_TOKEN", secret: true }],
+          },
+          {
+            kind: "external",
+            name: "sendgrid",
+            config: [{ key: "SENDGRID_API_KEY", secret: true }],
+          },
+          {
+            kind: "platform-resource",
+            name: "shop-db",
+            resourceType: "postgres-cnpg",
+          },
+        ],
+      },
+    ];
+    mockComponentDependencyStatuses = [
+      {
+        componentName: "storefront",
+        dependencyName: "stripe",
+        status: {
+          outputs: [],
+          ready: true,
+          status: "Ready",
+          valueState: "configured",
+        },
+      },
+      {
+        componentName: "storefront",
+        dependencyName: "twilio",
+        status: {
+          outputs: [],
+          ready: false,
+          status: "Ready",
+          valueState: "unset",
+        },
+      },
+      {
+        componentName: "storefront",
+        dependencyName: "sendgrid",
+        status: {
+          outputs: [],
+          ready: false,
+          status: "Pending",
+          valueState: "not-provisioned",
+        },
+      },
+    ];
+
+    render(<DeploymentsPage projectName="acme" />);
+
+    expect(mockUseComponentDependencyStatuses).toHaveBeenCalledWith(
+      "acme",
+      [
+        { componentName: "storefront", dependencyName: "stripe" },
+        { componentName: "storefront", dependencyName: "twilio" },
+        { componentName: "storefront", dependencyName: "sendgrid" },
+      ],
+    );
+
+    const configured = screen.getByRole("region", { name: "stripe" });
+    const configuredChip = within(configured)
+      .getByText("Configured")
+      .closest(".MuiChip-root");
+    expect(configuredChip).toHaveClass("MuiChip-colorSuccess");
+    expect(getComputedStyle(configured.firstElementChild!).backgroundColor).toBe(
+      getComputedStyle(configuredChip!).backgroundColor,
+    );
+    expect(
+      within(configured).getByRole("button", { name: "Configure stripe" }),
+    ).toBeInTheDocument();
+
+    const unset = screen.getByRole("region", { name: "twilio" });
+    const unsetChip = within(unset)
+      .getByText("Needs values")
+      .closest(".MuiChip-root");
+    expect(unsetChip).toHaveClass("MuiChip-colorWarning");
+    expect(getComputedStyle(unset.firstElementChild!).backgroundColor).toBe(
+      getComputedStyle(unsetChip!).backgroundColor,
+    );
+    expect(
+      within(unset).getByRole("button", { name: "Configure twilio" }),
+    ).toBeInTheDocument();
+
+    const provisioning = screen.getByRole("region", { name: "sendgrid" });
+    expect(
+      within(provisioning)
+        .getByText("Platform provisioning")
+        .closest(".MuiChip-root"),
+    ).toHaveClass("MuiChip-colorInfo");
+    expect(
+      within(provisioning).queryByText("Needs values"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses not-provisioned < unset < configured when components share external connections", () => {
+    mockDeploy = {
+      version: "v1",
+      status: "deployed",
+      components: { total: 1, ready: 1 },
+      validation: "passed",
+    };
+    mockDependencies = [
+      {
+        componentName: "storefront",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [{ key: "STRIPE_SECRET_KEY", secret: true }],
+          },
+          {
+            kind: "external",
+            name: "twilio",
+            config: [{ key: "TWILIO_TOKEN", secret: true }],
+          },
+        ],
+      },
+      {
+        componentName: "worker",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [{ key: "STRIPE_SECRET_KEY", secret: true }],
+          },
+          {
+            kind: "external",
+            name: "twilio",
+            config: [{ key: "TWILIO_TOKEN", secret: true }],
+          },
+        ],
+      },
+      {
+        componentName: "notifications",
+        dependencies: [
+          {
+            kind: "external",
+            name: "twilio",
+            config: [{ key: "TWILIO_TOKEN", secret: true }],
+          },
+        ],
+      },
+    ];
+    mockComponentDependencyStatuses = [
+      {
+        componentName: "storefront",
+        dependencyName: "stripe",
+        status: {
+          outputs: [],
+          ready: true,
+          status: "Ready",
+          valueState: "configured",
+        },
+      },
+      {
+        componentName: "storefront",
+        dependencyName: "twilio",
+        status: {
+          outputs: [],
+          ready: true,
+          status: "Ready",
+          valueState: "configured",
+        },
+      },
+      {
+        componentName: "worker",
+        dependencyName: "stripe",
+        status: {
+          outputs: [],
+          ready: false,
+          status: "Ready",
+          valueState: "unset",
+        },
+      },
+      {
+        componentName: "worker",
+        dependencyName: "twilio",
+        status: {
+          outputs: [],
+          ready: false,
+          status: "Ready",
+          valueState: "unset",
+        },
+      },
+      {
+        componentName: "notifications",
+        dependencyName: "twilio",
+        status: {
+          outputs: [],
+          ready: false,
+          status: "Pending",
+          valueState: "not-provisioned",
+        },
+      },
+    ];
+
+    render(<DeploymentsPage projectName="acme" />);
+
+    const stripe = screen.getByRole("region", { name: "stripe" });
+    expect(
+      within(stripe)
+        .getByText("Needs values")
+        .closest(".MuiChip-root"),
+    ).toHaveClass("MuiChip-colorWarning");
+    expect(within(stripe).queryByText("Configured")).not.toBeInTheDocument();
+
+    const twilio = screen.getByRole("region", { name: "twilio" });
+    expect(
+      within(twilio)
+        .getByText("Platform provisioning")
+        .closest(".MuiChip-root"),
+    ).toHaveClass("MuiChip-colorInfo");
+    expect(within(twilio).queryByText("Needs values")).not.toBeInTheDocument();
+  });
+
   it("re-collects an external connection's values from the side panel", () => {
     mockDeploy = {
       version: "v1",

@@ -131,7 +131,14 @@ vi.mock("@aep/ui-design-view", () => ({
     onResolveDependency,
   }: {
     design: string;
-    dependencyStatus?: Record<string, { status?: string; reason?: string }>;
+    dependencyStatus?: Record<
+      string,
+      {
+        status?: string;
+        reason?: string;
+        valueState?: "not-provisioned" | "unset" | "configured";
+      }
+    >;
     dependencyUsedBy?: Record<string, string[]>;
     onResolveDependency?: (name: string, intent: "resolve" | "reconsider") => void;
   }) => (
@@ -157,12 +164,15 @@ vi.mock("@aep/ui-design-view", () => ({
 // QueryClientProvider nor MSW — only the Build routing under test is real. -
 const mockMutateAsync = vi.fn();
 const mockPreflightRefetch = vi.fn();
+const mockUseComponentDependencyStatuses = vi.fn();
 vi.mock("../../projects/api/queries", () => ({
   useProject: () => ({ data: { displayName: "Test Project" } }),
   useProjectStatus: () => ({ data: { specStatus: "approved" } }),
   useProjectTags: () => ({ data: { latest: "v1", specDirty: false } }),
   useBuildProject: () => ({ mutateAsync: mockMutateAsync }),
   useBuildPreflight: () => ({ refetch: mockPreflightRefetch }),
+  useComponentDependencyStatuses: (...args: unknown[]) =>
+    mockUseComponentDependencyStatuses(...args),
 }));
 
 // --- Spec queries: delegated through vi.fn()s (rather than fixed inline
@@ -303,6 +313,11 @@ beforeEach(() => {
     isPending: false,
     isError: false,
     error: null,
+  });
+  mockUseComponentDependencyStatuses.mockReturnValue({
+    isPending: false,
+    failedCount: 0,
+    statuses: [],
   });
 });
 
@@ -559,7 +574,6 @@ describe("SpecView onBuild routing (#164)", () => {
 
 // --- #252 Task 9: dependency-status wiring ---------------------------------
 type ComponentDependencies = components["schemas"]["ComponentDependencies"];
-
 const CHECKOUT_DESIGN_JSON = JSON.stringify({
   name: "checkout-api",
   dependencies: [{ kind: "external", name: "stripe" }],
@@ -569,13 +583,34 @@ const CHECKOUT_DEPS: ComponentDependencies[] = [
   {
     componentName: "checkout-api",
     dependencies: [
-      { kind: "external", name: "stripe", status: "unresolved", reason: "needs-input" },
+      {
+        kind: "external",
+        name: "stripe",
+        status: "resolved",
+        reason: "",
+      },
     ],
   },
 ];
 
 describe("SpecView dependency wiring (#252 Task 9)", () => {
   beforeEach(() => {
+    mockUseComponentDependencyStatuses.mockReturnValue({
+      isPending: false,
+      failedCount: 0,
+      statuses: [
+        {
+          componentName: "checkout-api",
+          dependencyName: "stripe",
+          status: {
+            outputs: [],
+            ready: true,
+            status: "Ready",
+            valueState: "unset",
+          },
+        },
+      ],
+    });
     mockUseSpecFiles.mockReturnValue({
       data: [
         {
@@ -623,8 +658,16 @@ describe("SpecView dependency wiring (#252 Task 9)", () => {
       screen.getByTestId("design-view-status").textContent ?? "{}",
     );
     expect(status).toEqual({
-      stripe: { status: "unresolved", reason: "needs-input" },
+      stripe: { status: "resolved", reason: "", valueState: "unset" },
     });
+  });
+
+  it("reads external value state for the selected component from the status endpoint", () => {
+    render(<SpecView projectName="proj1" />);
+    expect(mockUseComponentDependencyStatuses).toHaveBeenCalledWith(
+      "proj1",
+      [{ componentName: "checkout-api", dependencyName: "stripe" }],
+    );
   });
 
   it('"Resolve in chat" fires the resolve callback with the component name, the full endpoint dependency entry, and the RESOLVE intent', () => {
