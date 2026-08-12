@@ -184,15 +184,8 @@ vi.mock("../api/queries", () => ({
 // --- BuildDependencyDrawer: its own behavior is covered by
 // BuildDependencyDrawer.test.tsx, so here it's a thin stub that exposes
 // Continue/Cancel so tests can drive SpecView's routing without re-deriving
-// real dependency-form state. ------------------------------------------
-const STUB_INPUTS: BuildInputItem[] = [
-  {
-    component: "checkout-api",
-    dependency: "partner-api",
-    kind: "external-spec",
-    specUrl: "https://partner.example/openapi.yaml",
-  },
-];
+// real dependency-form state. The double deliberately exposes Continue only
+// for the one drawer kind that is locally satisfiable: external-spec. -------
 vi.mock("./BuildDependencyDrawer", () => ({
   BuildDependencyDrawer: ({
     open,
@@ -206,10 +199,27 @@ vi.mock("./BuildDependencyDrawer", () => ({
     onClose: () => void;
     onContinue: (inputs: BuildInputItem[]) => void;
     onResolveDependency?: (item: PreflightItem) => void;
-  }) =>
-    open ? (
+  }) => {
+    if (!open) return null;
+    const localSpecItem = items.find((item) => item.kind === "external-spec");
+    return (
       <div data-testid="dependency-drawer">
-        <button onClick={() => onContinue(STUB_INPUTS)}>Drawer Continue</button>
+        {localSpecItem ? (
+          <button
+            onClick={() =>
+              onContinue([
+                {
+                  component: localSpecItem.component,
+                  dependency: localSpecItem.dependency,
+                  kind: "external-spec",
+                  specUrl: "https://partner.example/openapi.yaml",
+                },
+              ])
+            }
+          >
+            Drawer Continue
+          </button>
+        ) : null}
         <button onClick={onClose}>Drawer Cancel</button>
         {items[0] ? (
           <button onClick={() => onResolveDependency?.(items[0]!)}>
@@ -217,7 +227,8 @@ vi.mock("./BuildDependencyDrawer", () => ({
           </button>
         ) : null}
       </div>
-    ) : null,
+    );
+  },
 }));
 
 const EXTERNAL_CONFIG_ITEM: PreflightItem = {
@@ -226,6 +237,13 @@ const EXTERNAL_CONFIG_ITEM: PreflightItem = {
   kind: "external-config",
   description: "Stripe API credentials",
   config: [{ key: "STRIPE_API_KEY", secret: true }],
+};
+
+const EXTERNAL_SPEC_ITEM: PreflightItem = {
+  component: "checkout-api",
+  dependency: "partner-api",
+  kind: "external-spec",
+  description: "Partner API specification",
 };
 
 const PLATFORM_RESOURCE_ITEM: PreflightItem = {
@@ -469,7 +487,7 @@ describe("SpecView onBuild routing (#164)", () => {
       data: {
         needsInput: true,
         needsResolution: true,
-        items: [RESOLUTION_ITEM, PLATFORM_RESOURCE_ITEM],
+        items: [EXTERNAL_SPEC_ITEM, PLATFORM_RESOURCE_ITEM],
       },
     });
     mockMutateAsync.mockResolvedValue({ tag: "v2" } satisfies BuildResponse);
@@ -485,7 +503,12 @@ describe("SpecView onBuild routing (#164)", () => {
     await waitFor(() =>
       expect(mockMutateAsync).toHaveBeenCalledWith({
         inputs: [
-          ...STUB_INPUTS,
+          {
+            component: "checkout-api",
+            dependency: "partner-api",
+            kind: "external-spec",
+            specUrl: "https://partner.example/openapi.yaml",
+          },
           {
             component: "checkout-api",
             dependency: "postgres",
@@ -506,10 +529,14 @@ describe("SpecView onBuild routing (#164)", () => {
 
   it("drawer Continue with failures — keeps the drawer open and surfaces the failure reasons", async () => {
     mockPreflightRefetch.mockResolvedValue({
-      data: { needsInput: true, needsResolution: true, items: [RESOLUTION_ITEM] },
+      data: {
+        needsInput: true,
+        needsResolution: true,
+        items: [EXTERNAL_SPEC_ITEM],
+      },
     });
     mockMutateAsync.mockResolvedValue({
-      failures: [{ dependency: "postgres", reason: "provisioning timed out" }],
+      failures: [{ dependency: "partner-api", reason: "invalid spec" }],
     } satisfies BuildResponse);
 
     render(<SpecView projectName="proj1" />);
@@ -522,7 +549,7 @@ describe("SpecView onBuild routing (#164)", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(/postgres: provisioning timed out/i),
+        screen.getByText(/partner-api: invalid spec/i),
       ).toBeInTheDocument(),
     );
     expect(screen.getByTestId("dependency-drawer")).toBeInTheDocument();
