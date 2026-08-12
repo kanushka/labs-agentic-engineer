@@ -83,7 +83,7 @@ const mockUseComponentDependencyStatuses = vi.fn();
 let mockComponentDependencyStatuses: Array<{
   componentName: string;
   dependencyName: string;
-  status: components["schemas"]["DependencyStatus"];
+  status: components["schemas"]["DependencyStatus"] | undefined;
 }> = [];
 
 function status(): ProjectStatus {
@@ -504,6 +504,37 @@ describe("DeploymentsPage — connections", () => {
         .closest(".MuiChip-root"),
     ).toHaveClass("MuiChip-colorInfo");
     expect(within(twilio).queryByText("Needs values")).not.toBeInTheDocument();
+  });
+
+  it("treats a missing shared status as unknown instead of configured", () => {
+    mockDependencies = [
+      { componentName: "storefront", dependencies: [{ kind: "external", name: "stripe", config: [{ key: "KEY" }] }] },
+      { componentName: "worker", dependencies: [{ kind: "external", name: "stripe", config: [{ key: "KEY" }] }] },
+    ];
+    mockComponentDependencyStatuses = [
+      { componentName: "storefront", dependencyName: "stripe", status: { outputs: [], ready: true, status: "Ready", valueState: "configured" } },
+      { componentName: "worker", dependencyName: "stripe", status: undefined },
+    ];
+    render(<DeploymentsPage projectName="acme" />);
+    const row = screen.getByRole("region", { name: "stripe" });
+    expect(within(row).getByText("Readiness unknown")).toBeInTheDocument();
+    expect(within(row).queryByText("Configured")).not.toBeInTheDocument();
+  });
+
+  it("renders an external with no returned status as neutral unknown", () => {
+    render(<DeploymentsPage projectName="acme" />);
+    const row = screen.getByRole("region", { name: "stripe" });
+    expect(within(row).getByText("Readiness unknown")).toBeInTheDocument();
+    expect(within(row).queryByText("Configured")).not.toBeInTheDocument();
+  });
+
+  it("does not apply external readiness to a same-named platform row", () => {
+    mockDependencies = [{ componentName: "storefront", dependencies: [{ kind: "platform-resource", name: "stripe", resourceType: "postgres-cnpg" }] }];
+    mockComponentDependencyStatuses = [{ componentName: "other", dependencyName: "stripe", status: { outputs: [], ready: false, status: "Ready", valueState: "unset" } }];
+    render(<DeploymentsPage projectName="acme" />);
+    const row = screen.getByRole("region", { name: "stripe (postgres-cnpg)" });
+    expect(within(row).queryByText("Needs values")).not.toBeInTheDocument();
+    expect(within(row).getByText("provisioned")).toBeInTheDocument();
   });
 
   it("re-collects an external connection's values from the side panel", () => {

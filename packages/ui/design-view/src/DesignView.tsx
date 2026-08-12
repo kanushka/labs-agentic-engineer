@@ -478,8 +478,9 @@ export interface DesignViewProps {
   design: string;
   /**
    * OPTIONAL read-time resolution status per dependency name, from #252
-   * Task 2's `GET /projects/{p}/design/dependencies` endpoint — the ONLY
-   * source of `status`/`reason` and external `valueState`. parse.ts
+   * Task 2's `GET /projects/{p}/design/dependencies` endpoint supplies
+   * `status`/`reason`; the independent per-component dependency-status
+   * endpoint supplies external `valueState`. parse.ts
    * deliberately does not parse these fields from the raw design.json (see
    * its file-header comment): they are computed server-side on every read and
    * never authored/persisted, so recomputing them here would drift from that
