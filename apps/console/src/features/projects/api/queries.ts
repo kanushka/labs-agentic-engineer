@@ -299,11 +299,12 @@ export function useComponentDependencyStatuses(
   });
 }
 
-// Re-collect an external connection's values (#395: dummy values at build
-// time, real ones later). POST …/external-resources/{name}/values re-splits
-// plain/secret by the design's schema, rewrites secrets to the secret
-// manager and re-authors the OC resource — values never echo back, so this
-// is write-only by design. No automatic retry (a failed write is surfaced).
+// Collect or correct an external connection's values after provisioning has
+// authored its schema with unset/defaulted values. POST
+// …/external-resources/{name}/values re-splits plain/secret by the design's
+// schema, rewrites secrets to the secret manager and re-authors the OC resource
+// — values never echo back, so this is write-only by design. No automatic retry
+// (a failed write is surfaced).
 export function useSaveConnectionValues(projectName: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -345,7 +346,8 @@ export function useSaveConnectionValues(projectName: string) {
 }
 
 // Build configuration is environment-specific. The Builds page consumes this
-// cache entry to show unresolved external values before a build is started.
+// cache entry while a run is active or afterwards; configuration does not gate
+// Build.
 export function useProjectDependencyReadiness(
   projectName: string,
   environment = "development",
@@ -458,8 +460,8 @@ export function useBuildPreflight(projectName: string) {
 // Trigger a project build (#162): the single-tag flow — the BFF validates,
 // tags v<N>, and runs the dev workflow, returning the tag. The Spec view
 // commits the room first (collab flush-on-demand) so this tags the current
-// HEAD. Carries the drawer's resolved dependency inputs (#164); defaults to
-// an empty list for callers that haven't been rewired to the drawer yet.
+// HEAD. Carries preflight-resolved and automatic dependency inputs (#164);
+// defaults to an empty list for older callers.
 // Invalidates the project's reads since status/tasks/tags shift once the
 // build starts.
 export function useBuildProject(projectName: string) {
@@ -492,9 +494,9 @@ export function useBuildProject(projectName: string) {
   // TanStack infers the mutation's variables type from mutationFn's own
   // parameter, which stays required even with a default value (a default
   // only makes a *plain* function's parameter optional, not a generically
-  // inferred one) — so callers that predate the drawer's inputs and still
-  // call mutate()/mutateAsync() with no arguments need the default applied
-  // at this thin wrapper instead.
+  // inferred one) — so callers that send no preflight inputs and still call
+  // mutate()/mutateAsync() with no arguments need the default applied at this
+  // thin wrapper instead.
   return {
     ...mutation,
     mutate: (
