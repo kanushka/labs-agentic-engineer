@@ -254,13 +254,13 @@ export function BuildDependencyDrawer({
               component: item.component,
               dependency: item.dependency,
               kind: "external-spec",
-              specUrl: state.specUrl,
+              specUrl: state.specUrl.trim(),
             }
           : {
               component: item.component,
               dependency: item.dependency,
               kind: "external-spec",
-              specContent: state.specContent,
+              specContent: state.specContent.trim(),
             },
       );
     });

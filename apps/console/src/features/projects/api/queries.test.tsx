@@ -77,8 +77,42 @@ describe("project dependency readiness", () => {
       },
     );
     expect(
-      queryClient.getQueryData(projectKeys.dependencyReadiness("acme")),
+      queryClient.getQueryData(
+        projectKeys.dependencyReadiness("acme", "development"),
+      ),
     ).toEqual(payload);
+  });
+
+  it("keeps readiness for different environments in separate cache entries", async () => {
+    const development = { configured: false, dependencies: [] };
+    const production = { configured: true, dependencies: [] };
+    mockGET
+      .mockResolvedValueOnce({ data: development, error: undefined })
+      .mockResolvedValueOnce({ data: production, error: undefined });
+    const queryClient = new QueryClient();
+
+    const devHook = renderHook(
+      () => useProjectDependencyReadiness("acme", "development"),
+      { wrapper: wrapper(queryClient) },
+    );
+    await waitFor(() => expect(devHook.result.current.data).toEqual(development));
+    const prodHook = renderHook(
+      () => useProjectDependencyReadiness("acme", "production"),
+      { wrapper: wrapper(queryClient) },
+    );
+    await waitFor(() => expect(prodHook.result.current.data).toEqual(production));
+
+    expect(mockGET).toHaveBeenCalledTimes(2);
+    expect(
+      queryClient.getQueryData(
+        projectKeys.dependencyReadiness("acme", "development"),
+      ),
+    ).toEqual(development);
+    expect(
+      queryClient.getQueryData(
+        projectKeys.dependencyReadiness("acme", "production"),
+      ),
+    ).toEqual(production);
   });
 });
 
@@ -233,7 +267,7 @@ describe("useSaveConnectionValues", () => {
     });
 
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: projectKeys.dependencyReadiness("acme"),
+      queryKey: projectKeys.dependencyReadinessRoot("acme"),
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: projectKeys.componentDependencyStatuses("acme"),
@@ -241,5 +275,26 @@ describe("useSaveConnectionValues", () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: specKeys.dependencies("acme"),
     });
+  });
+
+  it("surfaces the API error message when saving values fails", async () => {
+    mockPOST.mockResolvedValue({
+      data: undefined,
+      error: { code: "save_failed", message: "Vault write failed" },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const { result } = renderHook(() => useSaveConnectionValues("acme"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await expect(
+      result.current.mutateAsync({
+        name: "stripe",
+        environment: "development",
+        values: { API_KEY: "secret" },
+      }),
+    ).rejects.toThrow("Vault write failed");
   });
 });

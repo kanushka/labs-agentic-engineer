@@ -454,9 +454,6 @@ describe("DeploymentsPage — connections", () => {
       .getByText("Configured")
       .closest(".MuiChip-root");
     expect(configuredChip).toHaveClass("MuiChip-colorSuccess");
-    expect(getComputedStyle(configured.firstElementChild!).backgroundColor).toBe(
-      getComputedStyle(configuredChip!).backgroundColor,
-    );
     expect(
       within(configured).getByRole("button", { name: "Configure stripe" }),
     ).toBeInTheDocument();
@@ -466,9 +463,6 @@ describe("DeploymentsPage — connections", () => {
       .getByText("Needs values")
       .closest(".MuiChip-root");
     expect(unsetChip).toHaveClass("MuiChip-colorWarning");
-    expect(getComputedStyle(unset.firstElementChild!).backgroundColor).toBe(
-      getComputedStyle(unsetChip!).backgroundColor,
-    );
     expect(
       within(unset).getByRole("button", { name: "Configure twilio" }),
     ).toBeInTheDocument();

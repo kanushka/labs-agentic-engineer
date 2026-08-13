@@ -68,6 +68,65 @@ describe("externalConnectionRows", () => {
     ]);
   });
 
+  it("merges case-variant names while keeping the first display name", () => {
+    const dependencies: ComponentDependencies[] = [
+      {
+        componentName: "checkout-api",
+        dependencies: [
+          {
+            kind: "external",
+            name: "Stripe",
+            config: [{ key: "REGION", secret: false }],
+          },
+        ],
+      },
+      {
+        componentName: "checkout-worker",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            description: "Payment provider",
+            config: [{ key: "API_KEY", secret: true }],
+          },
+        ],
+      },
+    ];
+
+    expect(externalConnectionRows(dependencies)).toEqual([
+      {
+        id: "external:stripe",
+        name: "Stripe",
+        description: "Payment provider",
+        config: [
+          { key: "REGION", secret: false },
+          { key: "API_KEY", secret: true },
+        ],
+      },
+    ]);
+  });
+
+  it("preserves a non-secret default from the design", () => {
+    const dependencies: ComponentDependencies[] = [
+      {
+        componentName: "checkout-api",
+        dependencies: [
+          {
+            kind: "external",
+            name: "stripe",
+            config: [
+              { key: "REGION", secret: false, defaultValue: "us-east-1" },
+            ],
+          },
+        ],
+      },
+    ];
+
+    expect(externalConnectionRows(dependencies)[0]?.config).toEqual([
+      { key: "REGION", secret: false, defaultValue: "us-east-1" },
+    ]);
+  });
+
   it("excludes component and platform dependencies from Builds configuration", () => {
     const dependencies: ComponentDependencies[] = [
       {

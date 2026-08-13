@@ -12,13 +12,14 @@ not survive a reload or be shared with the person who holds a credential.
 OpenChoreo does not provide the value-readiness signal AEP needs. A binding may
 be Ready while its external values are empty, and omitting a declared key can
 make rendering fail. The controller behavior on which this distinction rests
-is pinned, with upstream citations and the OpenChoreo version, in the #441
-projects-package design note:
+is pinned, with upstream citations and the OpenChoreo version, in the issue
+`#441` projects-package design note:
 [`services/aep-api/internal/projects/design/openchoreo-resource-binding-behavior.md`](../../services/aep-api/internal/projects/design/openchoreo-resource-binding-behavior.md).
 
-This decision spans the shipped #441 authoring/readiness change and the shipped
-#442 Builds-page configuration change. It also defines the boundary for a
-separate milestone deploy-gate change that has not shipped in this stack.
+This decision spans the shipped issue `#441` authoring/readiness change and the
+shipped issue `#442` Builds-page configuration change. It also defines the
+boundary for a separate milestone deploy-gate change that has not shipped in
+this stack.
 
 ## Decision
 
@@ -55,8 +56,10 @@ non-empty values already supplied by a developer.
 
 The project readiness read combines the current design schema with binding
 state and returns the three states above, including the missing key names. The
-same decoded value state is exposed on per-component dependency status. A stale
-binding key that is no longer declared cannot make a dependency configured.
+same decoded value state is exposed on per-component dependency status. Removed
+or otherwise undeclared binding keys do not affect readiness: a dependency is
+configured when every key in the current design has a value, even if an empty
+stale key remains on the binding.
 
 The #442 console and preflight change keeps Build preflight as one call. Its
 items still carry the external config schema, but `needsResolution` alone

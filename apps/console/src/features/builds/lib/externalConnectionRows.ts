@@ -47,7 +47,7 @@ export function externalConnectionRows(
     for (const dependency of component.dependencies ?? []) {
       if (dependency.kind !== "external") continue;
 
-      const id = `external:${dependency.name}`;
+      const id = `external:${dependency.name.toLowerCase()}`;
       const existing = byId.get(id);
       if (!existing) {
         byId.set(id, {

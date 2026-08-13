@@ -518,6 +518,10 @@ export function markConnectionConfigured(
   configuredReadiness.add(`${scenario}:${name}`);
 }
 
+export function resetConfiguredReadiness() {
+  configuredReadiness.clear();
+}
+
 // Per-component development value readiness. Toggle independently from the
 // broader project story in devtools:
 //   localStorage.setItem('aep:mock:component-dependency-status',

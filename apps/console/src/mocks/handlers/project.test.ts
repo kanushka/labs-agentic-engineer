@@ -20,6 +20,7 @@
 
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { resetConfiguredReadiness } from "../fixtures/project";
 import { projectHandlers } from "./project";
 
 const server = setupServer(...projectHandlers);
@@ -29,6 +30,7 @@ const endpoint =
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   localStorage.clear();
+  resetConfiguredReadiness();
   server.resetHandlers();
 });
 afterAll(() => server.close());

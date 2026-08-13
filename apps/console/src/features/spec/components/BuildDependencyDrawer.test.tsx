@@ -187,6 +187,24 @@ describe("BuildDependencyDrawer local external-spec resolution", () => {
     ]);
   });
 
+  it("trims external-spec values before submitting them", () => {
+    const { onContinue } = setup([EXTERNAL_SPEC_ITEM]);
+
+    fireEvent.change(screen.getByLabelText(/spec url/i), {
+      target: { value: "  https://partner.example/openapi.yaml  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+
+    expect(onContinue).toHaveBeenCalledWith([
+      {
+        component: "checkout-api",
+        dependency: "partner-api",
+        kind: "external-spec",
+        specUrl: "https://partner.example/openapi.yaml",
+      },
+    ]);
+  });
+
   it("keeps Resolve via chat alongside the local external-spec form", () => {
     const { onResolveDependency } = setup([EXTERNAL_SPEC_ITEM]);
 

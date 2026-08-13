@@ -313,7 +313,7 @@ export function useSaveConnectionValues(
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: [
-      ...projectKeys.dependencyReadiness(projectName),
+      ...projectKeys.dependencyReadinessRoot(projectName),
       "save-values",
       connectionName,
     ],
@@ -342,7 +342,7 @@ export function useSaveConnectionValues(
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: projectKeys.dependencyReadiness(projectName),
+        queryKey: projectKeys.dependencyReadinessRoot(projectName),
       });
       void queryClient.invalidateQueries({
         queryKey: projectKeys.componentDependencyStatuses(projectName),
@@ -362,7 +362,7 @@ export function useProjectDependencyReadiness(
   environment = "development",
 ) {
   return useQuery({
-    queryKey: projectKeys.dependencyReadiness(projectName),
+    queryKey: projectKeys.dependencyReadiness(projectName, environment),
     queryFn: async () => {
       const { data, error } = await client.GET(
         "/projects/{projectName}/dependencies/readiness",
