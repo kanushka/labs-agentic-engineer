@@ -88,7 +88,7 @@ is no ledger list in between.
    the gate is the *reason nothing is moving*, not one item among many — which
    makes it the run card's business (decision 4b), not the issue list's. The
    notice names each held dependency. *(Further superseded by repo-wide
-   ADR-0017: external-value notices now deep-link the Builds page's project-level
+   ADR-0020: external-value notices now deep-link the Builds page's project-level
    configuration section via `?connections=open`; the Spec drawer contains only
    design-resolution blockers.)* A resolved gate disappears entirely — it
    holds nothing and was never work. The issue list deliberately says nothing
@@ -140,8 +140,9 @@ is no ledger list in between.
   provisioning gate.
 - External values are no longer resolved by re-submitting Build. They are saved
   independently from the deep-linked Builds configuration section while a run
-  continues. This does not yet make them a deploy gate: auto-deploy remains
-  enabled until ADR-0017's milestone deploy-gate follow-up ships.
+  continues. This does not yet make them a deploy gate: repo-wide ADR-0017 has
+  already taken the deploy verb off OpenChoreo's `autoDeploy`, so until
+  ADR-0020's gate ships the run deploys without consulting them.
 - Tests follow the house convention — `vi.mock` at the hook boundary, jsdom via
   a per-file pragma, fixtures as local factories typed off the generated
   contract. MSW stays the **dev-time** worker; the new endpoints (including the
