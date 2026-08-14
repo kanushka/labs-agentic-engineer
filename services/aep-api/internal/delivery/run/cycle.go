@@ -252,6 +252,19 @@ func (l *loop) deployCycle(ctx workflow.Context, components []string) (cycleResu
 // long a BINDING may take to serve, and charging a person's lookup against it
 // would settle `deploy-budget` on a run behaving exactly as designed.
 //
+// It does NOT wait for the secret operator, and that is deliberate rather than
+// an omission — this is the kind of thing a later reader "fixes" by adding a
+// wait, so the reasoning lives here. The platform has no read path for it: its
+// only read for external resources is control-plane custom resources, the
+// data-plane proxy client has apply and delete but no get, and the binding's
+// Ready condition says nothing about the operator. Nor is one needed, and that
+// is structural, not lucky. An empty secret-store path produces NO Kubernetes
+// secret at all, so at deploy the secret either exists holding real values or
+// does not exist, and a pod referencing a missing secret retries until
+// Kubernetes finds it. The dangerous case — a secret that exists holding STALE
+// values, so the pod starts happily and never restarts — cannot arise. The cost
+// is a few seconds of pod crash-looping after deploy, which is cosmetic.
+//
 // Returns cycleGreen when the gate opens, cycleCancelled if a human gave up.
 func (l *loop) awaitDeployable(ctx workflow.Context) (cycleResult, error) {
 	parked := false
