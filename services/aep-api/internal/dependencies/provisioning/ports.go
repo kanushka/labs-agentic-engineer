@@ -136,6 +136,16 @@ type BindingReader interface {
 	GetBinding(ctx context.Context, namespace, name string) (*openchoreo.ResourceReleaseBinding, error)
 }
 
+// ValuesSavedNotifier tells the delivery supervisor that external values were
+// saved. It carries a FACT, not a command: the consumer re-derives readiness
+// for itself, so this port can never be used to order a deploy. Declared here
+// so provisioning never imports delivery/run (that would cycle); the app-root
+// adapter bridges it onto the run repository and supervisor. Nil is a
+// documented no-op — the run's own wait-poll backstop still re-derives.
+type ValuesSavedNotifier interface {
+	ValuesSaved(ctx context.Context, orgID, projectID string) error
+}
+
 // ProviderResolver resolves a dependency's provider endpoint in OpenChoreo. It
 // has two readers with different visibility rules, so all three resolves live on
 // one port (*dependencies.Catalog satisfies all of them):
