@@ -38,6 +38,7 @@ import (
 // comment idempotent. sourcecontrol.IssueService satisfies it.
 type IssueClient interface {
 	ListIssues(ctx context.Context, orgID, projectID string, labels []string) ([]sourcecontrol.IssueInfo, error)
+	ListMilestoneIssues(ctx context.Context, orgID, projectID string, filter sourcecontrol.MilestoneIssuesFilter) ([]sourcecontrol.IssueInfo, error)
 	CreateIssue(ctx context.Context, orgID, projectID string, req sourcecontrol.CreateIssueRequest) (*sourcecontrol.IssueResult, error)
 	CloseIssue(ctx context.Context, orgID, projectID string, number int, comment string) error
 	CommentIssue(ctx context.Context, orgID, projectID string, number int, body string) error
