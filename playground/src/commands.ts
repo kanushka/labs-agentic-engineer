@@ -23,6 +23,7 @@
  * `PhaseOutcome` the CLI maps to an exit code.
  */
 
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { stdout as output } from "node:process";
 import { renderPart, renderSummary } from "./kit/render.js";
@@ -41,6 +42,7 @@ import { projectSlug } from "./ports/spec-workspace.js";
 import { loadProjectState, saveProjectState } from "./state/project.js";
 import { readIdea, writeDescriptor } from "./state/descriptor.js";
 import { restoreUndoSnapshot, takeUndoSnapshot } from "./state/undo.js";
+import { REPO_ROOT } from "./paths.js";
 
 export interface PhaseOutcome {
   ok: boolean;
@@ -267,6 +269,38 @@ export function undoCommand(projectDir: string, opts: PhaseOptions): PhaseOutcom
   if (!restored) return { ok: false, detail: "no undo snapshot found" };
   if (!opts.silent) output.write(`  ↺ restored ${restored}\n`);
   return { ok: true };
+}
+
+/**
+ * `play <dir> eval-save <name>` — save this project as a codegen eval case.
+ *
+ * Thin on purpose: it SPAWNS the evals CLI rather than importing it. `evals/*`
+ * deep-import the playground, so an import the other way would be a cycle, and
+ * the case format, the pre-code snapshot rule and the checklist planner are the
+ * eval's to own (`evals/codegen/src/save.ts`). stdio is inherited and the exit
+ * code passed through, so the verb scripts exactly like the CLI it wraps.
+ *
+ * `ANTHROPIC_API_KEY` is withheld: `main` has merged `deployments/.env` into
+ * this process by now, and the evals run on the Claude OAuth token alone — a
+ * key in their environment could only ever be the wrong credential.
+ */
+export function evalSaveCommand(projectDir: string, name: string): Promise<number> {
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+  return new Promise((resolve) => {
+    const child = spawn(
+      "pnpm",
+      ["--filter", "@aep/codegen-evals", "eval", "--", "save", "--from", projectDir, "--name", name],
+      { cwd: REPO_ROOT, env, stdio: "inherit" },
+    );
+    child.on("error", (err) => {
+      output.write(`✗ eval-save: ${err.message}\n`);
+      resolve(2);
+    });
+    child.on("close", (code, signal) => {
+      resolve(signal ? 130 : (code ?? 2));
+    });
+  });
 }
 
 /**
