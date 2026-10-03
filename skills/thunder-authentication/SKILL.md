@@ -147,6 +147,11 @@ resource type outputs `client_id`, `issuer`, `jwks_url`, `scopes` and
 Hardcoding a fixed prefix — or any prefix other than YOUR dependency's name —
 gives `undefined` at module load and a redirect to `undefined/oauth2/authorize`.
 
+The access token lives `86400` seconds by default: the `validityPeriod`
+parameter of the auth resource type, which no `workload.yaml` sets. Do not
+assume a shorter lifetime. A short value is only for a fixture app that tests
+the silent renew.
+
 **Ask for the resource indicator on all three legs, or every API call 401s.**
 The indicator is what makes the IdP mint an access token whose `aud` is this
 project's resource server and whose `scope` is narrowed to what this user's
