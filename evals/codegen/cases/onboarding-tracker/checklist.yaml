@@ -1,0 +1,194 @@
+# Derived by the planner (save / replan) and frozen: every attempt walks this
+# list, in this order, from an empty database. HAND-EDITABLE — fix, reorder,
+# reweight or delete items freely; only an explicit replan re-derives it.
+
+# role: one of HRCoordinator, ITStaff, FacilitiesStaff, Admin, no role, signed out
+# weight: default 1. extras.mustCover items are walked and scored like items;
+# extras.mustNot entries ({id, description}) cap the band at review when violated.
+
+# Planner gaps — what the walk cannot cover, and where the PRD and the wireframes disagree:
+#  - No control anywhere in the wireframes (not on ItTasks, FacilitiesTasks, HrTasks, nor on OnboardingDetail's task rows) lets IT Staff, Facilities Staff or HR Coordinator change an individual task's status, even though stories 6, 8 and the hr-tasks:update grant require it and the API exposes PATCH endpoints for it. A task can therefore never reach 'complete' through the UI, so marking an onboarding record complete (story 11) can never succeed in a real walk — the checklist only exercises the resulting incomplete-tasks rejection.
+#  - OnboardingDetail's checklist table draws no '->' navigation or button on existing task rows, so the API's editOnboardingTask and removeOnboardingTask operations (the 'edit or remove' half of story 3) have no reachable UI path; only 'add' (via the Add Task button) is exercised.
+#  - EditTemplate draws only Cancel and Save, no Delete control, so the API's removeTaskTemplate operation has no reachable UI path for Admin.
+#  - The HR Coordinator's sidebar (drawn on Dashboard, NewOnboarding, OnboardingDetail and HrTasks) literally includes a Task Templates link, and the Admin's TaskTemplates screen literally includes Dashboard/New Onboarding/HR Tasks links, even though neither role holds the other's grants in security.json. True per-role nav scoping is unclear from the DSL, so the role-refusal items use a typed address rather than the drawn sidebar link.
+#  - PRD Open Question 1 (whether IT Staff and Facilities Staff should see each other's department tasks) is explicitly undecided; the design and security.json default to each department seeing only its own tasks, so no item tests cross-department task visibility.
+
+items:
+  - id: hrcoordinator-lands-on-dashboard
+    role: HRCoordinator
+    screen: Dashboard
+    flow: Manage onboarding
+    steps: Open the app, already signed in as HR Coordinator.
+    expect: Lands on the Dashboard screen; the sidebar shows Dashboard, New Onboarding, HR Tasks and Task Templates; the Active Onboardings table is empty since no onboarding record exists yet.
+    weight: 1
+  - id: admin-lands-on-templates
+    role: Admin
+    screen: TaskTemplates
+    flow: Template management
+    steps: Open the app, already signed in as Admin.
+    expect: Lands on the Task Templates screen with its own navigation; the template table is empty since no template has been created yet.
+    weight: 1
+  - id: admin-creates-it-template
+    role: Admin
+    screen: TaskTemplates
+    flow: Template management
+    steps: Click New Template; on the Task Template screen select Department 'IT', enter Task name 'Provision laptop', Default due offset (days before start) '3'; click Save.
+    expect: Returns to Task Templates; a new row 'IT | Provision laptop | -3 days' appears in the table.
+    weight: 2
+  - id: admin-creates-hr-template
+    role: Admin
+    screen: TaskTemplates
+    flow: Template management
+    steps: Click New Template; select Department 'HR', enter Task name 'Send benefits packet', Default due offset '2'; click Save.
+    expect: Returns to Task Templates; a new row 'HR | Send benefits packet | -2 days' appears alongside the IT template.
+    weight: 1
+  - id: admin-creates-facilities-template
+    role: Admin
+    screen: TaskTemplates
+    flow: Template management
+    steps: Click New Template; select Department 'Facilities', enter Task name 'Assign desk', Default due offset '3'; click Save.
+    expect: Returns to Task Templates; a new row 'Facilities | Assign desk | -3 days' appears alongside the IT and HR templates.
+    weight: 1
+  - id: admin-edits-template
+    role: Admin
+    screen: TaskTemplates
+    flow: Template management
+    steps: Click the 'IT | Provision laptop | -3 days' row created in admin-creates-it-template; on the Task Template screen change Default due offset to '5'; click Save.
+    expect: Returns to Task Templates; the IT Provision laptop row now reads '-5 days'.
+    weight: 1
+  - id: admin-refused-dashboard
+    role: Admin
+    screen: Dashboard
+    flow: Role access control
+    steps: Open the address the Dashboard screen had in hrcoordinator-lands-on-dashboard.
+    expect: Admin is refused the Dashboard screen; none of the HR Coordinator's onboarding data is shown.
+    weight: 1
+  - id: itstaff-lands-on-itqueue
+    role: ITStaff
+    screen: ItTasks
+    flow: IT task queue
+    steps: Open the app, already signed in as IT Staff.
+    expect: Lands on the IT Tasks screen with its own navigation (IT Tasks only); the task table is empty since no onboarding record exists yet.
+    weight: 1
+  - id: facilitiesstaff-lands-on-facilitiesqueue
+    role: FacilitiesStaff
+    screen: FacilitiesTasks
+    flow: Facilities task queue
+    steps: Open the app, already signed in as Facilities Staff.
+    expect: Lands on the Facilities Tasks screen with its own navigation (Facilities Tasks only); the task table is empty since no onboarding record exists yet.
+    weight: 1
+  - id: itstaff-refused-templates
+    role: ITStaff
+    screen: TaskTemplates
+    flow: Role access control
+    steps: Open the address the Task Templates screen had in admin-lands-on-templates.
+    expect: IT Staff is refused the Task Templates screen; no template data is shown.
+    weight: 1
+  - id: facilitiesstaff-refused-itqueue
+    role: FacilitiesStaff
+    screen: ItTasks
+    flow: Role access control
+    steps: Open the address the IT Tasks screen had in itstaff-lands-on-itqueue.
+    expect: Facilities Staff is refused the IT Tasks screen; no IT task data is shown.
+    weight: 1
+  - id: hrcoordinator-refused-templates
+    role: HRCoordinator
+    screen: TaskTemplates
+    flow: Role access control
+    steps: Open the address the Task Templates screen had in admin-lands-on-templates.
+    expect: HR Coordinator is refused the Task Templates screen; no template data is shown.
+    weight: 1
+  - id: hr-creates-onboarding
+    role: HRCoordinator
+    screen: OnboardingDetail
+    flow: Manage onboarding
+    steps: From Dashboard, click New Onboarding; enter New hire name 'Jane Doe', Start date '2026-09-20'; click Create.
+    expect: Lands on the OnboardingDetail screen for Jane Doe with status badge 'In Progress'; the checklist is pre-populated from the templates created earlier — IT 'Provision laptop' due 2026-09-15, HR 'Send benefits packet' due 2026-09-18, Facilities 'Assign desk' due 2026-09-17 — each shown as Overdue since its due date has already passed.
+    weight: 2
+  - id: hr-adds-exception-task
+    role: HRCoordinator
+    screen: OnboardingDetail
+    flow: Manage onboarding
+    steps: On Jane Doe's OnboardingDetail (from hr-creates-onboarding), click Add Task; select Department 'Facilities', enter Task name 'Order parking pass', Due date '2026-10-20', Notes 'Requested by hiring manager'; click Save.
+    expect: Returns to OnboardingDetail; a new row 'Facilities | Order parking pass | 2026-10-20 | Pending' appears in the checklist alongside the seeded tasks, not flagged overdue.
+    weight: 2
+  - id: hr-views-dashboard-with-record
+    role: HRCoordinator
+    screen: Dashboard
+    flow: Manage onboarding
+    steps: Navigate to Dashboard via the sidebar.
+    expect: The Active Onboardings table lists Jane Doe with Start Date 2026-09-20, IT 0/1, HR 0/1, Facilities 0/2, Overdue 'Yes', Status 'In Progress'.
+    weight: 2
+  - id: hr-views-hrtasks-queue
+    role: HRCoordinator
+    screen: HrTasks
+    flow: Manage onboarding
+    steps: Navigate to HR Tasks via the sidebar.
+    expect: The table lists 'Jane Doe | Send benefits packet | 2026-09-18 | Overdue', reflecting the seeded HR task.
+    weight: 1
+  - id: hr-filters-hrtasks-by-status
+    role: HRCoordinator
+    screen: HrTasks
+    flow: Manage onboarding
+    steps: On HR Tasks, set the Status filter to 'Complete'.
+    expect: The table shows no rows, since no HR task has been marked complete.
+    weight: 1
+  - id: itstaff-views-itqueue-with-data
+    role: ITStaff
+    screen: ItTasks
+    flow: IT task queue
+    steps: On the IT Tasks screen, already landed after hr-creates-onboarding seeded a task, observe the table.
+    expect: The table lists 'Jane Doe | Provision laptop | 2026-09-15 | Overdue', reflecting the seeded IT task from Jane Doe's onboarding record.
+    weight: 2
+  - id: itstaff-filters-itqueue-by-status
+    role: ITStaff
+    screen: ItTasks
+    flow: IT task queue
+    steps: Set the Status filter to 'Complete'.
+    expect: The table shows no rows, since no IT task has been marked complete.
+    weight: 1
+  - id: facilitiesstaff-views-facilitiesqueue-with-data
+    role: FacilitiesStaff
+    screen: FacilitiesTasks
+    flow: Facilities task queue
+    steps: On the Facilities Tasks screen, already landed after hr-creates-onboarding and hr-adds-exception-task seeded and added tasks, observe the table.
+    expect: The table lists 'Jane Doe | Assign desk | 2026-09-17 | Overdue' and 'Jane Doe | Order parking pass | 2026-10-20 | Pending', reflecting both the seeded Facilities task and the exception task added in hr-adds-exception-task.
+    weight: 2
+  - id: facilitiesstaff-filters-facilitiesqueue
+    role: FacilitiesStaff
+    screen: FacilitiesTasks
+    flow: Facilities task queue
+    steps: Set the Status filter to 'Complete'.
+    expect: The table shows no rows, since neither Facilities task has been marked complete.
+    weight: 1
+  - id: hr-attempts-mark-complete-fails
+    role: HRCoordinator
+    screen: OnboardingDetail
+    flow: Manage onboarding
+    steps: On Jane Doe's OnboardingDetail (from hr-creates-onboarding and hr-adds-exception-task), click Mark Complete while tasks remain incomplete.
+    expect: A validation message indicates tasks remain incomplete; the record's status badge stays 'In Progress'.
+    weight: 2
+  - id: hrcoordinator-signs-out
+    role: HRCoordinator
+    screen: No-access page
+    flow: Sign out
+    steps: Use the app's sign-out control.
+    expect: Returns to the app's no-access state, signed in holding no role; Jane Doe's onboarding data and the HR Coordinator's screens are no longer shown; no sign-in form appears.
+    weight: 1
+  - id: no-role-no-access
+    role: no role
+    screen: No-access page
+    flow: Role access control
+    steps: Open the app while signed in holding no role.
+    expect: The app shows its no-access page instead of any onboarding screen.
+    weight: 1
+  - id: signed-out-round-trip
+    role: signed out
+    screen: Session entry screen (role-dependent)
+    flow: Sign-in guard
+    steps: Open the app signed out.
+    expect: The address loses the signed-out marker and the app reloads into a session automatically, landing on whatever screen the tab's last-held role shows, with no blank page or crash.
+    weight: 1
+extras:
+  mustCover: []
+  mustNot: []

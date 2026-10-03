@@ -28,6 +28,8 @@ export default tseslint.config(
       // Playground project homes: generated app source, not repo code.
       "playground/.projects/**",
       "playground/.devtools/**",
+      // Codegen eval archives: each attempt keeps the generated app's source.
+      "evals/codegen/.runs/**",
     ],
   },
   js.configs.recommended,

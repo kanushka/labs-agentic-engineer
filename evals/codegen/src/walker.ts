@@ -1,0 +1,293 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/**
+ * The walker: an agent that uses the running app through a real browser,
+ * item by item, and records what it saw. It does not score — the judge does
+ * (decision 5) — and it does not fix: an evaluator that repairs the app on
+ * the way through measures itself.
+ *
+ * BLACK BOX. Its cwd is the attempt's `walk/` directory, never the project,
+ * and its only tools are `agent-browser` through Bash plus Read/Write inside
+ * `walk/` (screenshots, notes). The guard below is a PreToolUse hook, which is
+ * why the session's prompt is a held-open stream (`session.ts`).
+ *
+ * The method is the platform's own mock-verification walk
+ * (`skills/mock-verification/SKILL.md`): Reach, Act, Request — and a mutation
+ * counts only when a request leaves the page, because a row that flips on
+ * screen and sends nothing is the one defect a screenshot cannot see.
+ */
+
+import { execFile } from "node:child_process";
+import { isAbsolute, relative, resolve } from "node:path";
+import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
+import { z } from "zod";
+import type { Item, MustNot } from "./case.js";
+import { MODELS, TIMEOUTS, WALKER } from "./config.js";
+import { runSession, type SessionResult } from "./session.js";
+import { WIRED_AUTH_SEMANTICS } from "./wired-auth.js";
+
+export const WalkItemSchema = z
+  .object({
+    id: z.string(),
+    verdict: z.enum(["pass", "fail", "blocked"]),
+    observed: z.string(),
+    steps_taken: z.string(),
+    screenshots: z.array(z.string()),
+    console_errors: z.array(z.string()),
+    failed_requests: z.array(z.string()),
+  })
+  .strict();
+export type WalkItem = z.infer<typeof WalkItemSchema>;
+
+export const WalkResultSchema = z
+  .object({
+    items: z.array(WalkItemSchema),
+    notes: z.string(),
+  })
+  .strict();
+export type WalkResult = z.infer<typeof WalkResultSchema>;
+
+export type GuardDecision = { allow: true } | { allow: false; reason: string };
+
+/**
+ * Split a command line into words, honouring single and double quotes — enough
+ * to find the verb and the flags of one `agent-browser` call. Shell
+ * metacharacters never reach here: `guardTool` refuses them first.
+ */
+export function shellWords(command: string): string[] {
+  const words: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+  let inWord = false;
+  for (const ch of command) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      inWord = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (inWord) words.push(current);
+      current = "";
+      inWord = false;
+      continue;
+    }
+    current += ch;
+    inWord = true;
+  }
+  if (inWord) words.push(current);
+  return words;
+}
+
+/**
+ * The walker's whole permission model, as a pure function of one tool call.
+ *
+ *   Bash   — exactly one `agent-browser` invocation: no shell metacharacters,
+ *            no forbidden verb, subcommand or flag (`WALKER` in config.ts).
+ *   Read / Write — a path inside `walkDir`, and nowhere else.
+ *   anything else — not this guard's to decide; the session's `tools` list
+ *            already makes no other built-in exist.
+ */
+export function guardTool(tool: string, input: unknown, walkDir: string): GuardDecision {
+  const args = (input ?? {}) as Record<string, unknown>;
+  if (tool === "Bash") {
+    const command = typeof args.command === "string" ? args.command.trim() : "";
+    if (!command.startsWith("agent-browser ")) return deny("only `agent-browser …` commands may run");
+    const meta = WALKER.forbiddenShell.find((token) => command.includes(token));
+    if (meta) return deny(`shell metacharacter ${JSON.stringify(meta)} — run one agent-browser command per call`);
+    const words = shellWords(command).slice(1);
+    const flag = words.find((word) => WALKER.forbiddenFlags.some((f) => word === f || word.startsWith(`${f}=`)));
+    if (flag) return deny(`${flag} is not available in this walk`);
+    const positional = words.filter((word) => !word.startsWith("-"));
+    const verb = positional[0] ?? "";
+    if ((WALKER.forbiddenVerbs as readonly string[]).includes(verb)) return deny(`agent-browser ${verb} is not available in this walk`);
+    const sub = positional[1] ?? "";
+    if (WALKER.forbiddenSubcommands[verb]?.includes(sub)) return deny(`agent-browser ${verb} ${sub} is not available in this walk`);
+    return { allow: true };
+  }
+  if (tool === "Read" || tool === "Write") {
+    const path = typeof args.file_path === "string" ? args.file_path : "";
+    if (!path) return deny("a file_path is required");
+    const rel = relative(walkDir, resolve(walkDir, path));
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return deny(`only files under ${walkDir} may be read or written`);
+    return { allow: true };
+  }
+  return { allow: true };
+}
+
+function deny(reason: string): GuardDecision {
+  return { allow: false, reason };
+}
+
+/** The guard as the SDK hook that enforces it. */
+export function guardHooks(walkDir: string): { PreToolUse: HookCallbackMatcher[] } {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash|Read|Write",
+        hooks: [
+          async (hookInput) => {
+            if (hookInput.hook_event_name !== "PreToolUse") return {};
+            const decision = guardTool(hookInput.tool_name, hookInput.tool_input, walkDir);
+            if (decision.allow) return {};
+            return {
+              hookSpecificOutput: {
+                hookEventName: "PreToolUse" as const,
+                permissionDecision: "deny" as const,
+                permissionDecisionReason: decision.reason,
+              },
+            };
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const SYSTEM_PROMPT = `You test web applications the way a careful user would, in a real browser, and report exactly what you observed.
+You never fix, work around or excuse what you find. You answer with one JSON object in the requested schema.`;
+
+export function walkerPrompt(opts: { baseUrl: string; roles: string[]; items: Item[]; mustNot: MustNot[] }): string {
+  const url = opts.baseUrl.replace(/\/$/, "");
+  const checklist = opts.items
+    .map(
+      (item, index) =>
+        `${String(index + 1)}. id: ${item.id}\n   role: ${item.role}\n   screen: ${item.screen}\n   steps: ${item.steps}\n   expect: ${item.expect}`,
+    )
+    .join("\n");
+  const mustNot = opts.mustNot.length
+    ? `\nALSO WATCH, THROUGHOUT — things that must never happen. If you see one, describe it in \`notes\` with its id:\n${opts.mustNot.map((m) => `- ${m.id}: ${m.description}`).join("\n")}\n`
+    : "";
+  return `You are testing a running web application against a checklist. You have not seen its source and you will not: the browser is the only way you learn anything.
+
+THE BROWSER is the \`agent-browser\` CLI, through Bash, ONE command per call — pipes, \`;\`, \`&&\`, redirects and substitutions are refused. Your session is already isolated; never pass --session. \`agent-browser skills get core\` prints the full reference if you need it. The essentials:
+  agent-browser open <url>                 a full page load
+  agent-browser snapshot -c                what the page SHOWS (text, rows, badges) — judge from this
+  agent-browser snapshot -i                the controls only, with @refs to act on — it hides text and rows
+  agent-browser click @e3 | fill @e5 "text" | select @e7 "Option" | press Enter
+  agent-browser get url | get text <selector>
+  agent-browser network requests           what left the page, with status codes
+  agent-browser console | agent-browser errors
+  agent-browser screenshot shots/<id>.png
+You may Read and Write files in your working directory (screenshots included) and nowhere else.
+
+THE APP is at ${url}/
+- Enter as a role by loading ${url}/?role=<Role>. "no role" is ${url}/?role= (signed in, holding no role); "signed out" is ${url}/?auth=out.
+- Roles: ${opts.roles.join(", ")}.
+- The backend is real and its database started EMPTY. What you create persists, across role switches too.
+
+${WIRED_AUTH_SEMANTICS}
+
+THE METHOD, for each item in order:
+1. Reach — enter as the item's role (unless you already are), then get to the item's screen the way a user would: the app's own navigation, from where the role lands. Load a URL directly only to switch role or when the item's steps say to. Note the address of every screen you reach (\`agent-browser get url\`): a later item may ask you to open it under another role.
+2. Act — do the steps, with the values given.
+3. Request — a change counts only when a request leaves the page. After a create, edit, delete, approve or similar, check \`agent-browser network requests\` for it and its status. A row that changes on screen with no request behind it, or a request that failed, is a FAIL.
+4. Judge the \`expect\` against what you SEE — a full \`snapshot -c\` (or the screenshot), never \`snapshot -i\`, which omits everything that is not a control. pass: it holds. fail: it does not — say what you saw instead. blocked: an earlier failure made this item impossible to attempt — name that item.
+5. Screenshot at the moment you judge: \`agent-browser screenshot shots/<id>.png\`.
+6. On a failure, read \`agent-browser console\`, \`agent-browser errors\` and the failed entries of \`agent-browser network requests\`; record what they show in console_errors and failed_requests (short, verbatim where possible).
+At most three tries on one item, then record it and move on. Walk every item; do not stop early.
+
+NEVER fix or work around the app: do not hunt for a URL to reach a screen its navigation does not take you to, do not retry until something flaky passes once, do not invent data the UI cannot create. You report what a user would experience.
+${mustNot}
+CHECKLIST
+${checklist}
+
+ANSWER: \`items\` — one entry per checklist id, in checklist order: verdict, observed (what the page did, concretely), steps_taken (what you actually did), screenshots (paths you saved), console_errors, failed_requests. \`notes\` — anything a developer should know that the items do not carry: crashes, a pattern across items, must-not sightings.`;
+}
+
+/**
+ * Fill in what the walker did not report: an item it never reached is
+ * `blocked` / "not reached", so the judge sees every item and the score cannot
+ * be raised by the walker running out of time. Entries for ids not on the
+ * checklist are dropped. Pure.
+ */
+export function normalizeWalk(items: Item[], walk: WalkResult): WalkResult {
+  const byId = new Map(walk.items.map((entry) => [entry.id, entry]));
+  return {
+    items: items.map(
+      (item) =>
+        byId.get(item.id) ?? {
+          id: item.id,
+          verdict: "blocked" as const,
+          observed: "not reached",
+          steps_taken: "",
+          screenshots: [],
+          console_errors: [],
+          failed_requests: [],
+        },
+    ),
+    notes: walk.notes,
+  };
+}
+
+export interface WalkRequest {
+  baseUrl: string;
+  roles: string[];
+  items: Item[];
+  mustNot: MustNot[];
+  /** `<attempt>/walk/` — the session's cwd and the only place it may touch. */
+  walkDir: string;
+  /** Unique per attempt: the agent-browser session name. */
+  sessionName: string;
+  env: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
+}
+
+export async function walk(req: WalkRequest): Promise<SessionResult<WalkResult>> {
+  const env: NodeJS.ProcessEnv = {
+    ...req.env,
+    AGENT_BROWSER_SESSION: req.sessionName,
+    AGENT_BROWSER_ALLOWED_DOMAINS: WALKER.allowedDomains,
+  };
+  try {
+    return await runSession({
+      prompt: walkerPrompt(req),
+      systemPrompt: SYSTEM_PROMPT,
+      cwd: req.walkDir,
+      model: MODELS.walker,
+      tools: WALKER.tools,
+      hooks: guardHooks(req.walkDir),
+      schema: WalkResultSchema,
+      maxTurns: WALKER.maxTurns,
+      timeoutMs: TIMEOUTS.walkMinutes * 60_000,
+      env,
+      transcriptFile: resolve(req.walkDir, "transcript.jsonl"),
+      debugFile: resolve(req.walkDir, "claude-debug.log"),
+      ...(req.signal ? { signal: req.signal } : {}),
+    });
+  } finally {
+    await closeBrowser(req.sessionName);
+  }
+}
+
+/** Close THIS attempt's browser session — never `--all`, which would close everyone's. */
+export function closeBrowser(sessionName: string): Promise<void> {
+  return new Promise((done) => {
+    execFile(
+      "agent-browser",
+      ["close"],
+      { timeout: 30_000, env: { ...process.env, AGENT_BROWSER_SESSION: sessionName } },
+      () => done(),
+    );
+  });
+}
