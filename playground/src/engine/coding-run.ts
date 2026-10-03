@@ -72,6 +72,7 @@ import {
 import { createAgentTags, type AgentTags } from "./agent-tags.js";
 import { openCrewPane } from "./crew-pane.js";
 import { REPO_ROOT } from "../paths.js";
+import { runnerImage } from "./runner-image.js";
 import { CODING_CONNECTION_ENV, codingConnectionEnv } from "../kit/model-connection.js";
 import { DEFAULT_RUNTIME, runtimeNameFromEnv, UnsupportedRuntimeError, type RuntimeName } from "remote-worker/src/runtime/port.js";
 
@@ -270,33 +271,24 @@ const IMAGE_AGENT_SESSION_DIR = "/home/aep/.claude/projects";
  */
 const IMAGE_OPENCODE_SESSION_DIR = "/home/aep/.local/share/opencode";
 
-/** What this harness has to know about one runtime to run it. */
+/**
+ * What this harness has to know about one runtime to run it, beside its image
+ * (`runner-image.ts`).
+ */
 interface RuntimeProfile {
-  /** The env var that overrides the image, and the image when it is unset. */
-  imageEnv: string;
-  defaultImage: string;
   /** Where the runtime keeps its session store inside the image. */
   sessionDir: string;
   /** Why it cannot start in this mode with this credential, or undefined. */
   refusal(mode: "docker" | "host", credential: CodingCredential | undefined): string | undefined;
 }
 
-/**
- * One entry per runtime the contract names. The OpenCode image is the Claude
- * Code one plus the `opencode` binary, the guard plugin and a pre-warmed home,
- * but a Claude Code run stays on its own image — the one a Claude Code org's
- * pods run.
- */
+/** One entry per runtime the contract names. */
 const RUNTIME_PROFILES: Record<RuntimeName, RuntimeProfile> = {
   "claude-code": {
-    imageEnv: "AGENT_RUNNER_IMAGE",
-    defaultImage: "aep-runner:dev",
     sessionDir: IMAGE_AGENT_SESSION_DIR,
     refusal: () => undefined,
   },
   opencode: {
-    imageEnv: "AGENT_RUNNER_IMAGE_OPENCODE",
-    defaultImage: "aep-runner-opencode:dev",
     sessionDir: IMAGE_OPENCODE_SESSION_DIR,
     // The binary and the guard plugin live in the IMAGE, so there is no host
     // mode; and OpenCode authenticates with an API key only (Claude
@@ -312,11 +304,6 @@ const RUNTIME_PROFILES: Record<RuntimeName, RuntimeProfile> = {
     },
   },
 };
-
-export function runnerImage(runtime: RuntimeName, env: NodeJS.ProcessEnv = process.env): string {
-  const profile = RUNTIME_PROFILES[runtime];
-  return env[profile.imageEnv] || profile.defaultImage;
-}
 
 /**
  * The runtime this run gets, or why it cannot start in this mode with these

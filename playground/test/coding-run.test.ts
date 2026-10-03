@@ -29,12 +29,12 @@ import {
   FORWARDED_AGENT_SETTINGS,
   hostInvocation,
   resolveRuntime,
-  runnerImage,
   isFailedAgent,
   renderMergedTimeline,
   toolJarOverlay,
   workingTreeToolJar,
 } from "../src/engine/coding-run.js";
+import { runnerImage } from "../src/engine/runner-image.js";
 import { REPO_ROOT } from "../src/paths.js";
 import { formatEvent } from "@aep/progress-view";
 
