@@ -1003,11 +1003,19 @@ export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunR
       void settle(signal ? 130 : (code ?? 2));
     });
 
-    // Ctrl-C: kill the child.
-    const onInt = (): void => {
+    // Ctrl-C, or SIGTERM from a driver stopping the run (evals/codegen on a
+    // timeout or an interrupted sweep): kill the child and let `settle` copy the
+    // transcripts out and remove the container. SIGTERM needs its own listener:
+    // without one Node exits at once, `settle` never runs, and the `docker run`
+    // is orphaned with its container still working.
+    const onSignal = (): void => {
       child.kill("SIGTERM");
     };
-    process.once("SIGINT", onInt);
-    child.on("close", () => process.removeListener("SIGINT", onInt));
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+    child.on("close", () => {
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+    });
   });
 }
