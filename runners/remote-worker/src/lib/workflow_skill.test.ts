@@ -161,7 +161,7 @@ for (const rule of [
   // the feed on SDK 0.3.247, and backgrounding is the only thing that lets a
   // lead work while a wave builds — a foreground wave sat the lead idle for 41
   // of one run's 55 minutes.
-  "Dispatch every build subagent of a wave in the background, in ONE turn.",
+  "Dispatch every build subagent of a wave in the background, in ONE turn, in\nthis one workspace (no worktrees).",
   // What the deleted PreToolUse hook used to guarantee structurally: nothing is
   // staged while a subagent is still writing. Only the COMMIT waits for the
   // whole issue — a wait on the whole wave held one run's walk 13m36s past its

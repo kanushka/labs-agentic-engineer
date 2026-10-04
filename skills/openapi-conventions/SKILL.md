@@ -152,7 +152,8 @@ Which **rows** an operation reaches is its path, and nothing else says it:
 
 The `<relation>` is a noun the domain model has (`team` because `Employee` has a
 `managerId`), never a role or a group name — `/me/team/claims`, not
-`/manager/claims`. The handler behind a `/me/…` path resolves the rows through
+`/manager/claims`. Some operation writes that relation: if none sets
+`managerId`, `/me/team/claims` is empty for every caller. The handler behind a `/me/…` path resolves the rows through
 the gateway assertion's `sub` and nothing the client sends; a row that is not
 the caller's does not exist there, so the answer is 404, never 403.
 

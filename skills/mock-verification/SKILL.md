@@ -114,7 +114,8 @@ Every item ends in exactly one:
   handle, so `Forbidden` is something you walk and see.
 
 An unreachable screen is **open**, naming the navigation that failed, never
-**done** read off the source.
+**done** read off the source. A fix does not remove or hide what the wireframe
+draws. If the app cannot fill a drawn element, the item is **open**.
 
 ## Progress
 

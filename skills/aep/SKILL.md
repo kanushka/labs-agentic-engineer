@@ -50,11 +50,12 @@ skills before you write the code of the component.
 
 The design wrote `specs/` before the issues: the `design.json` of each
 component, and the `openapi.yaml` of each service. These files are the
-contract. Only you edit them, and only `openapi.yaml`, to close a gap that a
-build subagent reports. Keep the change consistent with `security.json`: the
+contract. Only you edit them, and only `openapi.yaml`, to close a gap that you
+or a build subagent find. Keep the change consistent with `security.json`: the
 IdP already has its scopes, and the gateway reads the `security` of each
 operation from `openapi.yaml`. Do not add a scope, change the scope of an
-operation, or remove an operation. Commit the change alone. Build again each
+operation, or remove an operation. A gap that you cannot close goes into the
+PR; do not work around it in code. Commit the change alone. Build again each
 component that it touches, and list the change in the PR.
 
 A consumer codes against the `openapi.yaml` of its provider, not against the
@@ -140,8 +141,8 @@ a build subagent for each issue, except:
 
 Do not name a model in the fan-out call.
 
-Dispatch every build subagent of a wave in the background, in ONE turn. Then
-end your turn. Each subagent wakes you with its report when it finishes.
+Dispatch every build subagent of a wave in the background, in ONE turn, in
+this one workspace (no worktrees). Then end your turn. Each subagent wakes you with its report when it finishes.
 
 **Only the commit waits for the whole issue.** A subagent that did not report
 can still be writing files.
@@ -152,7 +153,7 @@ completed when you commit the work of the issue.
 #### The build prompt
 
 A build subagent knows only its prompt. Give it these items, as paths and not
-as file contents:
+as file contents. Do not change the component contract in the prompt:
 
 1. The issue number, and the App Paths. The subagent writes only in these
    paths.
@@ -216,7 +217,6 @@ that the report calls incomplete.
    the component contract). Commit the component, and copy the lines into the
    PR.
 2. Commit the work of the issue, alone. You are the only agent that runs `git`.
-   Use one workspace, not worktrees.
    ```bash
    git add <the App Paths that issue touched>
    git diff --cached --name-only    # what is ACTUALLY staged — read it

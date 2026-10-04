@@ -55,7 +55,8 @@ once, in `src/authz/screens.ts` (§5).
 The platform creates the resource server, the roles and the test users when the
 user clicks Build. Never write user-, group- or role-provisioning code, and
 never seed a roster: an account you create is not one the platform can hand to
-the validation agent.
+the validation agent. No code names a test user or gives one rows or a
+relation.
 
 **Dev clusters** ship a default Thunder admin: `admin` / `admin`, in the
 `Administrators` group. That group administers the PLATFORM — it is not one of
