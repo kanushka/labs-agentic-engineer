@@ -50,7 +50,12 @@ skills before you write the code of the component.
 
 The design wrote `specs/` before the issues: the `design.json` of each
 component, and the `openapi.yaml` of each service. These files are the
-contract. Do not edit them.
+contract. Only you edit them, and only `openapi.yaml`, to close a gap that a
+build subagent reports. Keep the change consistent with `security.json`: the
+IdP already has its scopes, and the gateway reads the `security` of each
+operation from `openapi.yaml`. Do not add a scope, change the scope of an
+operation, or remove an operation. Commit the change alone. Build again each
+component that it touches, and list the change in the PR.
 
 A consumer codes against the `openapi.yaml` of its provider, not against the
 code of the provider. As a result, no issue waits for the code of another
@@ -126,8 +131,8 @@ For each wave:
 
 ### Fan-out to subagents
 
-The tool glossary at the end of your instructions names your fan-out tool and
-your wait tool. Use a build subagent for each issue, except:
+The tool glossary at the end of your instructions names your fan-out tool. Use
+a build subagent for each issue, except:
 
 - Work an issue inline if its files are also the files of another issue in the
   wave.
@@ -135,10 +140,8 @@ your wait tool. Use a build subagent for each issue, except:
 
 Do not name a model in the fan-out call.
 
-Dispatch every build subagent of a wave in the background, in ONE turn.
-
-Wait for one subagent at a time, and act on each report when it arrives. After
-you dispatch a wave, end your turn. Each subagent wakes you when it finishes.
+Dispatch every build subagent of a wave in the background, in ONE turn. Then
+end your turn. Each subagent wakes you with its report when it finishes.
 
 **Only the commit waits for the whole issue.** A subagent that did not report
 can still be writing files.
@@ -277,6 +280,7 @@ Add these parts to the PR when they apply:
   each item from the walk report. Put each open `[ ]` line next to its item.
   The `references/implementing.md` file of the `wireframes` skill shows the
   format.
+- For each spec change: the file, the change, and the gap that it closes.
 - For a component that is not green: use `--draft` and the title prefix
   `[build-failed]`. List `Resolves #N` only for the completed issues. Add an
   `## Error` section (the last 40 lines of output, fenced) and a

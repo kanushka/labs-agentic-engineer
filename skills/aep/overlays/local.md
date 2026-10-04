@@ -98,8 +98,9 @@ wave.
 There is no PR and no status field. For each issue that you touched, finished
 or not, add a dated note to the `## Progress` section of its issue file. Write
 what you built and how you verified it. If the work is not finished, write what
-you tried and the diagnostic (see Green in the component contract). Do not
-change other parts of the file: the frontmatter belongs to the planner.
+you tried and the diagnostic (see Green in the component contract). Record
+each spec change in the note of the issue whose gap it closes. Do not change
+other parts of the file: the frontmatter belongs to the planner.
 
 <!-- drop-section: ### Be idempotent -->
 

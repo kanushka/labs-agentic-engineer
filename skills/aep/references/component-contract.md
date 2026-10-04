@@ -119,8 +119,9 @@ lines of the output and what you tried. Leave the work unfinished.
 ## Never
 
 - Do not edit, add to, or delete anything under the repo-root `specs/`. If an
-  issue and the contract do not agree, obey the contract. Do not build a
-  thing that the spec does not declare: say so in one line.
+  issue and the contract do not agree, obey the contract. If the contract stops
+  you from building what the issue needs, do not work around it. Tell the lead
+  the gap and the smallest change that closes it.
 - Do not hold back work because a component it depends on is not built yet.
   Code against the contract.
 - Do not substitute your own technology for a declared dependency. Do not use
