@@ -17,7 +17,7 @@
  */
 
 /**
- * The rubric judge (#355): sonnet at temperature 0, one call per section
+ * The rubric judge (#355): a pinned sonnet (JUDGE_MODEL), one call per section
  * artifact. Sees the artifact, the rubric, and the sim user's decisions
  * digest (#354) — user-decided scope is never penalized as invention. The
  * weighted score is computed HERE from the judge's per-item booleans, not by

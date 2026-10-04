@@ -183,10 +183,11 @@ func Steps(db *gorm.DB, deploymentTier string, credKey []byte) []database.Step {
 		// spend used to live on — so it must follow both of those tables
 		// (AutoMigrate) and the milestone_runs it joins for the version label.
 		ctxStep("agent_usage_ledger", RunAgentUsageLedger),
-		// model_rates seed (#291): the platform's active model at today's
+		// model_rates seed (#291): the platform's active models at today's
 		// rates. AutoMigrate (BaseModels) creates the table; this idempotent
-		// step inserts the claude-sonnet-5 row so write-time USD stamping has
-		// a price card to resolve against. Ops-managed thereafter.
+		// step inserts the default model's row (claude-sonnet-5-5), and each
+		// other offered model's, so write-time USD stamping has a price card
+		// to resolve against. Ops-managed thereafter.
 		ctxStep("model_rates_seed", RunModelRatesSeed),
 		// secret_ref_* columns, backfilled from leftover sm_api_* if present.
 		// Do not ADD sm_api_* here — phase14 drops leftovers that already exist.

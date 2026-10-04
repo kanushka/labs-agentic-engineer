@@ -134,7 +134,7 @@ function printUsage(): void {
       "                            aep-runner-opencode:dev (AGENT_RUNNER_IMAGE_OPENCODE), docker",
       "                            mode only, API key only",
       "  AEP_AGENT_MODEL           the one model every call uses: the coding run's, and the",
-      "                            engineering agent's on an AEP_MODEL_* connection (default claude-sonnet-5)",
+      "                            engineering agent's on an AEP_MODEL_* connection (default claude-sonnet-5-5)",
       "",
       "Tracing: AI SDK DevTools is on by default — run `npx @ai-sdk/devtools` (port 4983).",
       "",

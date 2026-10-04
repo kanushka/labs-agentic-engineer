@@ -225,8 +225,8 @@ test("createClaudeCodeRuntime: answers to the name the org setting and the env u
 // org that never opened the setting loses its cost stamp — `modelcost.SumCost`
 // is all-or-nothing across a capture.
 test("createClaudeCodeRuntime: the default model is the one the platform seeds a rate for", () => {
-  assert.equal(createClaudeCodeRuntime().defaultModel, "claude-sonnet-5");
-  assert.equal(CLAUDE_CODE_DEFAULT_MODEL, "claude-sonnet-5");
+  assert.equal(createClaudeCodeRuntime().defaultModel, "claude-sonnet-5-5");
+  assert.equal(CLAUDE_CODE_DEFAULT_MODEL, "claude-sonnet-5-5");
 });
 
 // Left unpinned, each alias resolves to the CLI release's own default and the

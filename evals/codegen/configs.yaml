@@ -17,6 +17,10 @@
 #       authScheme: bearer
 #       apiKeyEnv: OLLAMA_API_KEY
 
+- id: sonnet-5-5
+  runtime: claude-code
+  model: claude-sonnet-5-5
+
 - id: sonnet
   runtime: claude-code
   model: claude-sonnet-5

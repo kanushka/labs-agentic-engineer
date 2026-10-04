@@ -114,9 +114,9 @@ export const TIMEOUTS = {
  * their delta unreadable.
  */
 export const MODELS = {
-  planner: envString("CODEGEN_EVAL_PLANNER_MODEL", "claude-sonnet-5"),
-  walker: envString("CODEGEN_EVAL_WALKER_MODEL", "claude-sonnet-5"),
-  judge: envString("CODEGEN_EVAL_JUDGE_MODEL", "claude-sonnet-5"),
+  planner: envString("CODEGEN_EVAL_PLANNER_MODEL", "claude-sonnet-5-5"),
+  walker: envString("CODEGEN_EVAL_WALKER_MODEL", "claude-sonnet-5-5"),
+  judge: envString("CODEGEN_EVAL_JUDGE_MODEL", "claude-sonnet-5-5"),
 } as const;
 
 export const PLANNER = {

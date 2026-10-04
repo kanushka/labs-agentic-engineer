@@ -91,9 +91,9 @@ func newCardDB(t *testing.T, apiStatus int) *cardDB {
 	return &cardDB{db: db, svc: svc, conns: conns, config: config, store: store, repo: repo, connRepo: connRepo, endpoint: endpoint}
 }
 
-// sonnetRates prices (api.anthropic.com, claude-sonnet-5) only.
+// sonnetRates prices (api.anthropic.com, claude-sonnet-5-5), the default, only.
 func sonnetRates() *modelcost.Stamper {
-	return modelcost.NewStamper([]modelcost.ModelRate{{Host: "api.anthropic.com", ModelID: "claude-sonnet-5", InputPerMTok: 2}})
+	return modelcost.NewStamper([]modelcost.ModelRate{{Host: "api.anthropic.com", ModelID: "claude-sonnet-5-5", InputPerMTok: 2}})
 }
 
 func llmPatch(w orgconfig.LLMPatch) orgconfig.ConfigPatch {
@@ -159,7 +159,7 @@ func TestModelConnectionConnect_HappyPath_DB(t *testing.T) {
 	// The key arrives padded — the card must trim before shape-check + store.
 	out := c.patch(t, "acme", keyPatch("  "+anthropicUnitKey+"\n"))
 	row := c.row(t, "acme")
-	if row.Format != "anthropic" || row.BaseURL != "https://api.anthropic.com/v1" || row.Model != "claude-sonnet-5" ||
+	if row.Format != "anthropic" || row.BaseURL != "https://api.anthropic.com/v1" || row.Model != "claude-sonnet-5-5" ||
 		row.AuthScheme != "x-api-key" || row.ContextWindow != nil || row.OutputLimit != nil || row.ImageInput != "yes" {
 		t.Fatalf("row = %+v, want Anthropic's API with its defaults and NULL limits", row)
 	}

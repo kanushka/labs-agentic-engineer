@@ -44,7 +44,7 @@ aepAgents:
     pullPolicy: IfNotPresent
   port: 9090
   logLevel: "info"
-  model: "claude-sonnet-5"
+  model: "claude-sonnet-5-5"
   maxSteps: 20
   bodyLimit: "10mb"
   resources:

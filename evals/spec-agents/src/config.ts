@@ -18,7 +18,7 @@
 
 /**
  * One place for the eval framework's knobs: model choices, paths, and env.
- * The sim user and judge are PINNED to temperature 0 (map #351 decisions
+ * The sim user and judge are PINNED to one model each (map #351 decisions
  * #354/#355) so score variance attributes to the agent under eval.
  */
 
@@ -47,12 +47,12 @@ export const REVIEWS_DIR = join(PACKAGE_ROOT, "eval-reviews");
 
 /**
  * Sim user + judge model (decisions #354/#355). The intent is deterministic
- * scoring — claude-sonnet-5 does not accept a temperature parameter, so there
- * is no sampling knob to pin; if these ever move to a model that does, pass
- * temperature 0 explicitly.
+ * scoring — claude-sonnet-5-5 rejects any non-default temperature, top_p or
+ * top_k with a 400, so there is no sampling knob to pin; if these ever move to
+ * a model that accepts one, pass temperature 0 explicitly.
  */
-export const SIM_MODEL = "claude-sonnet-5";
-export const JUDGE_MODEL = "claude-sonnet-5";
+export const SIM_MODEL = "claude-sonnet-5-5";
+export const JUDGE_MODEL = "claude-sonnet-5-5";
 
 /** Default per-section agent-turn cap (#354); scenarios may override. */
 export const DEFAULT_MAX_TURNS = 10;

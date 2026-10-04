@@ -124,7 +124,7 @@ export const MODEL_PROBE_PROVIDER_LIMIT_KEY = "limit";
 
 /** Each host's model listing, as its `GET /models` would answer. */
 export const modelListings: Record<string, string[]> = {
-  "api.anthropic.com": ["claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"],
+  "api.anthropic.com": ["claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-5"],
   "ollama.com": ["glm-5.3", "kimi-k3", "deepseek-v4-pro:0813", "gpt-oss:20b", "gpt-oss:120b"],
   "openrouter.ai": ["z-ai/glm-5.3", "moonshotai/kimi-k3", "anthropic/claude-sonnet-5"],
 };
@@ -134,7 +134,7 @@ export const ollamaVisionModels = ["kimi-k3"];
 
 /** The (host, model) pairs the platform holds a rate for. */
 export const pricedModels: Record<string, string[]> = {
-  "api.anthropic.com": ["claude-sonnet-5", "claude-haiku-4-5"],
+  "api.anthropic.com": ["claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-4-5"],
 };
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1";
@@ -148,7 +148,7 @@ export function llmFormatsFor(availableRuntimes: AgentRuntime[]): LLMFormatOptio
     {
       kind: "anthropic",
       defaultBaseURL: ANTHROPIC_URL,
-      defaultModel: "claude-sonnet-5",
+      defaultModel: "claude-sonnet-5-5",
       runtimes: availableRuntimes.filter((r) => r === "claude-code" || r === "opencode"),
     },
     {
