@@ -115,6 +115,12 @@ lives in the overlay (outside OSS CI); that is an accepted trade-off — public
 coverage never exercised it either. Detail →
 [`design/composition-seam.md`](design/composition-seam.md).
 
+**`cmd/design-derive`** is a second, offline entry: it runs the POST /build
+platform-resource derivation (`spec.DerivePlatformResourceFacts`) over a design
+directory on disk, with the resource-type catalog decoded from manifest files
+(`openchoreo.ResourceTypeDir`). The playground runs it before each coding run
+(playground ADR-0003).
+
 ## Conventions
 
 - **Contract-first.** Every HTTP op is generated from

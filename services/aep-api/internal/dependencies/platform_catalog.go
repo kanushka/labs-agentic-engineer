@@ -48,18 +48,27 @@ type PlatformResourceType struct {
 	Markers TypeMarkers `json:"-"`
 }
 
+// ClusterResourceTypeSource is the one read the catalog makes: every installed
+// ClusterResourceType, decoded into the OC wire type. The live OC client is the
+// production source; openchoreo.ResourceTypeDir reads the same CRs off manifest
+// files, so cmd/design-derive projects a local catalog through this exact code.
+type ClusterResourceTypeSource interface {
+	ListClusterResourceTypes(ctx context.Context) ([]openchoreo.ResourceType, error)
+}
+
 // ResourceTypeCatalog lists installed cluster-scoped ClusterResourceTypes
 // (read-only). AEP NEVER authors these — it only discovers them (the cluster
 // PE installs them out-of-band). When enabled is false, List returns an empty
 // slice without calling OpenChoreo (deployments with no platform-resource catalog).
 type ResourceTypeCatalog struct {
-	rc      openchoreo.ResourceClient
+	rc      ClusterResourceTypeSource
 	enabled bool
 }
 
-// NewResourceTypeCatalog wires the read-only discovery over the OC client.
-// Pass enabled=false to disable catalog discovery (empty list, no OC call).
-func NewResourceTypeCatalog(rc openchoreo.ResourceClient, enabled bool) *ResourceTypeCatalog {
+// NewResourceTypeCatalog wires the read-only discovery over a source of
+// ClusterResourceTypes (the OC client in production). Pass enabled=false to
+// disable catalog discovery (empty list, no source read).
+func NewResourceTypeCatalog(rc ClusterResourceTypeSource, enabled bool) *ResourceTypeCatalog {
 	return &ResourceTypeCatalog{rc: rc, enabled: enabled}
 }
 
