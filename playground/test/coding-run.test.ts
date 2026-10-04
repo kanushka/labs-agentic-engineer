@@ -31,6 +31,7 @@ import {
   resolveRuntime,
   isFailedAgent,
   renderMergedTimeline,
+  runContainerName,
   toolJarOverlay,
   workingTreeToolJar,
 } from "../src/engine/coding-run.js";
@@ -695,4 +696,13 @@ test("a hand-set search strategy is kept, and no connection means today's run", 
     const { args } = dockerInvocation(invocationOpts, "/r", "c1");
     assert.ok(args.includes("ANTHROPIC_API_KEY") && !args.includes("AEP_MODEL_WEB_SEARCH"));
   });
+});
+
+test("runContainerName: two projects started in the same millisecond get different containers", () => {
+  const stamp = "2026-10-04T06-26-17-346Z";
+  const a = runContainerName("/home/dev/.aep-evals/codegen/s1/expense-claims-sonnet-1", stamp);
+  const b = runContainerName("/home/dev/.aep-evals/codegen/s1/onboarding-tracker-sonnet-1", stamp);
+  assert.notEqual(a, b);
+  assert.equal(a, "aep-play-expense-claims-sonnet-1-2026-10-04T06-26-17-346Z");
+  assert.match(runContainerName("/tmp/my project!", stamp), /^aep-play-my-project--2026/);
 });

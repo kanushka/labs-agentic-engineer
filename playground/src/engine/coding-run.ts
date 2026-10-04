@@ -838,6 +838,21 @@ async function ensureRunnerImage(silent?: boolean): Promise<void> {
  * prod: "a later cycle picks it up"). Which issues actually landed is never
  * read back here; it is whatever the project tree looks like afterward.
  */
+/**
+ * Names a run's container so its scratch can be copied out after it exits.
+ *
+ * The run dir's timestamp is unique within ONE project, not across projects:
+ * two projects started in the same millisecond (an eval sweep at
+ * `--concurrency 2` did exactly that) got the same name, and the second
+ * `docker run` died on the conflict. The project's directory name makes it
+ * unique on the machine. Docker accepts `[a-zA-Z0-9][a-zA-Z0-9_.-]`, so anything
+ * else in the name becomes `-`. Exported for its test.
+ */
+export function runContainerName(projectDir: string, stamp: string): string {
+  const project = basename(projectDir).replace(/[^a-zA-Z0-9_.-]/g, "-");
+  return `aep-play-${project}-${stamp}`;
+}
+
 export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunResult> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const runDir = join(opts.projectDir, ".aep-playground", "runs", `${stamp}-code`);
@@ -910,9 +925,7 @@ export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunR
 
   if (!opts.silent && runtime !== DEFAULT_RUNTIME) output.write(`  ℹ runtime: ${runtime} (${runnerImage(runtime)})\n`);
 
-  // Names this run's container so its scratch can be copied out after it exits.
-  // The run dir's timestamp is already unique per run; `docker` accepts it as-is.
-  const containerName = mode === "docker" ? `aep-play-${stamp}` : "";
+  const containerName = mode === "docker" ? runContainerName(opts.projectDir, stamp) : "";
   const { command, args, env } =
     mode === "docker" ? dockerInvocation(opts, runDir, containerName) : hostInvocation(opts, runDir);
 
