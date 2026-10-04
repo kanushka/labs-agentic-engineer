@@ -158,10 +158,18 @@ export async function isPortAvailable(port: number): Promise<boolean> {
   return (await isPortFree(port)) && !(await isPortBusy(port));
 }
 
-/** The first free port from `from`, so two wired sessions never fight over one. */
-export async function findFreePort(from: number, to = from + 40): Promise<number> {
+/**
+ * The first port from `from` that `take` grants. A wired session passes its
+ * port leases' `take` (ports.ts), because a probe alone answers only for this
+ * instant and two sessions starting together would both be told the same port.
+ */
+export async function findFreePort(
+  from: number,
+  take: (port: number) => Promise<boolean> = isPortAvailable,
+  to = from + 40,
+): Promise<number> {
   for (let port = from; port <= to; port += 1) {
-    if (await isPortAvailable(port)) return port;
+    if (await take(port)) return port;
   }
   throw new Error(`no free port between ${String(from)} and ${String(to)}`);
 }

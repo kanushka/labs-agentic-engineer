@@ -25,7 +25,7 @@
  * real service (mock/wired.ts). A production nginx image can do neither.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findFreePort, run, startGroup, waitForHttp, type ProcessGroup } from "./runtime.js";
 
@@ -40,34 +40,83 @@ export interface WiredEnv {
   header: string;
 }
 
+/** The facts a `node_modules` tree's native binaries were resolved for. */
+export interface InstallHost {
+  platform: string;
+  arch: string;
+  /** Node's module ABI (`process.versions.modules`): what a compiled addon is built against. */
+  abi: string;
+}
+
+export function thisHost(): InstallHost {
+  return { platform: process.platform, arch: process.arch, abi: process.versions.modules };
+}
+
+/**
+ * What `installIfNeeded` writes into the tree after its own `npm ci`: the host
+ * it installed for, and npm's hidden lockfile as it left it. npm rewrites
+ * `node_modules/.package-lock.json` on every install, so a tree some other
+ * install has touched since no longer matches, whoever did it.
+ */
+interface InstallStamp extends InstallHost {
+  lockfile: { mtimeMs: number; size: number } | null;
+}
+
+const STAMP = ".aep-host-install.json";
+
+function hiddenLockfile(modules: string): InstallStamp["lockfile"] {
+  try {
+    const stat = statSync(join(modules, ".package-lock.json"));
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+}
+
+function currentStamp(modules: string, host: InstallHost): InstallStamp {
+  return { ...host, lockfile: hiddenLockfile(modules) };
+}
+
 /**
  * Whether `npm ci` has to run before the dev server will start.
  *
  * The coding run installs `node_modules` INSIDE the Linux runner image, so a
- * project that has never been touched on the host carries Linux binaries: Vite's
- * rollup resolves a platform-specific optional dependency, finds none for this
- * machine, and dies with an error about a missing module that reads as a broken
- * app rather than a foreign install. Checking `@rollup` for this platform's
- * package is the cheapest true test of "were these deps installed here".
+ * project that has never been touched on the host carries Linux binaries. Vite's
+ * bundler (rollup's `@rollup/rollup-<platform>-<arch>`, rolldown's
+ * `@rolldown/binding-*`, esbuild's `@esbuild/*`, and whichever comes next) then
+ * finds no binding for this machine and dies with a missing-module error that
+ * reads as a broken app rather than a foreign install.
+ *
+ * So the question is not "does some package look like this platform's" (that
+ * answer is per bundler, and a list of bundlers goes stale with the next Vite
+ * major) but "did THIS host install this tree, and has nothing reinstalled it
+ * since". Only a host install writes the stamp; a container install never does,
+ * and `npm ci` anywhere deletes it with the rest of the tree. A tree a developer
+ * installed by hand on this machine has no stamp either, and costs one `npm ci`.
  */
-export function needsInstall(
-  appPath: string,
-  hostPlatform: string = process.platform,
-  hostArch: string = process.arch,
-): boolean {
-  if (!existsSync(join(appPath, "node_modules"))) return true;
-  const rollup = join(appPath, "node_modules", "@rollup");
-  if (!existsSync(rollup)) return false; // not a rollup app: nothing platform-specific to get wrong
+export function needsInstall(appPath: string, host: InstallHost = thisHost()): boolean {
+  const modules = join(appPath, "node_modules");
+  if (!existsSync(modules)) return true;
+  let recorded: InstallStamp;
   try {
-    // PLATFORM AND ARCHITECTURE, because rollup's packages are named for both
-    // (`rollup-darwin-arm64`, `rollup-linux-x64-gnu`) and the platform alone
-    // matches across the pair: an x64 install on an arm64 Mac reads as this
-    // machine's, and Vite then dies on exactly the missing module this check is
-    // here to pre-empt.
-    return !readdirSync(rollup).some((entry) => entry.includes(`${hostPlatform}-${hostArch}`));
+    recorded = JSON.parse(readFileSync(join(modules, STAMP), "utf8")) as InstallStamp;
   } catch {
-    return true;
+    return true; // no stamp: installed somewhere else, or by something else
   }
+  const now = currentStamp(modules, host);
+  return !(
+    recorded.platform === now.platform &&
+    recorded.arch === now.arch &&
+    recorded.abi === now.abi &&
+    recorded.lockfile?.mtimeMs === now.lockfile?.mtimeMs &&
+    recorded.lockfile?.size === now.lockfile?.size
+  );
+}
+
+/** Record that this host installed the tree, as it stands right after the install. */
+export function stampHostInstall(appPath: string, host: InstallHost = thisHost()): void {
+  const modules = join(appPath, "node_modules");
+  writeFileSync(join(modules, STAMP), JSON.stringify(currentStamp(modules, host)), "utf8");
 }
 
 /** `npm ci`, quietly, when the tree was installed somewhere else. */
@@ -81,6 +130,7 @@ export async function installIfNeeded(appPath: string, onLine?: (line: string) =
   if (result.code !== 0) {
     throw new Error(`npm ci failed in ${appPath} (exit ${String(result.code)}):\n${result.output.slice(-2000)}`);
   }
+  stampHostInstall(appPath);
   return true;
 }
 
@@ -91,8 +141,8 @@ export interface DevServer {
 }
 
 /**
- * Start `npm run dev:mock` wired to the real API, on a free port, as its own
- * process group.
+ * Start `npm run dev:mock` wired to the real API, on a port `take` leased to
+ * this session, as its own process group.
  *
  * `--strictPort` on purpose: the port is in the URL that is about to be opened
  * and printed, and a Vite that quietly moves to the next one would leave a
@@ -101,9 +151,10 @@ export interface DevServer {
 export async function startWiredDevServer(
   appPath: string,
   wired: WiredEnv,
+  take: (port: number) => Promise<boolean>,
   onLine?: (line: string) => void,
 ): Promise<DevServer> {
-  const port = await findFreePort(FIRST_DEV_PORT);
+  const port = await findFreePort(FIRST_DEV_PORT, take);
   const group = startGroup("npm", ["run", "dev:mock", "--", "--port", String(port), "--strictPort"], {
     cwd: appPath,
     capture: true,

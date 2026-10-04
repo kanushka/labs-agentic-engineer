@@ -399,21 +399,23 @@ export function buildWirePlan(specs: WireSpecs, options: PlanOptions = {}): Wire
 }
 
 /**
- * Give every service a free host port, in declared order.
+ * Give every service a host port, in declared order.
  *
- * Separate from `buildWirePlan` and takes its "is this port free?" answer as an
- * argument, because whether 19090 is taken is a fact about the machine at this
- * second: folding it into the plan would make the plan untestable and its
- * golden file a lie the moment anything else was listening.
+ * Separate from `buildWirePlan` and takes its "may this session have this
+ * port?" answer as an argument, because whether 19090 is taken is a fact about
+ * the machine at this second: folding it into the plan would make the plan
+ * untestable and its golden file a lie the moment anything else was listening.
+ * The session answers with its port leases (ports.ts), so a port granted here
+ * is this session's until teardown, not merely free when it was asked.
  */
 export async function assignHostPorts(
   plan: WirePlan,
-  isFree: (port: number) => Promise<boolean>,
+  take: (port: number) => Promise<boolean>,
   from = FIRST_HOST_PORT,
 ): Promise<WirePlan> {
   let candidate = from;
   for (const service of plan.services) {
-    while (!(await isFree(candidate))) candidate += 1;
+    while (!(await take(candidate))) candidate += 1;
     service.hostPort = candidate;
     candidate += 1;
   }

@@ -45,6 +45,7 @@ import { ensureKeypair, mintAssertion, roleTokens, WIRE_HEADER, WIRE_ISSUER } fr
 import type { WireSession } from "./state.js";
 import { composeDown, composeLogs, composePs, composeUp, composeUpOne, type ComposeTarget } from "./docker.js";
 import { panelRows, readyLine, resolveKey, type PanelModel } from "./panel.js";
+import { portLeases, type PortLeases } from "./ports.js";
 import {
   assignHostPorts,
   buildWirePlan,
@@ -133,8 +134,28 @@ export async function wireCommand(
   const plan = buildWirePlan(readWireSpecs(projectDir, slug), {
     secret: (database) => databaseSecret(projectDir, database),
   });
-  await assignHostPorts(plan, isPortAvailable);
+  // Leased, not just probed: a port stays this session's from here until its
+  // teardown, so a session starting beside this one cannot be handed it while
+  // this one is still building the image that will bind it (ports.ts).
+  const leases = portLeases({ isAvailable: isPortAvailable });
+  try {
+    await assignHostPorts(plan, leases.take);
+    return await bringUp(projectDir, plan, previous, leases, options, say, confirmDir);
+  } finally {
+    await leases.release();
+  }
+}
 
+/** Steps 2 (the rest) to 9, with the ports already this session's. */
+async function bringUp(
+  projectDir: string,
+  plan: WirePlan,
+  previous: WireSession | null,
+  leases: PortLeases,
+  options: WireOptions,
+  say: (line: string) => void,
+  confirmDir?: () => Promise<boolean>,
+): Promise<WireOutcome> {
   const blockers = planBlockers(plan, projectDir, options.skip ?? []);
   if (blockers.length > 0) {
     for (const blocker of blockers) say(`  ✗ ${blocker}`);
@@ -150,7 +171,7 @@ export async function wireCommand(
   for (const line of describePlan(plan)) say(line);
   say("");
 
-  const state = loadProjectState(projectDir, slug);
+  const state = loadProjectState(projectDir, projectSlug(projectDir));
   if (!state.wireConfirmed && !options.yes) {
     if (!confirmDir || !(await confirmDir())) {
       return { ok: false, detail: "not confirmed — re-run with --yes or confirm in the TUI" };
@@ -217,6 +238,9 @@ export async function wireCommand(
       if (running.dev) await running.dev.group.stop();
       await composeDown(running.target);
       if (running.dev && (await isPortBusy(running.dev.port))) await killListener(running.dev.port);
+      // Here as well as in wireCommand's finally: a signal ends the process
+      // from this teardown, and the finally never runs.
+      await leases.release();
       say("STOPPED");
     })();
     return tearing;
@@ -249,6 +273,7 @@ export async function wireCommand(
           issuer: WIRE_ISSUER,
           header: WIRE_HEADER,
         },
+        leases.take,
         (line) => {
           appendFileSync(logFile(projectDir, "webapp"), `${line}\n`);
         },
