@@ -25,6 +25,13 @@ location of each fact of a coding run is in `playground/AGENTS.md`, section
    after the sweep. An older attempt has no `checklist.yaml`. Then get the item
    text from `walk/result.json`, and say so in the analysis.
 4. Open the screenshot of each failed item in `walk/shots/`.
+5. If the sweep has repeats, group each failed item across the attempts of
+   the same case and config. A failure in most attempts is a pattern. A
+   failure in one attempt is a suspicion. Find the root cause of patterns
+   first.
+
+For a large sweep, give each case to a subagent that uses this skill. Then
+merge their findings into one doc.
 
 ## 2. Classify each failure
 
