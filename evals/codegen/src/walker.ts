@@ -150,6 +150,11 @@ function guardBrowserArgs(words: string[]): GuardDecision {
       const decision = guardBrowserArgs(shellWords(inner));
       if (!decision.allow) return decision;
     }
+    // Without --bail a batch goes on after a failed command: a click on a
+    // stale ref fails, and the key presses after it land wherever focus is. On
+    // a native date input's picker button, headless Chrome then repeats the
+    // key without end and the browser stops answering (measured).
+    if (!words.includes("--bail")) return deny("use `agent-browser batch --bail …`: a command after a failed one acts on the wrong element");
   }
   return { allow: true };
 }
@@ -158,8 +163,50 @@ function deny(reason: string): GuardDecision {
   return { allow: false, reason };
 }
 
-/** The guard as the SDK hook that enforces it. */
-export function guardHooks(walkDir: string): { PreToolUse: HookCallbackMatcher[] } {
+/**
+ * One browser command at a time. The browser is one page: commands that
+ * overlap race, so a ref goes stale under a click and a key press lands on
+ * whatever holds focus. Measured once: a walker sent a date input's clicks and
+ * key presses as twenty parallel tool calls, the keys reached the input's
+ * picker button, and headless Chrome froze. The session runs parallel tool
+ * calls at once, so the prompt alone does not hold this: a command that starts
+ * while another runs is refused, and the walker sends it again after.
+ */
+export class BrowserLane {
+  private running: string | undefined;
+
+  /** A `Bash` call that the guard allowed is about to run. */
+  enter(toolUseId: string): GuardDecision {
+    if (this.running !== undefined && this.running !== toolUseId) {
+      return deny(
+        "another agent-browser command is still running. Send one command, read its result, then send the next; " +
+          "for a fixed sequence, send one `agent-browser batch`",
+      );
+    }
+    this.running = toolUseId;
+    return { allow: true };
+  }
+
+  /** That call finished, or failed. */
+  leave(toolUseId: string): void {
+    if (this.running === toolUseId) this.running = undefined;
+  }
+}
+
+/** The guard and the browser lane as the SDK hooks that enforce them. */
+export function guardHooks(walkDir: string): Partial<Record<"PreToolUse" | "PostToolUse" | "PostToolUseFailure", HookCallbackMatcher[]>> {
+  const lane = new BrowserLane();
+  const release: HookCallbackMatcher = {
+    matcher: "Bash",
+    hooks: [
+      async (hookInput) => {
+        if (hookInput.hook_event_name === "PostToolUse" || hookInput.hook_event_name === "PostToolUseFailure") {
+          lane.leave(hookInput.tool_use_id);
+        }
+        return {};
+      },
+    ],
+  };
   return {
     PreToolUse: [
       {
@@ -167,7 +214,8 @@ export function guardHooks(walkDir: string): { PreToolUse: HookCallbackMatcher[]
         hooks: [
           async (hookInput) => {
             if (hookInput.hook_event_name !== "PreToolUse") return {};
-            const decision = guardTool(hookInput.tool_name, hookInput.tool_input, walkDir);
+            let decision = guardTool(hookInput.tool_name, hookInput.tool_input, walkDir);
+            if (decision.allow && hookInput.tool_name === "Bash") decision = lane.enter(hookInput.tool_use_id);
             if (decision.allow) return {};
             return {
               hookSpecificOutput: {
@@ -180,6 +228,8 @@ export function guardHooks(walkDir: string): { PreToolUse: HookCallbackMatcher[]
         ],
       },
     ],
+    PostToolUse: [release],
+    PostToolUseFailure: [release],
   };
 }
 
@@ -247,7 +297,7 @@ export function walkerPrompt(opts: { baseUrl: string; roles: string[]; items: It
     : "";
   return `You are testing a running web application against a checklist. You have not seen its source and you will not: the browser is the only way you learn anything.
 
-THE BROWSER is the \`agent-browser\` CLI, through Bash, ONE command per call — pipes, \`;\`, \`&&\`, redirects and substitutions are refused. Your session is already isolated; never pass --session. \`agent-browser skills get core\` prints the full reference. Two readings of a page, and they are not interchangeable:
+THE BROWSER is the \`agent-browser\` CLI, through Bash, ONE command per call — pipes, \`;\`, \`&&\`, redirects and substitutions are refused. Send one call at a time and read its result before the next: a command sent while another runs is refused. Send a fixed sequence (click a field, then press its keys) as one \`agent-browser batch --bail "click @e4" "press 2" …\`, with refs from a snapshot taken after the page last changed. Your session is already isolated; never pass --session. \`agent-browser skills get core\` prints the full reference. Two readings of a page, and they are not interchangeable:
   agent-browser snapshot -c                what the page SHOWS (text, rows, badges) — judge from this
   agent-browser snapshot -i                the controls only, with @refs to act on — it hides text and rows
 Screenshots go to shots/<id>.png. You may Read and Write files in your working directory (screenshots included) and nowhere else.

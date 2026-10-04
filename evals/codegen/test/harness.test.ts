@@ -29,7 +29,7 @@ import { dirtyPaths } from "../src/provenance.js";
 import { resolveCodingRun, usageByAgent } from "../src/log.js";
 import { PATHS, PROVENANCE } from "../src/config.js";
 import { baseUrl, isStopped, parseReady } from "../src/play.js";
-import { confirmEachAction, guardTool, normalizeWalk, shellWords, walkerProblem } from "../src/walker.js";
+import { BrowserLane, confirmEachAction, guardTool, normalizeWalk, shellWords, walkerProblem } from "../src/walker.js";
 import { bandFor, scoreAttempt, type Judgement } from "../src/score.js";
 import { countEvents, lastResultCost, readRunSettled } from "../src/metrics.js";
 import { attemptLine, compare, failureText, pickBaseline, renderReport, stat, summarize, type Summary } from "../src/report.js";
@@ -260,6 +260,11 @@ test("walker: every command inside a batch is held to the same rules", () => {
     (guardTool("Bash", { command: `agent-browser batch "eval document.title"` }, dir) as { reason: string }).reason,
     /eval is not available/,
   );
+  // A batch that goes on after a failed click sends its keys to the wrong element.
+  assert.match(
+    (guardTool("Bash", { command: `agent-browser batch "click @e4" "press 2"` }, dir) as { reason: string }).reason,
+    /--bail/,
+  );
   // Kept: one call for a date typed key by key.
   assert.deepEqual(
     guardTool("Bash", { command: `agent-browser batch --bail "click @e4" "press 2" "press ArrowRight" "fill @e5 'route 66'"` }, dir),
@@ -285,6 +290,18 @@ test("walker: Read and Write stay inside walk/", () => {
   assert.equal(guardTool("Read", { file_path: "/w/project/src/App.tsx" }, dir).allow, false);
   assert.equal(guardTool("Write", { file_path: "../x" }, dir).allow, false);
   assert.equal(guardTool("Write", { file_path: "/w/walk-evil/x" }, dir).allow, false);
+});
+
+test("walker: one browser command runs at a time; a finished one frees the lane", () => {
+  const lane = new BrowserLane();
+  assert.deepEqual(lane.enter("t1"), { allow: true });
+  const overlapping = lane.enter("t2");
+  assert.equal(overlapping.allow, false);
+  assert.match((overlapping as { reason: string }).reason, /batch/);
+  lane.leave("t2"); // a refused call never held the lane
+  assert.equal(lane.enter("t3").allow, false);
+  lane.leave("t1");
+  assert.deepEqual(lane.enter("t3"), { allow: true });
 });
 
 test("walker: unreported items become blocked/not reached; unknown ids are dropped", () => {
