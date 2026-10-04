@@ -27,7 +27,8 @@
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { findFreePort, run, startGroup, waitForHttp, type ProcessGroup } from "./runtime.js";
+import { classifyDevServer, WireStepFailed } from "./failure.js";
+import { findFreePort, isPortBusy, run, startGroup, waitForHttp, type ProcessGroup } from "./runtime.js";
 
 /** Where the dev server is searched for a port, the same window `walk.sh` uses. */
 const FIRST_DEV_PORT = 5173;
@@ -128,7 +129,13 @@ export async function installIfNeeded(appPath: string, onLine?: (line: string) =
     ...(onLine ? { onLine } : {}),
   });
   if (result.code !== 0) {
-    throw new Error(`npm ci failed in ${appPath} (exit ${String(result.code)}):\n${result.output.slice(-2000)}`);
+    // The environment's: the coding run already installed this exact lockfile
+    // inside the runner image, so what failed here is this host's install (its
+    // network, its registry, its toolchain), not the app's dependency set.
+    throw new WireStepFailed({
+      cause: "environment",
+      reason: `npm ci failed on this host in ${appPath} (exit ${String(result.code)}) — see .aep-playground/wire/logs/webapp.log`,
+    });
   }
   stampHostInstall(appPath);
   return true;
@@ -154,7 +161,12 @@ export async function startWiredDevServer(
   take: (port: number) => Promise<boolean>,
   onLine?: (line: string) => void,
 ): Promise<DevServer> {
-  const port = await findFreePort(FIRST_DEV_PORT, take);
+  let port: number;
+  try {
+    port = await findFreePort(FIRST_DEV_PORT, take);
+  } catch (e) {
+    throw new WireStepFailed({ cause: "environment", reason: e instanceof Error ? e.message : String(e) });
+  }
   const group = startGroup("npm", ["run", "dev:mock", "--", "--port", String(port), "--strictPort"], {
     cwd: appPath,
     capture: true,
@@ -169,10 +181,14 @@ export async function startWiredDevServer(
   });
 
   const url = `http://localhost:${String(port)}`;
-  const up = await waitForHttp(`${url}/`, 90_000);
+  const up = await waitForHttp(`${url}/`, 90_000, () => group.exitCode() !== null);
   if (!up) {
+    const exitCode = group.exitCode();
     await group.stop();
-    throw new Error(`the dev server did not answer on ${url} — see the log in .aep-playground/wire/logs/`);
+    // Asked only once ours is gone: with --strictPort, Vite exits rather than
+    // move when its port is taken, and what is listening there now is not it.
+    const portHeldByOther = exitCode !== null && (await isPortBusy(port));
+    throw new WireStepFailed(classifyDevServer({ exitCode, portHeldByOther, url }));
   }
 
   // The dev server itself says whether the wired branch engaged. Asking it is
@@ -181,10 +197,12 @@ export async function startWiredDevServer(
   // nobody, which is indistinguishable from working until the data is wrong.
   if (!(await servesWiredEnv(url))) {
     await group.stop();
-    throw new Error(
-      `${appPath} came up in plain mock mode — /env-config.js does not set window.__AEP_WIRED__. ` +
+    throw new WireStepFailed({
+      cause: "app",
+      reason:
+        `${appPath} came up in plain mock mode — /env-config.js does not set window.__AEP_WIRED__. ` +
         `Its mock/ files are older than wired mode; re-copy them from the react-webapp skill's assets.`,
-    );
+    });
   }
   return { url, port, group };
 }

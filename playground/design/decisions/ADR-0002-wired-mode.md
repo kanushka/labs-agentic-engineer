@@ -108,6 +108,20 @@ token's claims (including whether the deployed gateway's assertion carries
 platform env injection, `workload.yaml`, the webapp's nginx image and its `/api`
 proxy, and CORS at the gateway.
 
+**A failed bring-up says whose failure it was** (added 2026-10-04). The codegen
+eval scores the generated app through `wire`, and a port race, a host install
+gap and a wedged browser had each been scored as the app's 0. So compose runs
+as pull → `build --progress json` → `up --no-build --wait`, and
+`engine/wire/failure.ts` classifies each failure from a structured signal:
+the first failing BuildKit vertex (a Dockerfile step is the app's, a base
+image or context fetch the environment's), the containers' `docker inspect`
+state (never started with a daemon error is the environment's; the project's
+own service started and died is the app's, the database `wire` supplies is
+not), and whether the dev server exited. A failure ends with `FAILED
+<app|environment> <reason>` and exit status 3 or 4. Triage now reads logs only
+when the app's own service died: a held port or a failed pull is nothing a
+service log explains.
+
 ### Four decisions the shape forced
 
 **A project with no web application gets a printed `curl` per role, not a

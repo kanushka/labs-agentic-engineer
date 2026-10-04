@@ -22,7 +22,7 @@
  *   1  preflight — docker, compose, openssl, a Dockerfile per service
  *   2  plan      — design.json + security.json → WirePlan, shown and confirmed
  *   3  mint      — the gateway keypair and one mock bearer per role
- *   4  compose   — the file, then `up --build --wait`
+ *   4  compose   — the file, then pull, build, `up --no-build --wait`
  *   5  webapp    — `npm ci` if the tree came from the runner image, then dev:mock
  *   6  pick      — who are you entering as
  *   7  open      — the browser, unless there is no terminal to have asked
@@ -33,6 +33,11 @@
  * the session: quitting is the cleanup, and a session that died hard is reaped
  * by the next start, by compose project name. That is one thing to learn and
  * one thing that can be left running by mistake, rather than four.
+ *
+ * A session that cannot come up says WHOSE failure that was — the app's or the
+ * environment's — as `FAILED <cause> <reason>` and a matching exit code
+ * (failure.ts), so a driver never has to read the prose to know whether the
+ * generated app is what broke.
  */
 
 import { appendFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -43,7 +48,18 @@ import { loadProjectState, saveProjectState } from "../../state/project.js";
 import { openPinnedPane } from "../pinned-pane.js";
 import { ensureKeypair, mintAssertion, roleTokens, WIRE_HEADER, WIRE_ISSUER } from "./assertion.js";
 import type { WireSession } from "./state.js";
-import { composeDown, composeLogs, composePs, composeUp, composeUpOne, type ComposeTarget } from "./docker.js";
+import {
+  composeBuild,
+  composeDown,
+  composeInspect,
+  composeLogs,
+  composePs,
+  composePull,
+  composeStart,
+  composeUpOne,
+  type ComposeTarget,
+} from "./docker.js";
+import { classifyBuild, classifyUp, failedLine, parseInspect, WireStepFailed, type WireCause, type WireFailure } from "./failure.js";
 import { panelRows, readyLine, resolveKey, type PanelModel } from "./panel.js";
 import { portLeases, type PortLeases } from "./ports.js";
 import {
@@ -90,9 +106,11 @@ export interface WireOptions {
   silent?: boolean;
 }
 
-export interface WireOutcome {
-  ok: boolean;
-  detail?: string;
+/** How a session ended. A failure always says whose it was (failure.ts). */
+export type WireOutcome = { ok: true; detail?: string } | { ok: false; detail: string; cause: WireCause };
+
+function failed(failure: WireFailure): WireOutcome {
+  return { ok: false, detail: failure.reason, cause: failure.cause };
 }
 
 /** Everything a running session has to be able to take down again. */
@@ -109,10 +127,31 @@ export async function wireCommand(
   const say = (line: string): void => {
     if (!options.silent) output.write(`${line}\n`);
   };
+  let outcome: WireOutcome;
+  try {
+    outcome = await wireSession(projectDir, options, say, confirmDir);
+  } catch (e) {
+    // A step that knows whose failure it was says so; anything else thrown is
+    // `wire` itself going wrong, which is never the app's.
+    outcome = failed(
+      e instanceof WireStepFailed
+        ? e.failure
+        : { cause: "environment", reason: `wire failed: ${e instanceof Error ? e.message : String(e)}` },
+    );
+  }
+  if (!outcome.ok) say(failedLine({ cause: outcome.cause, reason: outcome.detail }));
+  return outcome;
+}
 
+async function wireSession(
+  projectDir: string,
+  options: WireOptions,
+  say: (line: string) => void,
+  confirmDir?: () => Promise<boolean>,
+): Promise<WireOutcome> {
   // --- 1 preflight ----------------------------------------------------------
   const missing = await missingTools();
-  if (missing.length > 0) return { ok: false, detail: `not available: ${missing.join(", ")}` };
+  if (missing.length > 0) return failed({ cause: "environment", reason: `not available: ${missing.join(", ")}` });
 
   const previous = readWireSession(projectDir);
   // Both halves: the process exists AND its dev server is still answering. The
@@ -121,12 +160,12 @@ export async function wireCommand(
   const stillRunning =
     sessionProcessExists(previous) && (previous?.webappPort ? await isPortBusy(previous.webappPort) : true);
   if (stillRunning) {
-    return {
-      ok: false,
-      detail:
+    return failed({
+      cause: "environment",
+      reason:
         `a wired session is already running for this project (${previous?.composeProject ?? ""}, pid ${String(previous?.pid ?? 0)})` +
         `${previous?.webappPort ? ` on http://localhost:${String(previous.webappPort)}` : ""} — quit it with q in its terminal first`,
-    };
+    });
   }
 
   // --- 2 plan ---------------------------------------------------------------
@@ -139,7 +178,11 @@ export async function wireCommand(
   // this one is still building the image that will bind it (ports.ts).
   const leases = portLeases({ isAvailable: isPortAvailable });
   try {
-    await assignHostPorts(plan, leases.take);
+    try {
+      await assignHostPorts(plan, leases.take);
+    } catch (e) {
+      return failed({ cause: "environment", reason: e instanceof Error ? e.message : String(e) });
+    }
     return await bringUp(projectDir, plan, previous, leases, options, say, confirmDir);
   } finally {
     await leases.release();
@@ -158,8 +201,14 @@ async function bringUp(
 ): Promise<WireOutcome> {
   const blockers = planBlockers(plan, projectDir, options.skip ?? []);
   if (blockers.length > 0) {
-    for (const blocker of blockers) say(`  ✗ ${blocker}`);
-    return { ok: false, detail: "the plan does not hold" };
+    for (const blocker of blockers) say(`  ✗ ${blocker.text}`);
+    // The environment's when any blocker is: a design wired mode cannot run
+    // fails every app, so what else the project lacks is beside the point.
+    const blocker = blockers.find((b) => b.cause === "environment") ?? blockers[0];
+    return failed({
+      cause: blocker?.cause ?? "app",
+      reason: `the plan does not hold: ${blocker?.text ?? ""}${blockers.length > 1 ? ` (+${String(blockers.length - 1)} more)` : ""}`,
+    });
   }
   if (plan.services.length === 0 && plan.webapp) {
     // Nothing to wire: the app has no sibling service, so mock mode already is
@@ -174,7 +223,7 @@ async function bringUp(
   const state = loadProjectState(projectDir, projectSlug(projectDir));
   if (!state.wireConfirmed && !options.yes) {
     if (!confirmDir || !(await confirmDir())) {
-      return { ok: false, detail: "not confirmed — re-run with --yes or confirm in the TUI" };
+      return failed({ cause: "environment", reason: "not confirmed — re-run with --yes or confirm in the TUI" });
     }
     state.wireConfirmed = true;
     saveProjectState(projectDir, state);
@@ -207,15 +256,33 @@ async function bringUp(
     await composeDown(target, true);
   }
 
-  say(`  building and starting ${plan.composeProject} (a cold image build is minutes, not seconds)`);
-  const up = await composeUp(target, (line) => {
+  const composeLog = (line: string): void => {
     appendFileSync(logFile(projectDir, "compose"), `${line}\n`);
+  };
+  const pulled = await composePull(target, composeLog);
+  if (pulled.code !== 0) {
+    say("  ✗ could not pull the images wire supplies");
+    await composeDown(target);
+    return failed({ cause: "environment", reason: `pulling wire's own images failed: ${lastLine(pulled.output)}` });
+  }
+  say(`  building ${plan.composeProject} (a cold image build is minutes, not seconds)`);
+  const built = await composeBuild(target, composeLog);
+  if (built.code !== 0) {
+    const failure = classifyBuild(built.output);
+    say(`  ✗ ${failure.reason}`);
+    for (const line of failure.log.trimEnd().split("\n").slice(-30)) if (line.trim()) say(`    ${line}`);
+    await composeDown(target);
+    return failed(failure);
+  }
+  const up = await composeStart(target, (line) => {
+    composeLog(line);
     if (!options.silent && /error|Error|ERROR|exited|unhealthy/.test(line)) output.write(`    ${line}\n`);
   });
   if (up.code !== 0) {
-    await reportBringUpFailure(projectDir, target, plan, up.output, options, say);
+    const failure = classifyUp(parseInspect(await composeInspect(target)), new Set(plan.services.map((service) => service.name)));
+    await reportBringUpFailure(projectDir, target, plan, failure, up.output, options, say);
     await composeDown(target);
-    return { ok: false, detail: "the backend did not come up" };
+    return failed(failure);
   }
   writeWireSession(projectDir, {
     composeProject: plan.composeProject,
@@ -294,7 +361,10 @@ async function bringUp(
       entry = findEntry(entries, options.role);
       if (!entry) {
         await teardown();
-        return { ok: false, detail: `no role called "${options.role}" — ${entries.map((e) => e.label).join(", ")}` };
+        return failed({
+          cause: "environment",
+          reason: `no role called "${options.role}" — ${entries.map((e) => e.label).join(", ")}`,
+        });
       }
     } else if (interactive && running.dev) {
       entry = await pickRole(entries);
@@ -426,27 +496,41 @@ function newestFileTime(dir: string, depth = 4): number {
   return newest;
 }
 
+/** The last non-empty line of a command's output — what a one-line reason quotes. */
+function lastLine(text: string): string {
+  return (
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .pop() ?? "(no output)"
+  );
+}
+
 function logFile(projectDir: string, name: string): string {
   return `${wirePaths(projectDir).logs}/${name}.log`;
 }
 
-/** The bring-up failed: say which service, tail its log, and offer the model a look. */
+/**
+ * The containers did not come up: say which and why, tail its log, and — when
+ * it is the app's own service that died — offer the model a look. A port or a
+ * database is nothing a reading of the service's log can explain.
+ */
 async function reportBringUpFailure(
   projectDir: string,
   target: ComposeTarget,
   plan: WirePlan,
+  failure: WireFailure & { service: string },
   upOutput: string,
   options: WireOptions,
   say: (line: string) => void,
 ): Promise<void> {
-  const rows = await composePs(target);
-  const broken =
-    rows.find((row) => row.state === "exited" || row.health === "unhealthy")?.name ?? plan.services[0]?.name ?? "";
-  say(`  ✗ ${broken || "the backend"} did not come up`);
+  const broken = failure.service;
+  say(`  ✗ ${failure.reason}`);
   const logs = broken ? await composeLogs(target, broken) : upOutput;
   for (const line of logs.trimEnd().split("\n").slice(-30)) say(`    ${line}`);
 
-  if (options.noTriage) return;
+  if (options.noTriage || failure.cause !== "app") return;
   say("  reading the logs…");
   const verdict = await runTriageAgent({ projectDir, service: broken, logs, plan });
   say(verdict.ok ? `  ${verdict.summary}` : `  (triage unavailable: ${verdict.summary})`);

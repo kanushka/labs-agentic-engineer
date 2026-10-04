@@ -54,6 +54,7 @@ import {
   type PhaseOutcome,
 } from "./commands.js";
 import { checkProject } from "./engine/check.js";
+import { WIRE_EXIT } from "./engine/wire/failure.js";
 import { wireCommand } from "./engine/wire/session.js";
 import { openSession, SKILLS_DIR } from "./engine/session.js";
 import { expandProjectPath, projectDirError } from "./paths.js";
@@ -203,11 +204,19 @@ async function runHeadless(
       // discovery, ordering and fan-out (see its SKILL.md).
       outcome = await codeCommand(projectDir, opts, confirmCodingDir(projectDir));
       break;
-    case "wire":
+    case "wire": {
       // The one verb that ends with a browser open and a panel up: it holds the
       // terminal until you quit, and tears everything down on the way out.
-      outcome = await wireCommand(projectDir, wireOptions, confirmWireDir(projectDir));
+      const wired = await wireCommand(projectDir, wireOptions, confirmWireDir(projectDir));
+      if (!wired.ok) {
+        // Its own status per cause (failure.ts): a driver tells the app's
+        // failure from the machine's without reading a word of it.
+        output.write(`✗ wire: ${wired.detail}\n`);
+        return WIRE_EXIT[wired.cause];
+      }
+      outcome = wired;
       break;
+    }
     case "undo":
       outcome = undoCommand(projectDir, opts);
       break;
