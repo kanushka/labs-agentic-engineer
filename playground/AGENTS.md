@@ -25,7 +25,8 @@ Use this procedure for steps 1 and 3 of the `writing-skills` verify loop.
 - After that, the run does not build the images again. Run
   `FORCE=1 make build-runner` to build them again.
 - `--host` runs the coding agent on your machine with bypassPermissions, not in
-  a container. It uses your own `bal`, `go`, `agent-browser` and `claude` login.
+  a container. It uses your own `bal`, `go` and `claude` login, and the
+  `agent-browser` that `@aep/playground` pins to the runner image's version.
   Use it only on a scratch project.
 - `play` loads `deployments/.env` into its environment. Do not print that file.
   The coding run gets at most one credential variable:
