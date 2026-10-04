@@ -166,7 +166,7 @@ for (const rule of [
   // staged while a subagent is still writing. Only the COMMIT waits for the
   // whole issue — a wait on the whole wave held one run's walk 13m36s past its
   // builder's report while the lead sat blocked on the sibling service.
-  "Wait for one subagent at a time, and act on each report when it arrives.",
+  "Each subagent wakes you with its report when it finishes.",
   "Only the commit waits for the whole issue",
   // A subagent that backgrounds its own build reports "clean" while the command
   // runs on, and the run ends with it orphaned (probe 2's `sleep`, stopped at
@@ -424,7 +424,7 @@ test("the workflow names tool roles, never a runtime's tool names", () => {
 test("the glossary binds every role the workflow names, on every runtime", () => {
   for (const runtime of ["claude-code", "opencode"] as const) {
     const glossary = toolGlossary(runtime);
-    for (const role of ["fan-out tool", "wait tool", "task list"]) {
+    for (const role of ["fan-out tool", "task list"]) {
       assert.ok(glossary.includes(role), `the ${runtime} glossary binds no ${role}`);
       for (const mode of ["github", "local"] as const) {
         assert.ok(composed[mode].includes(role), `${mode} mode never names the ${role}`);

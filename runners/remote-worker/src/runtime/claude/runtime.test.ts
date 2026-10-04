@@ -250,7 +250,8 @@ test("createClaudeCodeRuntime: the glossary binds the fan-out, wait and task-lis
 
   assert.match(glossary, /fan-out tool.*`Agent`/);
   assert.match(glossary, /`run_in_background: true`/);
-  assert.match(glossary, /wait tool.*`TaskOutput`/);
+  // Bound to "end your turn", not a tool: its wording is `tool_glossary.test.ts`'s.
+  assert.match(glossary, /wait tool\*\*: none\./);
   assert.match(glossary, /task list.*`TaskCreate`/);
   // A run has one model and the fan-out call names none: an alias offered here
   // is a second model the org's key may not serve or the platform cannot price

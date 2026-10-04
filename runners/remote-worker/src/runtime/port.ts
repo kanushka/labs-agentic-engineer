@@ -540,7 +540,7 @@ export interface Runtime {
    * A STRING, not the sketch's `{fanOut, wait, stop, edit, write, shell}` record.
    * The repo already had this working (`lib/tool_glossary.ts`) and its content is
    * more than a name per role: it carries the argument that makes each role
-   * work (`run_in_background: true`, `block: true`). A record of bare names would drop exactly the part that
+   * work (`run_in_background: true`). A record of bare names would drop exactly the part that
    * stopped leads guessing, and the caller would have to render it back into
    * prose anyway. Reformatting a working artefact to match a sketch is churn.
    */
