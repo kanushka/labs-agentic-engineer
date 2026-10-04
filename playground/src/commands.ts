@@ -35,6 +35,7 @@ import { openSession, type OpenOptions, type PlaygroundSession } from "./engine/
 import { pendingQuestions, type PendingQuestions } from "./engine/questions.js";
 import { runSpecTurn, type SpecTurnResult } from "./engine/turn.js";
 import { runCodingAgent } from "./engine/coding-run.js";
+import { deriveDesign, type DeriveOutcome } from "./engine/design-derive.js";
 import { renderLogView, resolveRunDir, type LogView } from "./engine/log-read.js";
 import { SKILLS_DIR } from "./engine/session.js";
 import { FsIssueStore, type FoldOutcome } from "./ports/issue-store.js";
@@ -182,6 +183,8 @@ export interface CodeOptions extends PhaseOptions {
   yes?: boolean;
   /** Override the skill library the run reads (tests). */
   codingSkillsDir?: string;
+  /** Override the pre-tag design derivation (tests). */
+  deriveDesign?: (projectDir: string) => Promise<DeriveOutcome>;
   /** `--host`: bare `npx tsx` on the host instead of the default Docker-image run. */
   host?: boolean;
   /** `--api-key`: with `--host`, authenticate with `ANTHROPIC_API_KEY` rather than your Claude login. */
@@ -196,7 +199,8 @@ export interface CodeOptions extends PhaseOptions {
  * works the whole project, not one issue at a time — the `aep` skill
  * discovers its own working set from `issues/` and decides ordering and
  * fan-out itself (see its SKILL.md). This command's only jobs are the
- * MANDATORY undo snapshot and spawning the run.
+ * MANDATORY undo snapshot, production's pre-tag design derivation (ADR-0003)
+ * and spawning the run.
  *
  * Exit code tracks whether the session completed, not whether every issue
  * got resolved — leaving issues open for a later run is normal (mirrors
@@ -228,6 +232,20 @@ export async function codeCommand(
   }
   const snapshot = takeUndoSnapshot(projectDir); // mandatory (§12), once per session
   if (!opts.silent) output.write(`  ⛑ undo snapshot: ${snapshot}\n`);
+
+  // What POST /build does before it cuts a tag: stamp exposesAPI.auth and every
+  // dependency's wiring into design.json. After the snapshot, so `--restore`
+  // returns the design as the engineer left it; a refusal refuses the run, as it
+  // refuses a production build.
+  const derived = await (opts.deriveDesign ?? deriveDesign)(projectDir);
+  if (!derived.ok) return { ok: false, detail: derived.detail };
+  if (!opts.silent) {
+    output.write(
+      derived.changed.length > 0
+        ? `  ⚙ derived wiring: ${derived.changed.join(", ")}\n`
+        : "  ⚙ derived wiring: no change\n",
+    );
+  }
 
   const result = await runCodingAgent({
     projectDir,

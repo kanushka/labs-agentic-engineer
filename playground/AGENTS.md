@@ -15,6 +15,9 @@ Use this procedure for steps 1 and 3 of the `writing-skills` verify loop.
 ### Before the first run
 
 - Docker mode is the default. It needs a running Docker daemon (`colima start`).
+- `code` needs `go` on the PATH. Before the agent starts, it derives each
+  dependency's `wiring` and `exposesAPI.auth` with aep-api's own derivation, as
+  POST /build does (ADR-0003).
 - If `aep-runner:dev` or `aep-runner-opencode:dev` is missing, the next `code`
   run builds both. The first build takes several minutes. It needs a
   GitHub token with the `read:packages` scope. To add that scope to your `gh`
@@ -184,6 +187,7 @@ only as a fact on the turn spec (`engine/turn-spec.ts`), as in production.
 |---|---|---|
 | spec-turn snapshots exclude `issues/` | production spec turns never see tasks (they are in GitHub) | none needed: this is parity |
 | MCP is always off | there is no cluster to mint a token | none |
+| `code` derives `wiring` and `exposesAPI.auth` from the repo's resource-type manifests, not from the cluster's catalog | there is no cluster; the derivation code is production's (`services/aep-api/cmd/design-derive`, ADR-0003) | a cluster with other resource types derives differently |
 | no CRT-annotation append, no lineage diffs in replans | platform resources and tags do not exist locally | edit by hand; replan stays file-based |
 | issue `key` lineage is the constant `"local"`; no spec or design tags | no builds or tags locally | dedupe across replans still works |
 | design and tasks gates are playground UX | production has no server gate on the spec paths | advisory only |
