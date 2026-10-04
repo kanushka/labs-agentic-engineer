@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "agent-browser": "0.38.2",
     "tsx": "^4.21.0"
   }
 }

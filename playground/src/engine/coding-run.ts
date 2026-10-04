@@ -70,6 +70,7 @@ import {
   type RunEventView,
 } from "@aep/progress-view";
 import { createAgentTags, type AgentTags } from "./agent-tags.js";
+import { agentBrowserBinDir, agentBrowserProblem, withAgentBrowserFirst } from "./agent-browser.js";
 import { openCrewPane } from "./crew-pane.js";
 import { REPO_ROOT } from "../paths.js";
 import { runnerImage } from "./runner-image.js";
@@ -77,6 +78,8 @@ import { CODING_CONNECTION_ENV, codingConnectionEnv } from "../kit/model-connect
 import { DEFAULT_RUNTIME, runtimeNameFromEnv, UnsupportedRuntimeError, type RuntimeName } from "remote-worker/src/runtime/port.js";
 
 const LOCAL_ENTRY = join(REPO_ROOT, "runners", "remote-worker", "src", "local.ts");
+// The `agent-browser` a host run's mock walk drives: this package's pin.
+const AGENT_BROWSER_BIN = agentBrowserBinDir(join(REPO_ROOT, "playground"));
 const BUILD_RUNNER_SCRIPT = join(REPO_ROOT, "deployments", "scripts", "build-runner.sh");
 // Where the image keeps the skill library. Mounting the working tree over it is
 // what makes a skill edit — including the local-mode overlay — apply to the next
@@ -540,16 +543,23 @@ interface Invocation {
  */
 export function hostInvocation(opts: CodingRunOptions, runDir: string): Invocation {
   // Host mode has no image, so every tool a skill names comes off the developer's
-  // own machine — which is exactly what --host already means for `bal`, `go` and
-  // `agent-browser`, and now for `bal library` too: it is a `bal` tool, resolved
-  // out of `~/.ballerina`, so there is no PATH entry to point anywhere. What that
+  // own machine — which is exactly what --host already means for `bal` and `go`,
+  // and for `bal library` too: it is a `bal` tool, resolved out of
+  // `~/.ballerina`, so there is no PATH entry to point anywhere. What that
   // resolves to is reported by `hostToolAdvice`, not patched here.
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    AEP_LOCAL_PROJECT_DIR: opts.projectDir,
-    AEP_LOCAL_RUN_DIR: runDir,
-    AEP_LOCAL_SKILLS_DIR: opts.skillsDir,
-  };
+  //
+  // `agent-browser` is the exception: the mock walk drives it, and a walk on
+  // another version than the image's is a different tool, so this package's
+  // pinned copy goes first on PATH (`agent-browser.ts`).
+  const env = withAgentBrowserFirst(
+    {
+      ...process.env,
+      AEP_LOCAL_PROJECT_DIR: opts.projectDir,
+      AEP_LOCAL_RUN_DIR: runDir,
+      AEP_LOCAL_SKILLS_DIR: opts.skillsDir,
+    },
+    AGENT_BROWSER_BIN,
+  );
   // A connection named by `AEP_MODEL_*` rides as a dispatch stamps it and
   // authenticates with ITS key, the developer's `AEP_MODEL_API_KEY`, already in
   // this env — never an Anthropic credential, which must not follow the run to
@@ -873,6 +883,15 @@ export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunR
       return { exitCode: 2, runDir };
     }
     await reapExitedRuns();
+  } else {
+    // Refused rather than left to PATH: without the pinned copy a bare
+    // `agent-browser` resolves to the global CLI, whatever version that is.
+    const problem = agentBrowserProblem(AGENT_BROWSER_BIN);
+    if (problem) {
+      progressLog.end();
+      if (!opts.silent) output.write(`  ✗ ${problem}\n`);
+      return { exitCode: 2, runDir };
+    }
   }
 
   // Which `bal library` this run reads, when that is not simply "the one the

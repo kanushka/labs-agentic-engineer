@@ -21,7 +21,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   createTimelineRenderer,
@@ -34,6 +34,7 @@ import {
   toolJarOverlay,
   workingTreeToolJar,
 } from "../src/engine/coding-run.js";
+import { agentBrowserBinDir } from "../src/engine/agent-browser.js";
 import { runnerImage } from "../src/engine/runner-image.js";
 import { REPO_ROOT } from "../src/paths.js";
 import { formatEvent } from "@aep/progress-view";
@@ -525,10 +526,11 @@ test("docker mode mounts the working-tree bal library jar, or leaves the install
 // `bal` tool resolved out of the developer's own ~/.ballerina. So the environment
 // must come through untouched — the failure this guards is a well-meant PATH or
 // HOME edit that makes a host run read a different tool than a bare `bal library`
-// in the same shell would.
-test("host mode leaves the developer's own environment alone", () => {
+// in the same shell would. The ONE addition is the pinned `agent-browser`, put
+// ahead of the developer's PATH and in front of nothing else.
+test("host mode leaves the developer's own environment alone, but for the pinned agent-browser", () => {
   const { env } = hostInvocation(invocationOpts, "/r");
-  assert.equal(env.PATH, process.env.PATH);
+  assert.equal(env.PATH, `${agentBrowserBinDir(join(REPO_ROOT, "playground"))}${delimiter}${process.env.PATH ?? ""}`);
   assert.equal(env.HOME, process.env.HOME);
 });
 
