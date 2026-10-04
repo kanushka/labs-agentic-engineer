@@ -1,0 +1,89 @@
+{
+  "id": "project",
+  "name": "helpdesk-tickets",
+  "modelVersion": "0.2.0",
+  "components": [
+    {
+      "id": "helpdesk-api",
+      "label": "helpdesk-api",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "Ballerina",
+      "services": {
+        "helpdesk-api:api": {
+          "id": "helpdesk-api:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": true
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        },
+        {
+          "id": "default:external-apis:helpdesk-db",
+          "label": "helpdesk-db",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    },
+    {
+      "id": "helpdesk-webapp",
+      "label": "helpdesk-webapp",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "TypeScript",
+      "services": {
+        "helpdesk-webapp:api": {
+          "id": "helpdesk-webapp:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [
+            "helpdesk-api:api"
+          ],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": false
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:project:helpdesk-api",
+          "label": "helpdesk-api",
+          "onPlatform": true
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    }
+  ]
+}

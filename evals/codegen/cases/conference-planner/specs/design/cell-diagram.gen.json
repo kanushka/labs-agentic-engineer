@@ -1,0 +1,137 @@
+{
+  "id": "project",
+  "name": "conference-planner",
+  "modelVersion": "0.2.0",
+  "components": [
+    {
+      "id": "conference-webapp",
+      "label": "conference-webapp",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "TypeScript",
+      "services": {
+        "conference-webapp:api": {
+          "id": "conference-webapp:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [
+            "events-api:api"
+          ],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": false
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:project:events-api",
+          "label": "events-api",
+          "onPlatform": true
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    },
+    {
+      "id": "events-api",
+      "label": "events-api",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "Ballerina",
+      "services": {
+        "events-api:api": {
+          "id": "events-api:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [
+            "registration-service:api"
+          ],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": true
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:project:registration-service",
+          "label": "registration-service",
+          "onPlatform": true
+        },
+        {
+          "id": "default:external-apis:events-db",
+          "label": "events-db",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    },
+    {
+      "id": "registration-service",
+      "label": "registration-service",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "Ballerina",
+      "services": {
+        "registration-service:api": {
+          "id": "registration-service:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": false
+              },
+              "intranet": {
+                "isExposed": true
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:external-apis:registration-db",
+          "label": "registration-db",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    }
+  ]
+}

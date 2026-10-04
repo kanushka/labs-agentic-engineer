@@ -1,0 +1,89 @@
+{
+  "id": "project",
+  "name": "clinic-appointments",
+  "modelVersion": "0.2.0",
+  "components": [
+    {
+      "id": "clinic-api",
+      "label": "clinic-api",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "Ballerina",
+      "services": {
+        "clinic-api:api": {
+          "id": "clinic-api:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": true
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        },
+        {
+          "id": "default:external-apis:clinic-db",
+          "label": "clinic-db",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    },
+    {
+      "id": "clinic-webapp",
+      "label": "clinic-webapp",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "TypeScript",
+      "services": {
+        "clinic-webapp:api": {
+          "id": "clinic-webapp:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [
+            "clinic-api:api"
+          ],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": false
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:project:clinic-api",
+          "label": "clinic-api",
+          "onPlatform": true
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,130 @@
+{
+  "id": "project",
+  "name": "procurement-inventory",
+  "modelVersion": "0.2.0",
+  "components": [
+    {
+      "id": "inventory-service",
+      "label": "inventory-service",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "Ballerina",
+      "services": {
+        "inventory-service:api": {
+          "id": "inventory-service:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": false
+              },
+              "intranet": {
+                "isExposed": true
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:external-apis:inventory-db",
+          "label": "inventory-db",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    },
+    {
+      "id": "procurement-api",
+      "label": "procurement-api",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "Ballerina",
+      "services": {
+        "procurement-api:api": {
+          "id": "procurement-api:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [
+            "inventory-service:api"
+          ],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": true
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:project:inventory-service",
+          "label": "inventory-service",
+          "onPlatform": true
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        },
+        {
+          "id": "default:external-apis:procurement-db",
+          "label": "procurement-db",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    },
+    {
+      "id": "procurement-webapp",
+      "label": "procurement-webapp",
+      "version": "0.1.0",
+      "type": "service",
+      "buildPack": "TypeScript",
+      "services": {
+        "procurement-webapp:api": {
+          "id": "procurement-webapp:api",
+          "label": "API",
+          "type": "HTTP",
+          "dependencyIds": [
+            "procurement-api:api"
+          ],
+          "deploymentMetadata": {
+            "gateways": {
+              "internet": {
+                "isExposed": false
+              },
+              "intranet": {
+                "isExposed": false
+              }
+            }
+          }
+        }
+      },
+      "connections": [
+        {
+          "id": "default:project:procurement-api",
+          "label": "procurement-api",
+          "onPlatform": true
+        },
+        {
+          "id": "default:external-apis:user-auth",
+          "label": "user-auth",
+          "type": "datastore",
+          "onPlatform": true,
+          "tooltip": "datastore"
+        }
+      ]
+    }
+  ]
+}

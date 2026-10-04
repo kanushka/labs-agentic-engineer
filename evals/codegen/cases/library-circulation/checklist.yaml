@@ -1,0 +1,273 @@
+# Derived by the planner (save / replan) and frozen: every attempt walks this
+# list, in this order, from an empty database. HAND-EDITABLE — fix, reorder,
+# reweight or delete items freely; only an explicit replan re-derives it.
+
+# role: one of Member, Librarian, no role, signed out
+# weight: default 1. extras.mustCover items are walked and scored like items;
+# extras.mustNot entries ({id, description}) cap the band at review when violated.
+
+# Planner gaps — what the walk cannot cover, and where the PRD and the wireframes disagree:
+#  - Late fees cannot be produced from an empty database: a loan is due 14 days after checkout and there is no UI to set dates, so overdue status, fee computation (0.25 per day), the Late fee card on Check in, a member's fee rows and unpaid total, Mark paid on the Fees screen, and the unpaid fees borrowing block cannot be walked; a person could add these by hand if overdue loans and fees exist.
+#  - The Check out screen needs a Member id, which is not shown anywhere until the member has placed a hold (the Holds queue lists it); the checklist assumes the id seen there is the one the Member role signs in as, and that the Member tab session is the same member across items (member-sees-ready-hold depends on this).
+#  - The 5 active loan limit is an assumption in the PRD and needs more copies than the checklist creates; not walked.
+#  - The Title form (EditTitle) is only reachable through Add title in the DSL; titles in the table navigate to Copies, so editing an existing title and Remove title (which needs an existing title on that form) have no drawn path. The items librarian-edit-title and librarian-remove-title therefore only confirm what the UI can show; a person could walk edit and remove by hand if the app offers a title edit path.
+#  - The PRD stories 8 and 9 say titles and copies can be edited and removed; the DSL draws Remove title and Withdraw copy as buttons but gives no destination or status wording, so only a loose outcome is expected.
+#  - The My holds Cancel selected hold button and the Holds queue Cancel hold button imply row selection, which the DSL does not draw as a control; the checklist assumes selecting a row.
+#  - Member borrowing from the Title detail uses a Borrow button that is drawn even for unavailable titles; behaviour for borrowing an unavailable title is not specified and is not walked.
+
+items:
+  - id: librarian-lands-on-titles
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue
+    steps: Look at the landing screen and its sidebar. Read the Titles table.
+    expect: The Titles screen (ManageTitles) shows with sidebar entries Titles, Check out, Check in, Holds queue, Fees and Sign out, an Add title button and a search box. The table has no titles yet and the empty list reads sensibly, with no crash.
+    weight: 1
+  - id: librarian-add-title-hobbit
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue - add title
+    steps: Click Add title. On the Title form enter Name 'The Hobbit', Author 'J.R.R. Tolkien', Subject 'Fantasy', ISBN '9780261102217'. Click Save.
+    expect: You arrive back on the Titles screen and a row 'The Hobbit | J.R.R. Tolkien' is listed.
+    weight: 2
+  - id: librarian-add-title-cancel
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue - add title
+    steps: Click Add title. Enter Name 'Discarded Title' and click Cancel.
+    expect: You arrive back on the Titles screen and no 'Discarded Title' row is listed.
+    weight: 1
+  - id: librarian-add-titles-for-holds
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue - add title
+    steps: "Add three more titles with Add title and Save each: (1) Name 'Dune', Author 'Frank Herbert', Subject 'Science fiction', ISBN '9780441013593'; (2) Name 'Emma', Author 'Jane Austen', Subject 'Classic', ISBN '9780141439587'; (3) Name 'Ulysses', Author 'James Joyce', Subject 'Classic', ISBN '9780199535675'. Do not add copies to these three."
+    expect: The Titles table lists Dune, Emma and Ulysses together with The Hobbit.
+    weight: 2
+  - id: librarian-edit-title
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue - edit title
+    steps: Open the Title Copies screen of 'The Hobbit' from the Titles table, then return via the Titles sidebar entry. Add one more title 'Temp Title', Author 'Nobody', Subject 'Test', ISBN '0000000000', Save. Then open 'Temp Title' is not required here; instead open the Titles table row for The Hobbit's edit via Add title is not possible, so use the row to reach copies only. (Edit is exercised in the next item.)
+    expect: The Titles table lists 'Temp Title' alongside the other titles.
+    weight: 1
+  - id: librarian-search-titles
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue - search
+    steps: In 'Search titles' type 'Dune'.
+    expect: The table shows the Dune row and does not show The Hobbit, Emma or Ulysses. Clearing the search lists all titles again.
+    weight: 1
+  - id: librarian-title-copies-empty
+    role: Librarian
+    screen: TitleCopies
+    flow: Manage catalogue - copies
+    steps: On the Titles screen click the 'The Hobbit' row.
+    expect: The Copies screen opens with breadcrumb 'Titles / The Hobbit', an Add copy button and an empty copies table that reads sensibly.
+    weight: 1
+  - id: librarian-add-copies-hobbit
+    role: Librarian
+    screen: TitleCopies
+    flow: Manage catalogue - add copy
+    steps: On Copies of The Hobbit click Add copy, enter Barcode 'HOB-001', click Save. Repeat for 'HOB-002' and 'HOB-003'.
+    expect: After each Save you arrive on the Copies screen. The table lists HOB-001, HOB-002 and HOB-003, each with a status of Available.
+    weight: 2
+  - id: librarian-edit-copy
+    role: Librarian
+    screen: TitleCopies
+    flow: Manage catalogue - edit copy
+    steps: Click the HOB-003 row. Change Barcode to 'HOB-099' and click Save.
+    expect: You arrive on the Copies screen. HOB-099 is listed and HOB-003 is not.
+    weight: 1
+  - id: librarian-withdraw-copy
+    role: Librarian
+    screen: TitleCopies
+    flow: Manage catalogue - withdraw copy
+    steps: Click the HOB-099 row and click Withdraw copy.
+    expect: HOB-099 is no longer listed as an available copy (it is gone or shown as withdrawn). HOB-001 and HOB-002 remain Available.
+    weight: 2
+  - id: librarian-remove-title
+    role: Librarian
+    screen: ManageTitles
+    flow: Manage catalogue - remove title
+    steps: On the Titles screen open the row for 'Temp Title' and, on the screen that opens, go to the title form if offered; otherwise use the Remove title button on the Title form reached through Add title is not applicable. Open 'Temp Title' and click Remove title.
+    expect: You return to the Titles screen and 'Temp Title' is no longer listed. The other titles remain.
+    weight: 2
+  - id: member-lands-on-catalogue
+    role: Member
+    screen: Catalogue
+    flow: Find and borrow
+    steps: Look at the landing screen and its sidebar. Read the table.
+    expect: The Catalogue screen shows with sidebar entries Catalogue, My loans, My holds, My fees and Sign out, a search box and Search button. The table lists The Hobbit with Available 2 and Dune, Emma and Ulysses with Available 0, each with author and subject.
+    weight: 1
+  - id: member-empty-loans-holds-fees
+    role: Member
+    screen: MyFees
+    flow: Holds and fees
+    steps: Click My loans in the sidebar, then My holds, then My fees.
+    expect: Each screen loads. My loans and My holds have empty tables, and My fees shows no fees, all reading sensibly with no crash.
+    weight: 1
+  - id: member-search-catalogue
+    role: Member
+    screen: Catalogue
+    flow: Find and borrow - search
+    steps: Click Catalogue in the sidebar. Type 'Herbert' into the search box and click Search. Then search 'Fantasy'. Then search 'Hobbit'.
+    expect: "'Herbert' shows only Dune; 'Fantasy' shows only The Hobbit; 'Hobbit' shows only The Hobbit."
+    weight: 2
+  - id: member-title-detail-available
+    role: Member
+    screen: TitleDetail
+    flow: Find and borrow - availability
+    steps: On the Catalogue, click the 'The Hobbit' row.
+    expect: The title detail opens with breadcrumb 'Catalogue / The Hobbit', the heading The Hobbit, 'J.R.R. Tolkien' and 'Fantasy', and shows that 2 copies are available. Borrow is offered.
+    weight: 1
+  - id: member-borrow-hobbit
+    role: Member
+    screen: MyLoans
+    flow: Find and borrow - borrow
+    steps: On The Hobbit's detail click Borrow.
+    expect: You arrive on My loans, which lists 'The Hobbit' with today's checked-out date, a due date 14 days after it, and a status of On loan.
+    weight: 2
+  - id: member-availability-drops
+    role: Member
+    screen: Catalogue
+    flow: Find and borrow - availability
+    steps: Click Catalogue in the sidebar and read the Available column for The Hobbit.
+    expect: The Hobbit now shows 1 available copy.
+    weight: 1
+  - id: member-title-detail-unavailable
+    role: Member
+    screen: TitleDetail
+    flow: Place hold - availability
+    steps: On the Catalogue click the 'Dune' row.
+    expect: The detail opens with breadcrumb 'Catalogue / Dune', 'Frank Herbert' and 'Science fiction', and shows 0 copies available. Place hold is offered.
+    weight: 1
+  - id: member-place-hold-dune
+    role: Member
+    screen: MyHolds
+    flow: Place hold
+    steps: On Dune's detail click Place hold.
+    expect: You arrive on My holds, which lists 'Dune' with a queue position and status Waiting.
+    weight: 2
+  - id: member-place-holds-emma-ulysses
+    role: Member
+    screen: MyHolds
+    flow: Place hold
+    steps: From the Catalogue open Emma and click Place hold. Return to the Catalogue, open Ulysses and click Place hold.
+    expect: My holds lists Dune, Emma and Ulysses, each with a position and status Waiting.
+    weight: 1
+  - id: member-cancel-hold
+    role: Member
+    screen: MyHolds
+    flow: Cancel hold
+    steps: On My holds select the Dune row and click 'Cancel selected hold'.
+    expect: Dune is no longer listed as a waiting hold; Emma and Ulysses remain.
+    weight: 2
+  - id: member-fees-empty-total
+    role: Member
+    screen: MyFees
+    flow: Holds and fees - fees
+    steps: Click My fees in the sidebar.
+    expect: The My fees screen shows the Unpaid total card and the fees table with no fee rows, since no loan has been returned late.
+    weight: 1
+  - id: librarian-holds-queue
+    role: Librarian
+    screen: HoldsQueue
+    flow: Work holds
+    steps: Click Holds queue in the sidebar. Note the Member id shown on the Ulysses row (call it MEMBER-ID).
+    expect: The Holds queue lists rows for Emma and Ulysses with a member id, placed date and status Waiting. Dune's cancelled hold is not waiting.
+    weight: 2
+  - id: librarian-filter-holds
+    role: Librarian
+    screen: HoldsQueue
+    flow: Work holds - filter
+    steps: In 'Filter by title' type 'Ulysses'.
+    expect: Only the Ulysses row is shown. Clearing the filter shows the Emma row again.
+    weight: 1
+  - id: librarian-cancel-hold
+    role: Librarian
+    screen: HoldsQueue
+    flow: Work holds - cancel
+    steps: Select the Emma row and click Cancel hold.
+    expect: The Emma hold is no longer listed as waiting; the Ulysses hold remains.
+    weight: 2
+  - id: librarian-checkout-desk
+    role: Librarian
+    screen: Checkout
+    flow: Circulation desk
+    steps: Click Check out in the sidebar.
+    expect: The Check out screen shows Member id and Copy barcode inputs, a Check out button and the note 'Due date is 14 days from today'.
+    weight: 1
+  - id: librarian-checkout-copy
+    role: Librarian
+    screen: Checkout
+    flow: Circulation desk - check out
+    steps: Enter Member id (the MEMBER-ID noted in librarian-holds-queue) and Copy barcode 'HOB-002', click Check out.
+    expect: The checkout succeeds with a confirmation of the loan and its due date 14 days from today, with no error.
+    weight: 2
+  - id: librarian-checkin-ontime
+    role: Librarian
+    screen: Checkin
+    flow: Circulation desk - check in
+    steps: Click Check in in the sidebar. Enter Copy barcode 'HOB-002' and click Check in.
+    expect: The check in succeeds and the loan closes with no error. No late fee is shown because the return is on time.
+    weight: 2
+  - id: librarian-checkin-hold-ready
+    role: Librarian
+    screen: HoldsQueue
+    flow: Circulation desk - hold offered
+    steps: Open Titles, open Ulysses, Add copy with Barcode 'ULY-001', Save. Click Check out, enter the MEMBER-ID and barcode 'ULY-001', Check out. Click Check in, enter 'ULY-001', Check in. Open Holds queue.
+    expect: The Ulysses hold row shows status Ready.
+    weight: 2
+  - id: librarian-fees-desk
+    role: Librarian
+    screen: FeesDesk
+    flow: Circulation desk - fees
+    steps: Click Fees in the sidebar.
+    expect: The Fees screen shows a 'Filter by member' search, a table with Member, Loan, Amount and Status columns and a Mark paid button. With no late returns the table has no rows and reads sensibly.
+    weight: 1
+  - id: member-sees-ready-hold
+    role: Member
+    screen: MyHolds
+    flow: Place hold - fulfilled
+    steps: Click My holds in the sidebar.
+    expect: The Ulysses hold is listed and its status is Ready (if the same member as the one who placed it is signed in).
+    weight: 1
+  - id: member-refused-librarian-screen
+    role: Member
+    screen: Catalogue
+    flow: Role reach
+    steps: Open the address the Titles screen had in librarian-lands-on-titles.
+    expect: The Titles management screen is not shown to the Member; the Member sees a refusal or no-access outcome or is returned to own screens, with no librarian data visible.
+    weight: 1
+  - id: librarian-refused-member-screen
+    role: Librarian
+    screen: ManageTitles
+    flow: Role reach
+    steps: Open the address the My fees screen had in member-fees-empty-total.
+    expect: The member My fees screen is not shown to the Librarian; the Librarian sees a refusal or is returned to own screens.
+    weight: 1
+  - id: no-role-no-access
+    role: no role
+    screen: Catalogue
+    flow: Role reach
+    steps: Look at what the app shows on landing, then try the sidebar if any is shown.
+    expect: "A no-access page is shown instead of the app: no catalogue, loans, holds, fees or librarian screens and no data."
+    weight: 1
+  - id: signed-out-guard
+    role: signed out
+    screen: Catalogue
+    flow: Role reach
+    steps: Load the app signed out and wait for it to settle.
+    expect: The app's sign-in guard runs, the address loses auth=out and the app reloads into a session without a blank page or crash.
+    weight: 1
+  - id: member-signs-out
+    role: Member
+    screen: Catalogue
+    flow: Sign out
+    steps: Click Sign out in the sidebar.
+    expect: The Member's screens and data are gone and the app shows its no-access state, with no sign-in form.
+    weight: 1
+extras:
+  mustCover: []
+  mustNot: []
