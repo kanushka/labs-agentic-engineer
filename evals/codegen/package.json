@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@aep/playground": "workspace:*",
-    "@anthropic-ai/claude-agent-sdk": "^0.3.247",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.289",
     "yaml": "^2.8.4",
     "zod": "^4.3.6"
   },
