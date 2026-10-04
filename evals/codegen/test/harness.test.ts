@@ -27,14 +27,14 @@ import { walkerPrompt } from "../src/walker.js";
 import { WIRED_AUTH_SEMANTICS } from "../src/wired-auth.js";
 import { dirtyPaths } from "../src/provenance.js";
 import { resolveCodingRun, usageByAgent } from "../src/log.js";
-import { PROVENANCE } from "../src/config.js";
+import { PATHS, PROVENANCE } from "../src/config.js";
 import { baseUrl, isStopped, parseReady } from "../src/play.js";
-import { guardTool, normalizeWalk, shellWords } from "../src/walker.js";
+import { confirmEachAction, guardTool, normalizeWalk, shellWords, walkerProblem } from "../src/walker.js";
 import { bandFor, scoreAttempt, type Judgement } from "../src/score.js";
 import { countEvents, lastResultCost, readRunSettled } from "../src/metrics.js";
 import { attemptLine, compare, pickBaseline, renderReport, stat, summarize, type Summary } from "../src/report.js";
 import { excludedFromProject, rewalkDirs, type AttemptRecord } from "../src/attempt.js";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -241,6 +241,41 @@ test("walker: Bash is one agent-browser call, nothing else", () => {
     assert.equal(guardTool("Bash", { command }, dir).allow, false, command);
   }
   assert.deepEqual(guardTool("Bash", { command: "agent-browser network requests" }, dir), { allow: true });
+});
+
+test("walker: every command inside a batch is held to the same rules", () => {
+  const dir = "/w/walk";
+  for (const command of [
+    `agent-browser batch "eval document.title"`,
+    `agent-browser batch "get url" "eval document.title"`,
+    `agent-browser batch --bail "network route http://x --body {}"`,
+    `agent-browser batch "close --all"`,
+    `agent-browser batch "snapshot -i --session other"`,
+    `agent-browser batch "webmcp list"`,
+    `agent-browser batch 'batch "eval 1"'`,
+  ]) {
+    assert.equal(guardTool("Bash", { command }, dir).allow, false, command);
+  }
+  assert.match(
+    (guardTool("Bash", { command: `agent-browser batch "eval document.title"` }, dir) as { reason: string }).reason,
+    /eval is not available/,
+  );
+  // Kept: one call for a date typed key by key.
+  assert.deepEqual(
+    guardTool("Bash", { command: `agent-browser batch --bail "click @e4" "press 2" "press ArrowRight" "fill @e5 'route 66'"` }, dir),
+    { allow: true },
+  );
+});
+
+test("walker: the pinned agent-browser is the runner image's version, installed where the walk looks", () => {
+  const dockerfile = readFileSync(join(PATHS.repoRoot, "runners", "remote-worker", "Dockerfile"), "utf8");
+  const imageVersion = /^ARG AGENT_BROWSER_VERSION=(\S+)$/m.exec(dockerfile)?.[1];
+  assert.ok(imageVersion, "the Dockerfile lost its AGENT_BROWSER_VERSION ARG");
+  const pkg = JSON.parse(readFileSync(join(PATHS.packageRoot, "package.json"), "utf8")) as {
+    devDependencies?: Record<string, string>;
+  };
+  assert.equal(pkg.devDependencies?.["agent-browser"], imageVersion);
+  assert.equal(walkerProblem(), undefined);
 });
 
 test("walker: Read and Write stay inside walk/", () => {
@@ -457,6 +492,15 @@ test("prompts: planner and walker both carry the wired-mode auth semantics; the 
   assert.match(planner, /the DSL wins for the walk/);
   const walker = walkerPrompt({ baseUrl: "http://localhost:5173/", roles: ["Employee"], items: [], mustNot: [] });
   assert.ok(walker.includes(WIRED_AUTH_SEMANTICS));
+});
+
+test("prompts: the walker confirms actions by the agent-browser skill's own section, not a copy", () => {
+  const section = confirmEachAction();
+  assert.match(section, /^## Confirm each action\n/);
+  assert.doesNotMatch(section, /\n## /, "the section stops at the next heading");
+  const walker = walkerPrompt({ baseUrl: "http://localhost:5173/", roles: ["Employee"], items: [], mustNot: [] });
+  assert.ok(walker.includes(section));
+  assert.doesNotMatch(walker, /select @e7/, "no second list of CLI verbs beside the skill's");
 });
 
 

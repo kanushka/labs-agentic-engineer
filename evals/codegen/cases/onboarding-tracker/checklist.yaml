@@ -165,8 +165,8 @@ items:
     role: HRCoordinator
     screen: OnboardingDetail
     flow: Manage onboarding
-    steps: On Jane Doe's OnboardingDetail (from hr-creates-onboarding and hr-adds-exception-task), click Mark Complete while tasks remain incomplete.
-    expect: A validation message indicates tasks remain incomplete; the record's status badge stays 'In Progress'.
+    steps: On Jane Doe's OnboardingDetail (from hr-creates-onboarding and hr-adds-exception-task), try to mark the onboarding complete while tasks remain incomplete.
+    expect: The record is not completed while tasks remain open; its status badge stays 'In Progress'.
     weight: 2
   - id: hrcoordinator-signs-out
     role: HRCoordinator

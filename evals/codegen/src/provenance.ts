@@ -19,7 +19,8 @@
 /**
  * What an attempt ran AGAINST, written at its start so a result can be placed
  * later: the commit, which harness-relevant paths were uncommitted, the exact
- * skill diff, the runner image's ID, and every model id in play.
+ * skill diff, the runner image's ID, every model id in play, and the
+ * `agent-browser` version the walker drove.
  *
  * A sweep on a branch with uncommitted skill edits measures those edits, and
  * the commit sha alone hides them — `skills.diff` is what lets a root-cause
@@ -36,6 +37,7 @@ import { join } from "node:path";
 import { runnerImage } from "@aep/playground/src/engine/runner-image.js";
 import type { RunConfig } from "./case.js";
 import { MODELS, PATHS, PROVENANCE } from "./config.js";
+import { walkerAgentBrowserVersion } from "./walker.js";
 
 export interface Provenance {
   writtenAt: string;
@@ -43,6 +45,8 @@ export interface Provenance {
   runnerImage: { name: string; id: string | null };
   coding: { config: string; runtime: string; model: string };
   models: { planner: string; walker: string; judge: string };
+  /** `agent-browser --version` as the walk resolves it — the pinned copy, which must match the runner image's. */
+  walkerAgentBrowser: string | null;
 }
 
 /**
@@ -76,6 +80,7 @@ export function writeProvenance(dir: string, config: RunConfig): Provenance {
     runnerImage: { name: image, id: run("docker", ["image", "inspect", "--format", "{{.Id}}", image]) },
     coding: { config: config.id, runtime: config.runtime, model: config.model },
     models: { planner: MODELS.planner, walker: MODELS.walker, judge: MODELS.judge },
+    walkerAgentBrowser: walkerAgentBrowserVersion(),
   };
   writeFileSync(join(dir, "provenance.json"), JSON.stringify(provenance, null, 2));
   writeFileSync(join(dir, "skills.diff"), skillsDiff());

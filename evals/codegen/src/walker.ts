@@ -33,9 +33,11 @@
  * screen and sends nothing is the one defect a screenshot cannot see.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
+import { agentBrowserProblem, withAgentBrowserFirst } from "@aep/playground/src/engine/agent-browser.js";
 import { z } from "zod";
 import type { Item, MustNot } from "./case.js";
 import { MODELS, TIMEOUTS, WALKER } from "./config.js";
@@ -104,6 +106,8 @@ export function shellWords(command: string): string[] {
  *
  *   Bash   — exactly one `agent-browser` invocation: no shell metacharacters,
  *            no forbidden verb, subcommand or flag (`WALKER` in config.ts).
+ *            A `batch` runs each of its arguments as a command of its own, so
+ *            each one is held to the same rules.
  *   Read / Write — a path inside `walkDir`, and nowhere else.
  *   anything else — not this guard's to decide; the session's `tools` list
  *            already makes no other built-in exist.
@@ -115,15 +119,7 @@ export function guardTool(tool: string, input: unknown, walkDir: string): GuardD
     if (!command.startsWith("agent-browser ")) return deny("only `agent-browser …` commands may run");
     const meta = WALKER.forbiddenShell.find((token) => command.includes(token));
     if (meta) return deny(`shell metacharacter ${JSON.stringify(meta)} — run one agent-browser command per call`);
-    const words = shellWords(command).slice(1);
-    const flag = words.find((word) => WALKER.forbiddenFlags.some((f) => word === f || word.startsWith(`${f}=`)));
-    if (flag) return deny(`${flag} is not available in this walk`);
-    const positional = words.filter((word) => !word.startsWith("-"));
-    const verb = positional[0] ?? "";
-    if ((WALKER.forbiddenVerbs as readonly string[]).includes(verb)) return deny(`agent-browser ${verb} is not available in this walk`);
-    const sub = positional[1] ?? "";
-    if (WALKER.forbiddenSubcommands[verb]?.includes(sub)) return deny(`agent-browser ${verb} ${sub} is not available in this walk`);
-    return { allow: true };
+    return guardBrowserArgs(shellWords(command).slice(1));
   }
   if (tool === "Read" || tool === "Write") {
     const path = typeof args.file_path === "string" ? args.file_path : "";
@@ -131,6 +127,29 @@ export function guardTool(tool: string, input: unknown, walkDir: string): GuardD
     const rel = relative(walkDir, resolve(walkDir, path));
     if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return deny(`only files under ${walkDir} may be read or written`);
     return { allow: true };
+  }
+  return { allow: true };
+}
+
+/**
+ * The arguments of one `agent-browser` command. A `batch` runs every positional
+ * argument as a command line of its own (`batch "eval …"` ran script in the
+ * page while only its first word was checked), so each is split and held to
+ * these same rules — a nested `batch` included.
+ */
+function guardBrowserArgs(words: string[]): GuardDecision {
+  const flag = words.find((word) => WALKER.forbiddenFlags.some((f) => word === f || word.startsWith(`${f}=`)));
+  if (flag) return deny(`${flag} is not available in this walk`);
+  const positional = words.filter((word) => !word.startsWith("-"));
+  const verb = positional[0] ?? "";
+  if ((WALKER.forbiddenVerbs as readonly string[]).includes(verb)) return deny(`agent-browser ${verb} is not available in this walk`);
+  const sub = positional[1] ?? "";
+  if (WALKER.forbiddenSubcommands[verb]?.includes(sub)) return deny(`agent-browser ${verb} ${sub} is not available in this walk`);
+  if (verb === "batch") {
+    for (const inner of positional.slice(1)) {
+      const decision = guardBrowserArgs(shellWords(inner));
+      if (!decision.allow) return decision;
+    }
   }
   return { allow: true };
 }
@@ -180,16 +199,12 @@ export function walkerPrompt(opts: { baseUrl: string; roles: string[]; items: It
     : "";
   return `You are testing a running web application against a checklist. You have not seen its source and you will not: the browser is the only way you learn anything.
 
-THE BROWSER is the \`agent-browser\` CLI, through Bash, ONE command per call — pipes, \`;\`, \`&&\`, redirects and substitutions are refused. Your session is already isolated; never pass --session. \`agent-browser skills get core\` prints the full reference if you need it. The essentials:
-  agent-browser open <url>                 a full page load
+THE BROWSER is the \`agent-browser\` CLI, through Bash, ONE command per call — pipes, \`;\`, \`&&\`, redirects and substitutions are refused. Your session is already isolated; never pass --session. \`agent-browser skills get core\` prints the full reference. Two readings of a page, and they are not interchangeable:
   agent-browser snapshot -c                what the page SHOWS (text, rows, badges) — judge from this
   agent-browser snapshot -i                the controls only, with @refs to act on — it hides text and rows
-  agent-browser click @e3 | fill @e5 "text" | select @e7 "Option" | press Enter
-  agent-browser get url | get text <selector>
-  agent-browser network requests           what left the page, with status codes
-  agent-browser console | agent-browser errors
-  agent-browser screenshot shots/<id>.png
-You may Read and Write files in your working directory (screenshots included) and nowhere else.
+Screenshots go to shots/<id>.png. You may Read and Write files in your working directory (screenshots included) and nowhere else.
+
+${confirmEachAction()}
 
 THE APP is at ${url}/
 - Enter as a role by loading ${url}/?role=<Role>. "no role" is ${url}/?role= (signed in, holding no role); "signed out" is ${url}/?auth=out.
@@ -253,9 +268,53 @@ export interface WalkRequest {
   signal?: AbortSignal;
 }
 
+/**
+ * The `## Confirm each action` section of the platform's agent-browser skill,
+ * heading included, up to the next `## ` heading. Throws when the heading is
+ * gone: a walker prompt that silently lost it would walk with no read-back rule.
+ */
+export function confirmEachAction(): string {
+  const { file, heading } = WALKER.confirmSection;
+  const lines = readFileSync(file, "utf8").split("\n");
+  const start = lines.indexOf(heading);
+  if (start < 0) throw new Error(`${file} has no "${heading}" section — the walker prompt embeds it`);
+  const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+  return lines
+    .slice(start, end < 0 ? undefined : end)
+    .join("\n")
+    .trim();
+}
+
+/**
+ * Why a walk cannot start, or undefined — checked before a sweep or a rewalk
+ * spends anything: the pinned CLI must be installed, and the prompt's skill
+ * section must exist.
+ */
+export function walkerProblem(): string | undefined {
+  const missing = agentBrowserProblem(WALKER.binDir);
+  if (missing) return missing;
+  try {
+    confirmEachAction();
+    return undefined;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+/** `agent-browser --version` as a walk resolves it, for `provenance.json`; null when it does not answer. */
+export function walkerAgentBrowserVersion(): string | null {
+  const result = spawnSync("agent-browser", ["--version"], {
+    encoding: "utf8",
+    timeout: 30_000,
+    env: withAgentBrowserFirst(process.env, WALKER.binDir),
+  });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.trim() || null;
+}
+
 export async function walk(req: WalkRequest): Promise<SessionResult<WalkResult>> {
   const env: NodeJS.ProcessEnv = {
-    ...req.env,
+    ...withAgentBrowserFirst(req.env, WALKER.binDir),
     AGENT_BROWSER_SESSION: req.sessionName,
     AGENT_BROWSER_ALLOWED_DOMAINS: WALKER.allowedDomains,
   };
@@ -286,7 +345,7 @@ export function closeBrowser(sessionName: string): Promise<void> {
     execFile(
       "agent-browser",
       ["close"],
-      { timeout: 30_000, env: { ...process.env, AGENT_BROWSER_SESSION: sessionName } },
+      { timeout: 30_000, env: { ...withAgentBrowserFirst(process.env, WALKER.binDir), AGENT_BROWSER_SESSION: sessionName } },
       () => done(),
     );
   });

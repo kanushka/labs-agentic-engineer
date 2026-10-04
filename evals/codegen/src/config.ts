@@ -29,6 +29,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { agentBrowserBinDir } from "@aep/playground/src/engine/agent-browser.js";
 
 const PACKAGE_ROOT = join(import.meta.dirname, "..");
 const REPO_ROOT = join(PACKAGE_ROOT, "..", "..");
@@ -129,6 +130,20 @@ export const PLANNER = {
 export const WALKER = {
   /** Bash is `agent-browser` only and Read/Write stay in `walk/` — `walker.ts`'s guard enforces both. */
   tools: ["Bash", "Read", "Write"],
+  /**
+   * The walker's `agent-browser`: this package's devDependency, put first on
+   * the walk's PATH. Pinned to the runner image's version (a test holds the two
+   * equal) because a walker on another version measures a different tool —
+   * see `@aep/playground/src/engine/agent-browser.ts`.
+   */
+  binDir: agentBrowserBinDir(PACKAGE_ROOT),
+  /**
+   * The section of the platform's agent-browser skill the walker prompt
+   * embeds, by its exact heading: the coding run's walk and this one confirm
+   * an action by the same text. Read at prompt-build time, refused at startup
+   * when the heading is gone.
+   */
+  confirmSection: { file: join(REPO_ROOT, "skills", "agent-browser", "SKILL.md"), heading: "## Confirm each action" },
   maxTurns: envInt("CODEGEN_EVAL_WALK_MAX_TURNS", 400),
   /**
    * Shell metacharacters a walker command may not contain. With these gone a
@@ -140,10 +155,12 @@ export const WALKER = {
    * `agent-browser` verbs a walk has no business with, matched on the FIRST
    * argument (where a verb sits) so text typed into a field cannot trip them.
    * `chat` is a second model; `eval` runs script in the page, which is reading
-   * or changing the app from behind it rather than using it; the rest reach
-   * outside one isolated, headless browser session.
+   * or changing the app from behind it rather than using it, and so does
+   * `webmcp` (0.36+), which calls tools the page registers instead of its UI;
+   * the rest reach outside one isolated, headless browser session. A `batch`
+   * is checked command by command against the same lists.
    */
-  forbiddenVerbs: ["chat", "eval", "connect", "auth", "install", "upgrade", "dashboard", "stream", "inspect"],
+  forbiddenVerbs: ["chat", "eval", "webmcp", "connect", "auth", "install", "upgrade", "dashboard", "stream", "inspect"],
   /**
    * `network route`/`unroute` would let the walker answer the app's own
    * requests — the one workaround that makes every item pass.

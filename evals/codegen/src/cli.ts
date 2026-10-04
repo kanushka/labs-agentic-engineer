@@ -39,6 +39,7 @@ import { dockerAnswers } from "./play.js";
 import { pickBaseline, renderReport, summarize, type Summary } from "./report.js";
 import { caseRoles, replanCase, saveCase } from "./save.js";
 import { runSweep } from "./sweep.js";
+import { walkerProblem } from "./walker.js";
 
 const USAGE = `
 Codegen evals — a saved case → play code → play wire → a walker clicks the app
@@ -172,6 +173,11 @@ async function run(args: string[]): Promise<number> {
     return 0;
   }
 
+  const walkBlocked = walkerProblem();
+  if (walkBlocked) {
+    console.error(`refusing to run: ${walkBlocked} — every attempt would code for an hour and then fail its walk`);
+    return 2;
+  }
   const token = readOAuthToken(PATHS.envFile);
   const dotenv = parseEnv(readFileSync(PATHS.envFile, "utf8"));
   if (!(await dockerAnswers())) {
@@ -253,6 +259,11 @@ async function rewalk(args: string[]): Promise<number> {
     if (parent.kind === "rewalk") throw new Error(`${dir} is itself a rewalk — point at its attempt`);
     return { dir, parent };
   });
+  const walkBlocked = walkerProblem();
+  if (walkBlocked) {
+    console.error(`refusing to run: ${walkBlocked}`);
+    return 2;
+  }
   const configs = loadConfigs(PATHS.configsFile);
   const token = readOAuthToken(PATHS.envFile);
   const dotenv = parseEnv(readFileSync(PATHS.envFile, "utf8"));
