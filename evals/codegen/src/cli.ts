@@ -36,7 +36,7 @@ import { CredentialError, readOAuthToken } from "./credentials.js";
 import { renderLogView, type LogView } from "@aep/playground/src/engine/log-read.js";
 import { resolveCodingRun, usageByAgent } from "./log.js";
 import { dockerAnswers } from "./play.js";
-import { pickBaseline, renderReport, summarize, type Summary } from "./report.js";
+import { failureText, pickBaseline, renderReport, summarize, type Summary } from "./report.js";
 import { caseRoles, replanCase, saveCase } from "./save.js";
 import { runSweep } from "./sweep.js";
 import { walkerProblem } from "./walker.js";
@@ -299,7 +299,7 @@ async function rewalk(args: string[]): Promise<number> {
       say: (line) => console.log(line),
     });
     const score = record.score === null ? "" : ` ${String(record.score)} ${record.band ?? ""}`;
-    console.log(`  ${record.status === "scored" ? "✓" : "✗"} rewalk-${String(record.rewalk)} — ${record.status}${score}${record.symptom ? ` · ${record.symptom}` : ""}`);
+    console.log(`  ${record.status === "scored" ? "✓" : "✗"} rewalk-${String(record.rewalk)} — ${record.status}${score}${failureText(record) ? ` · ${failureText(record)}` : ""}`);
     for (const failing of record.failing) console.log(`      ✗ ${failing.id}: ${failing.symptom}`);
     console.log(`    ${record.archive}`);
     sweeps.add(parent.sweepId);

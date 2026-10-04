@@ -79,6 +79,21 @@ export const SAVE = {
   namePattern: /^[a-z0-9][a-z0-9-]{1,30}$/,
 } as const;
 
+/** What an attempt's archive keeps of the generated project (`excludedFromProject` in attempt.ts). */
+export const ARCHIVE = {
+  /**
+   * Build output, dropped where it sits directly in a component's App Path:
+   * what the stacks' own toolchains regenerate from the sources beside it.
+   * Ballerina's `target/` (`bal build`: the jar and its caches, 163 of a
+   * project's ~170 MB) and the React webapp's `dist/` (`vite build`). A
+   * root-cause pass reads sources, and at many cases × repeats the output is
+   * nearly the whole archive. Only at an App Path's root, so a source directory
+   * that shares a name deeper in a tree is kept. `build/` is not listed: no
+   * stack here emits it, and a Go layout keeps packaging sources there.
+   */
+  buildOutputDirs: ["target", "dist"],
+} as const;
+
 export const DEFAULTS = {
   /** Attempts per case × config. One shows a case runs; three is the floor for believing a delta. */
   repeats: envInt("CODEGEN_EVAL_REPEATS", 1),
@@ -145,6 +160,16 @@ export const WALKER = {
    */
   confirmSection: { file: join(REPO_ROOT, "skills", "agent-browser", "SKILL.md"), heading: "## Confirm each action" },
   maxTurns: envInt("CODEGEN_EVAL_WALK_MAX_TURNS", 400),
+  /**
+   * `agent-browser` commands that may run to their timeout IN A ROW before the
+   * browser is declared unresponsive and the walk stops as a harness error
+   * (`BrowserWatchdog`). Three: one is a slow page and two a slow page retried,
+   * but three with nothing completing between them is a browser that no longer
+   * answers — measured once at six, each 30-120 s, after which the walker
+   * marked every remaining item failed. At the walker's usual 120 s timeout
+   * that ends a dead walk in about six minutes rather than thirty.
+   */
+  unresponsiveAfter: 3,
   /**
    * Shell metacharacters a walker command may not contain. With these gone a
    * command is one `agent-browser` invocation and nothing else: no chaining,

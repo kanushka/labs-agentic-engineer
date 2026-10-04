@@ -38,7 +38,7 @@
  */
 
 import { createWriteStream, type WriteStream } from "node:fs";
-import { query, type HookCallbackMatcher, type HookEvent, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type HookCallbackMatcher, type HookEvent, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { assertNotApiKey, CredentialError } from "./credentials.js";
 
@@ -61,6 +61,12 @@ export interface SessionRequest<T> {
   debugFile?: string;
   /** Aborted by the sweep's SIGINT: the session is closed at once. */
   signal?: AbortSignal;
+  /**
+   * Sees every message as it arrives; a returned reason stops the session the
+   * way the deadline does, and lands in `halted`. The walker's browser
+   * watchdog is one.
+   */
+  watch?: (message: SDKMessage) => string | undefined;
 }
 
 export interface SessionResult<T> {
@@ -71,6 +77,8 @@ export interface SessionResult<T> {
   /** True when the credential check refused the session — a harness error, never the app's. */
   credentialRefused: boolean;
   timedOut: boolean;
+  /** Why `watch` stopped the session, when it did. */
+  halted?: string;
   apiKeySource?: string;
   /** Claude Code's own estimate (`total_cost_usd` on the last `result`); null when none arrived. */
   costUsd: number | null;
@@ -152,6 +160,13 @@ export async function runSession<T>(req: SessionRequest<T>): Promise<SessionResu
   try {
     for await (const message of q) {
       transcript?.write(`${JSON.stringify(message)}\n`);
+      if (result.halted === undefined) {
+        const halt = req.watch?.(message);
+        if (halt !== undefined) {
+          result.halted = halt;
+          stop();
+        }
+      }
       if (message.type === "system" && message.subtype === "init") {
         result.apiKeySource = message.apiKeySource;
         try {
@@ -197,7 +212,8 @@ export async function runSession<T>(req: SessionRequest<T>): Promise<SessionResu
   if (result.credentialRefused) return result;
   if (req.signal?.aborted) return { ...result, error: "interrupted" };
   if (structured === undefined) {
-    result.error ??= structuredFailed ?? (result.timedOut ? "timed out before answering" : "the session ended without an answer");
+    result.error ??=
+      result.halted ?? structuredFailed ?? (result.timedOut ? "timed out before answering" : "the session ended without an answer");
     return result;
   }
   const parsed = req.schema.safeParse(structured);

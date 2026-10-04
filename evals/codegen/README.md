@@ -97,8 +97,8 @@ Each sweep writes `.runs/<sweepId>/`:
   items, archive path.
 - `summary.json`, `attempts.json`, `facts.json` — the same, as data.
 - `<case>/<config>/attempt-<n>/` — the archive:
-  `project/` (the generated tree, minus `node_modules`, wire secrets and undo
-  snapshots), `coding/` (`play.log` and the whole run dir: `progress.ndjson`,
+  `project/` (the generated tree, minus `node_modules`, build output, wire
+  secrets and undo snapshots), `coding/` (`play.log` and the whole run dir: `progress.ndjson`,
   `.logs/runtime.log`, `agent-sessions/`), `wire/` (`wire.log`, `plan.json`,
   `compose.yaml`, `logs/`), `walk/` (`transcript.jsonl`, `result.json`,
   `shots/`), `judge/verdict.json`, `metrics.json`, `attempt.json`.
@@ -121,10 +121,18 @@ Read an archived coding run with the playground's own developer view:
 `make eval-codegen ARGS="log --attempt <attempt dir> [--slow|--thinking]"`.
 
 **Statuses.** `scored` — the app was walked and judged. `hard-fail` — the code
-failed: the coding run did not succeed or built nothing, or `wire` never
-printed `READY`; scored 0 and included in the median. `harness-error` —
-anything that is not the code (docker down, a refused credential, a walker or
-judge with no answer, an interrupt): counted, excluded from every statistic.
+failed: the coding agent did not succeed or built nothing, or `wire` says the
+app would not come up; scored 0 and included in the median. `harness-error` —
+anything that is not the code (docker, the runner, the model provider, a held
+port, an unresponsive browser, a refused credential, a walker or judge with no
+answer, an interrupt): counted, excluded from every statistic.
+
+**Every failure names its cause.** `attempt.json` carries `failure: {phase,
+cause, reason}` and `report.md` prints it on the attempt's line: cause `app`
+is a hard fail, `environment` a harness error. `wire` classifies its own
+failures (`FAILED <cause> <reason>`, see `playground/src/engine/wire/failure.ts`),
+the coding phase is classified in `src/classify.ts`, and a walk stops as
+`browser unresponsive` after three `agent-browser` commands in a row time out.
 
 **Never one number.** A delta inside the wider of the two spreads prints
 `inconclusive`, and a row with n=1 on either side always does. Score bands:

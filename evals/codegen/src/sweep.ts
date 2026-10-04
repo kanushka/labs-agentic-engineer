@@ -32,6 +32,7 @@
 
 import type { EvalCase, RunConfig } from "./case.js";
 import { runAttempt, type AttemptRecord } from "./attempt.js";
+import { failureText } from "./report.js";
 
 export interface SweepOptions {
   sweepId: string;
@@ -81,7 +82,7 @@ export async function runSweep(opts: SweepOptions): Promise<AttemptRecord[]> {
       records.push(record);
       const minutes = Math.round((Date.now() - started) / 60_000);
       const score = record.score === null ? "" : ` ${String(record.score)} ${record.band ?? ""}`;
-      opts.say(`  ${record.status === "scored" ? "✓" : "✗"} ${label} — ${record.status}${score}${record.symptom ? ` · ${record.symptom}` : ""} (${String(minutes)} min)`);
+      opts.say(`  ${record.status === "scored" ? "✓" : "✗"} ${label} — ${record.status}${score}${failureText(record) ? ` · ${failureText(record)}` : ""} (${String(minutes)} min)`);
     }
   });
   await Promise.all(workers);

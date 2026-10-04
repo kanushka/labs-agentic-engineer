@@ -39,6 +39,10 @@ export interface Tokens {
 
 export interface RunSettled {
   outcome: string;
+  /** The event's closed `code` (only `provider_limit` today), when it carries one. */
+  code?: string;
+  /** Why it failed, in the producer's words — for a reason line, never for a decision. */
+  error?: string;
   tokens: Tokens;
 }
 
@@ -50,6 +54,8 @@ export function readRunSettled(ndjson: string): RunSettled | null {
     const usage = (event.usage ?? {}) as Record<string, unknown>;
     settled = {
       outcome: typeof event.outcome === "string" ? event.outcome : "unknown",
+      ...(typeof event.code === "string" ? { code: event.code } : {}),
+      ...(typeof event.error === "string" ? { error: event.error } : {}),
       tokens: {
         input: num(usage.inputTokens),
         output: num(usage.outputTokens),
@@ -59,6 +65,16 @@ export function readRunSettled(ndjson: string): RunSettled | null {
     };
   }
   return settled;
+}
+
+/**
+ * Whether the coding AGENT ever started: `run_started` is emitted when the
+ * runtime's session reports in (its `init`). Everything a run does before it —
+ * provisioning the workspace, mirroring skills — is the runner's, and a run
+ * that settles there never gave the agent a turn.
+ */
+export function sawRunStarted(ndjson: string): boolean {
+  return jsonLines(ndjson).some((event) => event.kind === "run_started");
 }
 
 /** How many events the feed holds — zero means the run never started, which is the harness's failure, not the agent's. */

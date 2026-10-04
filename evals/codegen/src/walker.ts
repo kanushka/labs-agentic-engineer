@@ -36,7 +36,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
+import type { HookCallbackMatcher, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { agentBrowserProblem, withAgentBrowserFirst } from "@aep/playground/src/engine/agent-browser.js";
 import { z } from "zod";
 import type { Item, MustNot } from "./case.js";
@@ -183,6 +183,54 @@ export function guardHooks(walkDir: string): { PreToolUse: HookCallbackMatcher[]
   };
 }
 
+/**
+ * Whether the BROWSER is still answering, read off the walk's own Bash results.
+ *
+ * A headless Chrome can wedge so that every `agent-browser` command hangs —
+ * measured once: after a keystroke into a native date input, six commands in
+ * a row (snapshot, get url, tab list, close) each ran to the Bash tool's
+ * timeout. The walker cannot tell that from an app that hangs, keeps going,
+ * and records every item after as a fail: a score of the browser, charged to
+ * the app. So the walk stops instead, and the attempt is the environment's.
+ *
+ * The signal is structural: the Bash tool's result carries `timedOutAfterMs`
+ * when a command hit its timeout and was moved to the background. `limit` of
+ * them IN A ROW — with no command completing in between — is a browser that
+ * no longer answers; any command that completes resets the count, so one
+ * slow page does not end a walk. Pure: messages in, a reason out.
+ */
+export class BrowserWatchdog {
+  private readonly bashCalls = new Set<string>();
+  private streak = 0;
+
+  constructor(private readonly limit: number) {}
+
+  /** Feed every message of the walk; returns why it must stop, once. */
+  observe(message: SDKMessage): string | undefined {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "tool_use" && block.name === "Bash") this.bashCalls.add(block.id);
+      }
+      return undefined;
+    }
+    if (message.type !== "user" || typeof message.message.content === "string") return undefined;
+    const bash = message.message.content.find((block) => block.type === "tool_result" && this.bashCalls.has(block.tool_use_id));
+    if (!bash || bash.type !== "tool_result") return undefined;
+    const timedOutAfterMs = (message.tool_use_result as { timedOutAfterMs?: unknown } | undefined)?.timedOutAfterMs;
+    if (typeof timedOutAfterMs !== "number") {
+      // Only a command that actually ran and finished proves the browser answered.
+      if (bash.is_error !== true) this.streak = 0;
+      return undefined;
+    }
+    this.streak += 1;
+    if (this.streak !== this.limit) return undefined;
+    return (
+      `browser unresponsive: ${String(this.limit)} agent-browser commands in a row ran to their timeout ` +
+      `(the last after ${String(Math.round(timedOutAfterMs / 1000))}s) — the walk was stopped rather than scored`
+    );
+  }
+}
+
 const SYSTEM_PROMPT = `You test web applications the way a careful user would, in a real browser, and report exactly what you observed.
 You never fix, work around or excuse what you find. You answer with one JSON object in the requested schema.`;
 
@@ -318,6 +366,7 @@ export async function walk(req: WalkRequest): Promise<SessionResult<WalkResult>>
     AGENT_BROWSER_SESSION: req.sessionName,
     AGENT_BROWSER_ALLOWED_DOMAINS: WALKER.allowedDomains,
   };
+  const watchdog = new BrowserWatchdog(WALKER.unresponsiveAfter);
   try {
     return await runSession({
       prompt: walkerPrompt(req),
@@ -330,6 +379,7 @@ export async function walk(req: WalkRequest): Promise<SessionResult<WalkResult>>
       maxTurns: WALKER.maxTurns,
       timeoutMs: TIMEOUTS.walkMinutes * 60_000,
       env,
+      watch: (message) => watchdog.observe(message),
       transcriptFile: resolve(req.walkDir, "transcript.jsonl"),
       debugFile: resolve(req.walkDir, "claude-debug.log"),
       ...(req.signal ? { signal: req.signal } : {}),

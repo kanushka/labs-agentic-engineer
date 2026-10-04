@@ -35,6 +35,7 @@
 
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
+import type { WireFailure } from "@aep/playground/src/engine/wire/failure.js";
 import { PATHS } from "./config.js";
 
 export interface PlayProcess {
@@ -123,6 +124,16 @@ export function parseReady(line: string): string | null {
   return match?.[1] ?? null;
 }
 
+/**
+ * `FAILED <cause> <reason>` — `wire`'s one line for a failed bring-up, saying
+ * whose failure it was (`failedLine` in `playground/src/engine/wire/failure.ts`).
+ */
+export function parseFailed(line: string): WireFailure | null {
+  const match = /^\s*FAILED (app|environment) (.+)$/.exec(line);
+  if (!match?.[1] || !match[2]) return null;
+  return { cause: match[1] === "app" ? "app" : "environment", reason: match[2].trim() };
+}
+
 /** The app's base URL — the READY line carries the `?role=` it was entered as. */
 export function baseUrl(url: string): string {
   const parsed = new URL(url);
@@ -171,13 +182,28 @@ export function dockerAnswers(): Promise<boolean> {
 }
 
 /**
- * The backstop for a `wire` that would not stop: its compose project, volumes
- * included, by name — the same handle `wire` reaps a crashed session by.
+ * An attempt's compose project, gone: containers, volumes — and the images it
+ * BUILT. `--rmi local` removes exactly the images compose named itself
+ * (`<project>-<service>`, a service with no `image:` key), which are the
+ * project's own Dockerfile builds, ~430 MB each and never reused by another
+ * attempt; the `postgres:16` it pulled has an `image:` key and stays.
+ *
+ * `file` is `wire`'s compose file, while the staged project still has it:
+ * compose resolves which images it built from the file's services, and with
+ * only the project name — once `wire`'s own teardown has removed the
+ * containers — it finds nothing to remove. Without it this is the backstop
+ * for a `wire` that would not stop: containers and volumes by name, the same
+ * handle `wire` reaps a crashed session by.
  */
-export function composeDown(project: string): Promise<void> {
-  return new Promise((resolve) => {
-    execFile("docker", ["compose", "-p", project, "down", "-v", "--remove-orphans"], { timeout: 180_000 }, () => resolve());
-  });
+export async function composeDown(project: string, file?: string): Promise<void> {
+  const down = (args: string[]): Promise<boolean> =>
+    new Promise((resolve) => {
+      execFile("docker", ["compose", ...args], { timeout: 180_000 }, (err) => resolve(!err));
+    });
+  const byName = ["-p", project, "down", "-v", "--remove-orphans"];
+  // A file compose can no longer read still leaves the project to take down by name.
+  if (file && (await down(["-f", file, ...byName, "--rmi", "local"]))) return;
+  await down(byName);
 }
 
 /**

@@ -175,7 +175,13 @@ export function renderReport(input: ReportInput): string {
         `${fmt(s.codingCostUsd)} | ${base ? `${compare(s, base.summary)} vs ${base.sweep}` : "—"} |`,
     );
   }
-  lines.push("", "Harness errors are counted but excluded from n and every statistic; hard fails score 0 and are included.", "");
+  lines.push(
+    "",
+    "Harness errors are counted but excluded from n and every statistic; hard fails score 0 and are included. " +
+      "Each failed attempt below names its phase and cause: `app` (the generated app failed — a hard fail) or " +
+      "`environment` (docker, the runner, the provider, the browser, the harness — a harness error).",
+    "",
+  );
 
   lines.push("## Attempts", "");
   for (const r of input.records.filter((record) => record.kind !== "rewalk")) lines.push(attemptLine(r));
@@ -198,10 +204,24 @@ export function attemptLine(r: AttemptRecord): string {
   const rewalk = r.kind === "rewalk" ? ` rewalk-${String(r.rewalk ?? 0)}` : "";
   const head = `- **${r.case} × ${r.config} #${String(r.attempt)}${rewalk}** ${r.status}`;
   const score = r.score === null ? "" : ` · ${String(r.score)} ${r.band ?? ""}`;
-  const symptom = r.symptom ? ` · ${r.symptom}` : "";
+  const why = failureText(r);
+  const symptom = why ? ` · ${why}` : "";
   const top = r.failing.slice(0, 3).map((f) => f.id);
   const failing = top.length ? ` · failing: ${top.join(", ")}${r.failing.length > 3 ? ` (+${String(r.failing.length - 3)})` : ""}` : "";
   return `${head}${score}${symptom}${failing} — \`${r.archive}\``;
+}
+
+/**
+ * Why a record did not score, as one line: the phase, whose failure it was
+ * (`app` is the generated app's, `environment` everything else's), and the
+ * reason — then any note on the record. Records written before `failure`
+ * existed carry only the note.
+ */
+export function failureText(r: AttemptRecord): string {
+  const parts: string[] = [];
+  if (r.failure) parts.push(`${r.failure.phase} failed (${r.failure.cause}): ${r.failure.reason}`);
+  if (r.symptom) parts.push(r.symptom);
+  return parts.join("; ");
 }
 
 function signed(n: number): string {

@@ -28,11 +28,17 @@
  * report's whole value rests on telling three things apart (decision 8):
  *
  *   scored        — the app came up and was walked; the score is the judge's.
- *   hard-fail     — the CODE failed: the coding run did not succeed or built
- *                   nothing, or `wire` would not bring it up. Score 0, counted.
- *   harness-error — something that is not the code: docker down, a refused
- *                   credential, a walker or judge that produced no answer, an
- *                   interrupt, a crash in here. Counted, never averaged in.
+ *   hard-fail     — the CODE failed (cause `app`): the coding agent did not
+ *                   succeed or built nothing, or `wire` says the app would not
+ *                   come up. Score 0, counted.
+ *   harness-error — something that is not the code (cause `environment`):
+ *                   docker, the runner, the model provider, a port, an
+ *                   unresponsive browser, a refused credential, a walker or
+ *                   judge that produced no answer, an interrupt, a crash in
+ *                   here. Counted, never averaged in.
+ *
+ * Either failure is recorded as `failure: {phase, cause, reason}`; the rules
+ * that decide the cause are `classify.ts`'s, and `wire` decides its own.
  *
  * Teardown is unconditional and runs in `finally`: a `play` child left alive
  * is a compose project and a container still running when the next attempt
@@ -49,11 +55,23 @@ import { readWireSession } from "@aep/playground/src/engine/wire/state.js";
 import { killListener } from "@aep/playground/src/engine/wire/runtime.js";
 import { projectSlug } from "@aep/playground/src/ports/spec-workspace.js";
 import { scoredItems, type EvalCase, type RunConfig } from "./case.js";
-import { PATHS, SAVE, TIMEOUTS } from "./config.js";
+import { codingFailure, wireFailure, type Classified, type FailureCause } from "./classify.js";
+import { ARCHIVE, PATHS, SAVE, TIMEOUTS } from "./config.js";
 import { CredentialError, playEnv, sdkEnv } from "./credentials.js";
 import { judge } from "./judge.js";
-import { countEvents, lastResultCost, readRunSettled, type Tokens } from "./metrics.js";
-import { baseUrl, composeDown, composeLogsTo, isStopped, parseReady, removeContainer, startPlay, waitForLine, type PlayProcess } from "./play.js";
+import { countEvents, lastResultCost, readRunSettled, sawRunStarted, type Tokens } from "./metrics.js";
+import {
+  baseUrl,
+  composeDown,
+  composeLogsTo,
+  isStopped,
+  parseFailed,
+  parseReady,
+  removeContainer,
+  startPlay,
+  waitForLine,
+  type PlayProcess,
+} from "./play.js";
 import { scoreAttempt, type Band } from "./score.js";
 import { writeProvenance } from "./provenance.js";
 import { normalizeWalk, walk } from "./walker.js";
@@ -65,6 +83,13 @@ interface SessionCost {
   costUsd: number | null;
   tokens: Tokens;
   turns: number;
+}
+
+/** Why an attempt did not score: the phase it stopped in, whose failure that was, and what happened. */
+export interface AttemptFailure {
+  phase: Phase;
+  cause: FailureCause;
+  reason: string;
 }
 
 /** One attempt's full record — `attempt.json`, and the row every report is built from. */
@@ -87,7 +112,12 @@ export interface AttemptRecord {
   band: Band | null;
   /** A mustNot capped the band. */
   capped: boolean;
-  /** Why a hard fail or harness error happened, in one line. */
+  /** A hard fail or harness error: where, whose, and why. Absent when scored. */
+  failure?: AttemptFailure;
+  /**
+   * A note on the record itself (an incomplete archive). Records written
+   * before `failure` existed carry their failure's one line here instead.
+   */
   symptom?: string;
   failing: { id: string; weight: number; symptom: string }[];
   violated: string[];
@@ -100,10 +130,15 @@ export interface AttemptRecord {
   archive: string;
 }
 
-/** The code failed — score 0, counted. */
+/** The code failed (cause `app`) — score 0, counted. */
 class HardFail extends Error {}
-/** Not the code's failure — counted, excluded from the statistics. */
+/** Not the code's failure (cause `environment`) — counted, excluded from the statistics. */
 class HarnessError extends Error {}
+
+/** A classified failure as the error that ends the run. */
+function raise(failure: Classified): never {
+  throw failure.cause === "app" ? new HardFail(failure.reason) : new HarnessError(failure.reason);
+}
 
 /** What every run needs, attempt or rewalk alike. */
 export interface RunTarget {
@@ -143,6 +178,8 @@ interface Run {
   /** A rewalk's project is its parent's; only an attempt archives one. */
   archiveProject: boolean;
   target: RunTarget;
+  /** The phase in progress, or the last one entered — where a failure is recorded. */
+  phase: Phase;
 }
 
 export function attemptDirs(sweepId: string, caseName: string, configId: string, attempt: number): { archive: string; stage: string } {
@@ -204,6 +241,7 @@ export async function runAttempt(ctx: AttemptContext): Promise<AttemptRecord> {
     codeKilled: false,
     archiveProject: true,
     target: ctx,
+    phase: "stage",
   };
   return execute(run, async (env) => {
     await timed(run, "stage", async () => {
@@ -245,6 +283,7 @@ export async function runRewalk(ctx: RewalkContext): Promise<AttemptRecord> {
     codeKilled: false,
     archiveProject: false,
     target: ctx,
+    phase: "stage",
   };
   return execute(run, async () => {
     await timed(run, "stage", async () => {
@@ -296,11 +335,13 @@ async function execute(run: Run, prepare: (env: NodeJS.ProcessEnv) => Promise<vo
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     if (e instanceof HardFail) {
-      Object.assign(record, { status: "hard-fail" as const, score: 0, band: "fail" as const, symptom: message });
+      Object.assign(record, { status: "hard-fail" as const, score: 0, band: "fail" as const });
+      record.failure = { phase: run.phase, cause: "app", reason: message };
     } else {
       // CredentialError, HarnessError, and anything unexpected: none of them is the code's.
       record.status = "harness-error";
-      record.symptom = e instanceof CredentialError || e instanceof HarnessError ? message : `harness crash: ${message}`;
+      const reason = e instanceof CredentialError || e instanceof HarnessError ? message : `harness crash: ${message}`;
+      record.failure = { phase: run.phase, cause: "environment", reason };
     }
   } finally {
     target.signal.removeEventListener("abort", onAbort);
@@ -311,6 +352,7 @@ async function execute(run: Run, prepare: (env: NodeJS.ProcessEnv) => Promise<vo
 
 async function timed<T>(run: Run, phase: Phase, fn: () => Promise<T>): Promise<T> {
   const started = Date.now();
+  run.phase = phase;
   // Labelled: at --concurrency > 1 these lines interleave across attempts.
   run.target.say(`    · ${run.label} · ${phase}`);
   try {
@@ -348,15 +390,19 @@ async function codePhase(run: Run, env: NodeJS.ProcessEnv): Promise<void> {
     record.coding.tokens = settled?.tokens ?? null;
     record.coding.costUsd = run.codingRunDir ? lastResultCost(readText(join(run.codingRunDir, ".logs", "runtime.log"))) : null;
 
-    if (timedOut) throw new HardFail(`coding run timed out after ${String(limitMs / 60_000)} min`);
-    if (countEvents(progress) === 0) {
-      // Nothing reached the feed: the run never started. That is docker, the
-      // runner image or the credential — `play` says which in its last lines.
-      throw new HarnessError(`the coding run never started (exit ${String(exit.code)}): ${lastLines(play)}`);
-    }
-    if (!settled) throw new HardFail(`the coding run ended without settling (exit ${String(exit.code)})`);
-    if (settled.outcome !== "success") throw new HardFail(`coding run outcome: ${settled.outcome}`);
-    if (!builtAnything(stage)) throw new HardFail("the coding run produced no component directory");
+    const events = countEvents(progress);
+    const failure = codingFailure({
+      timedOut,
+      limitMinutes: limitMs / 60_000,
+      exitCode: exit.code,
+      events,
+      agentStarted: sawRunStarted(progress),
+      settled,
+      builtAnything: componentAppPaths(stage).length > 0,
+    });
+    // Nothing reached the feed: `play` itself says why in its last lines (docker, the image, the credential).
+    if (failure && events === 0) raise({ ...failure, reason: `${failure.reason} — ${lastLines(play)}` });
+    if (failure) raise(failure);
   });
   interrupted(run);
 }
@@ -371,13 +417,22 @@ async function servePhases(run: Run, env: NodeJS.ProcessEnv): Promise<void> {
       logFile: join(run.archive, "wire", "wire.log"),
     });
     run.live.wire = play;
+    // `wire` says whose failure a bring-up was, in one line, before it exits.
+    let failed: Classified | null = null;
+    play.onLine((line) => {
+      failed = parseFailed(line) ?? failed;
+    });
     const ready = await waitForLine(play, parseReady, TIMEOUTS.wireReadyMinutes * 60_000);
     interrupted(run);
     if (ready.kind === "line") return baseUrl(ready.value);
-    if (ready.kind === "timeout") throw new HardFail(`unwireable: no READY within ${String(TIMEOUTS.wireReadyMinutes)} min — ${lastLines(play)}`);
-    // `wire`'s preflight names what is missing on this machine; that is the harness's environment, not the code.
-    if (play.tail(50).some((line) => line.includes("not available:"))) throw new HarnessError(`wire preflight: ${lastLines(play)}`);
-    throw new HardFail(`unwireable: ${lastLines(play)}`);
+    const failure = wireFailure({
+      ended: ready.kind,
+      exitCode: ready.kind === "exited" ? ready.code : null,
+      failed,
+      limitMinutes: TIMEOUTS.wireReadyMinutes,
+      tail: lastLines(play),
+    });
+    raise(failure.cause === "app" ? { ...failure, reason: `unwireable: ${failure.reason}` } : failure);
   });
 
   const items = scoredItems(target.evalCase.checklist);
@@ -396,6 +451,8 @@ async function servePhases(run: Run, env: NodeJS.ProcessEnv): Promise<void> {
   );
   record.walk = { costUsd: walked.costUsd, tokens: walked.tokens, turns: walked.numTurns };
   if (walked.credentialRefused) throw new HarnessError(walked.error ?? "walker credential refused");
+  // Whatever the walker answered after its browser stopped answering is not evidence about the app.
+  if (walked.halted) throw new HarnessError(walked.halted);
   interrupted(run);
   if (!walked.output) throw new HarnessError(`the walk produced no result: ${walked.error ?? "unknown"}`);
   const walkResult = normalizeWalk(items, walked.output);
@@ -468,7 +525,8 @@ async function finalize(run: Run): Promise<void> {
  * keeps its database volume on purpose, so a person's rows survive to their
  * next session, but an attempt is throwaway and a kept volume is a leak — one
  * per attempt, forever (measured: the first live sweep left one behind). The
- * dev server is reaped by the port `session.json` recorded only when `wire`
+ * same goes for the images it built (~430 MB each; twelve had piled up in the
+ * VM), so the down removes those too (`composeDown`). The dev server is reaped by the port `session.json` recorded only when `wire`
  * could not do it itself.
  */
 async function stopWire(run: Run): Promise<void> {
@@ -489,7 +547,8 @@ async function stopWire(run: Run): Promise<void> {
     if (isStopped(line)) sawStopped = true;
   });
   const how = await play.stop(TIMEOUTS.wireStopMinutes * 60_000);
-  await composeDown(project);
+  const file = join(run.stage, ".aep-playground", "wire", "compose.yaml");
+  await composeDown(project, existsSync(file) ? file : undefined);
   if (how === "killed" || !sawStopped) {
     const port = readWireSession(run.stage)?.webappPort;
     if (port) await killListener(port);
@@ -507,28 +566,32 @@ function newestCodingRun(stage: string): string | null {
   return newest ? join(runs, newest) : null;
 }
 
-/** Did the run write ANY component's App Path? None means it built nothing at all. */
-function builtAnything(stage: string): boolean {
+/** Every component App Path the run wrote, relative to the project. None means it built nothing at all. */
+function componentAppPaths(stage: string): string[] {
   const components = join(stage, "specs", "design", "components");
-  if (!existsSync(components)) return false;
-  return readdirSync(components).some((name) => {
+  if (!existsSync(components)) return [];
+  return readdirSync(components).flatMap((name) => {
     try {
       const design = JSON.parse(readFileSync(join(components, name, "design.json"), "utf8")) as { appPath?: unknown };
-      return typeof design.appPath === "string" && existsSync(join(stage, design.appPath));
+      return typeof design.appPath === "string" && existsSync(join(stage, design.appPath)) ? [design.appPath] : [];
     } catch {
-      return false;
+      return [];
     }
   });
 }
 
 /**
  * Paths (relative to the staged project) that stay out of `project/`.
- * `node_modules` anywhere — reinstallable and enormous; the session's
- * secrets, bearers and private key; the undo snapshots (the case already is
- * that state); and the coding run dirs, which `coding/` holds whole. Pure.
+ * `node_modules` anywhere — reinstallable and enormous; build output at an App
+ * Path's root (`ARCHIVE.buildOutputDirs`) — regenerable from the sources kept
+ * beside it; the session's secrets, bearers and private key; the undo
+ * snapshots (the case already is that state); and the coding run dirs, which
+ * `coding/` holds whole. Pure.
  */
-export function excludedFromProject(rel: string): boolean {
+export function excludedFromProject(rel: string, appPaths: readonly string[] = []): boolean {
   if (rel.split(sep).includes("node_modules")) return true;
+  const output = appPaths.flatMap((appPath) => ARCHIVE.buildOutputDirs.map((dir) => join(appPath, dir)));
+  if (output.some((path) => rel === path || rel.startsWith(path + sep))) return true;
   const wire = join(".aep-playground", "wire");
   return [
     join(wire, "secrets.json"),
@@ -543,10 +606,11 @@ function archiveRun(run: Run): void {
   const { stage, archive } = run;
   if (!existsSync(stage)) return;
   if (run.archiveProject) {
+    const appPaths = componentAppPaths(stage);
     cpSync(stage, join(archive, "project"), {
       recursive: true,
       verbatimSymlinks: true,
-      filter: (src) => !excludedFromProject(relative(stage, src)),
+      filter: (src) => !excludedFromProject(relative(stage, src), appPaths),
     });
   }
   if (run.codingRunDir && existsSync(run.codingRunDir)) {

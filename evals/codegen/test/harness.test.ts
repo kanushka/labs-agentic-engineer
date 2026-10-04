@@ -32,7 +32,7 @@ import { baseUrl, isStopped, parseReady } from "../src/play.js";
 import { confirmEachAction, guardTool, normalizeWalk, shellWords, walkerProblem } from "../src/walker.js";
 import { bandFor, scoreAttempt, type Judgement } from "../src/score.js";
 import { countEvents, lastResultCost, readRunSettled } from "../src/metrics.js";
-import { attemptLine, compare, pickBaseline, renderReport, stat, summarize, type Summary } from "../src/report.js";
+import { attemptLine, compare, failureText, pickBaseline, renderReport, stat, summarize, type Summary } from "../src/report.js";
 import { excludedFromProject, rewalkDirs, type AttemptRecord } from "../src/attempt.js";
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -424,6 +424,20 @@ test("report: the baseline is the newest EARLIER sweep with the row and no harne
   assert.equal(base?.sweep, "2026-01-01");
 });
 
+test("report: a failed attempt's line names its phase, whose failure it was, and why; an old record its symptom", () => {
+  const harness = record({
+    status: "harness-error",
+    score: null,
+    band: null,
+    failure: { phase: "walk", cause: "environment", reason: "browser unresponsive: 3 agent-browser commands in a row ran to their timeout" },
+  });
+  assert.match(attemptLine(harness), /harness-error · walk failed \(environment\): browser unresponsive/);
+  const hard = record({ status: "hard-fail", score: 0, band: "fail", failure: { phase: "wire", cause: "app", reason: "unwireable: api started and exited with code 1" } });
+  assert.match(attemptLine(hard), /hard-fail · 0 fail · wire failed \(app\): unwireable/);
+  assert.equal(failureText(record({ symptom: "unwireable: legacy" })), "unwireable: legacy");
+  assert.equal(failureText(record({})), "");
+});
+
 test("report: an attempt line names status, score, top failing items and the archive", () => {
   const line = attemptLine(
     record({ score: 40, band: "fail", failing: [1, 2, 3, 4].map((n) => ({ id: `i${String(n)}`, weight: 1, symptom: "" })) }),
@@ -448,6 +462,25 @@ test("archive: dependencies, the session's secrets, undo and run dirs stay out o
   for (const rel of ["expense-webapp/src/App.tsx", ".aep-playground/wire/plan.json", ".aep-playground/wire/compose.yaml", "issues/1.md"]) {
     assert.ok(!excludedFromProject(rel), rel);
   }
+});
+
+test("archive: build output at an App Path's root stays out; the same names anywhere else are sources", () => {
+  const appPaths = ["onboarding-api", "onboarding-webapp"];
+  for (const rel of ["onboarding-api/target", "onboarding-api/target/bin/app.jar", "onboarding-webapp/dist/index.html"]) {
+    assert.ok(excludedFromProject(rel, appPaths), rel);
+  }
+  for (const rel of [
+    "onboarding-api/main.bal",
+    "onboarding-api/targets.bal",
+    "onboarding-webapp/src/dist/format.ts",
+    "target/notes.md",
+    "specs/design/dist",
+    "onboarding-webapp/build/vite.config.ts",
+  ]) {
+    assert.ok(!excludedFromProject(rel, appPaths), rel);
+  }
+  // Without the App Paths there is nothing to anchor the rule to, and nothing is dropped for it.
+  assert.ok(!excludedFromProject("onboarding-api/target/bin/app.jar"));
 });
 
 
