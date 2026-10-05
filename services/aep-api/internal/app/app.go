@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/aep/aep-api/internal/app/crtcatalog"
 	"github.com/wso2/aep/aep-api/internal/clients/agentmanager"
 	"github.com/wso2/aep/aep-api/internal/clients/agentsvc"
 	"github.com/wso2/aep/aep-api/internal/clients/observability"
@@ -1177,7 +1178,7 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// consumer-side so design holds only a narrow ResourceTypesByName port. When
 	// the design declares a platform-resource dependency and this catalog is
 	// unreachable, the save fails closed (ErrResourceCatalogUnavailable → 503).
-	designService.SetResourceCatalog(crtTypeCatalog{resourceTypeCatalog})
+	designService.SetResourceCatalog(crtcatalog.New(resourceTypeCatalog))
 
 	// Read-time org-service dependency resolution (dependency-management Phase 5):
 	// the same endpoint catalog that backs the MCP list_org_endpoints tool marks

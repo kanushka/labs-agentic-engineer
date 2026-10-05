@@ -43,6 +43,7 @@ import { loadDotenv } from "@aep/agents/shared/env";
 import {
   chatTurn,
   codeCommand,
+  evalSaveCommand,
   logCommand,
   designCommand,
   requirementsCommand,
@@ -53,6 +54,7 @@ import {
   type PhaseOutcome,
 } from "./commands.js";
 import { checkProject } from "./engine/check.js";
+import { WIRE_EXIT } from "./engine/wire/failure.js";
 import { wireCommand } from "./engine/wire/session.js";
 import { openSession, SKILLS_DIR } from "./engine/session.js";
 import { expandProjectPath, projectDirError } from "./paths.js";
@@ -66,7 +68,19 @@ import { readIdea, writeDescriptor } from "./state/descriptor.js";
 import { confirmCodingDir, confirmWireDir } from "./tui/consent.js";
 import type { WireOptions } from "./engine/wire/session.js";
 
-const COMMANDS = new Set(["requirements", "design", "tasks", "code", "wire", "chat", "check", "undo", "log", "menu"]);
+const COMMANDS = new Set([
+  "requirements",
+  "design",
+  "tasks",
+  "code",
+  "wire",
+  "chat",
+  "check",
+  "undo",
+  "log",
+  "menu",
+  "eval-save",
+]);
 
 /** Bare `play`, `play help`, or `-h/--help` → the one-screen command reference. */
 function printUsage(): void {
@@ -83,6 +97,8 @@ function printUsage(): void {
       "  pnpm play <dir> wire                      run the generated app locally, as a role, in a browser",
       "  pnpm play <dir> log [--slow|--thinking]   read the last coding run in detail (developer view)",
       '  pnpm play <dir> chat "<message>"          one-shot headless chat turn',
+      "  pnpm play <dir> eval-save <name>          save the pre-code specs/ + issues/ as a codegen eval case",
+      "                                            (evals/codegen; plans its checklist with a model)",
       "",
       "Flags:",
       '  --idea "<text>"   the project idea — captured into specs/.agentic-engineer.toml',
@@ -119,7 +135,7 @@ function printUsage(): void {
       "                            aep-runner-opencode:dev (AGENT_RUNNER_IMAGE_OPENCODE), docker",
       "                            mode only, API key only",
       "  AEP_AGENT_MODEL           the one model every call uses: the coding run's, and the",
-      "                            engineering agent's on an AEP_MODEL_* connection (default claude-sonnet-5)",
+      "                            engineering agent's on an AEP_MODEL_* connection (default claude-sonnet-5-5)",
       "",
       "Tracing: AI SDK DevTools is on by default — run `npx @ai-sdk/devtools` (port 4983).",
       "",
@@ -188,11 +204,17 @@ async function runHeadless(
       // discovery, ordering and fan-out (see its SKILL.md).
       outcome = await codeCommand(projectDir, opts, confirmCodingDir(projectDir));
       break;
-    case "wire":
+    case "wire": {
       // The one verb that ends with a browser open and a panel up: it holds the
       // terminal until you quit, and tears everything down on the way out.
-      outcome = await wireCommand(projectDir, wireOptions, confirmWireDir(projectDir));
+      const wired = await wireCommand(projectDir, wireOptions, confirmWireDir(projectDir));
+      if (!wired.ok) {
+        output.write(`✗ wire: ${wired.detail}\n`);
+        return WIRE_EXIT[wired.cause];
+      }
+      outcome = wired;
       break;
+    }
     case "undo":
       outcome = undoCommand(projectDir, opts);
       break;
@@ -232,6 +254,12 @@ async function runHeadless(
     }
     case "check":
       return printCheckFindings(projectDir) ? 0 : 1;
+    case "eval-save":
+      if (!commandArg) {
+        output.write("usage: play <dir> eval-save <name>\n");
+        return 1;
+      }
+      return evalSaveCommand(projectDir, commandArg);
     default:
       output.write(`"${command}" is not wired yet (see docs/design/playground.md §13)\n`);
       return 2;
