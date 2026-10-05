@@ -1,0 +1,70 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { Box, type SxProps, type Theme } from "@wso2/oxygen-ui";
+import { Check } from "@wso2/oxygen-ui-icons-react";
+
+/** The palette colour a step takes; null is the muted default. */
+export type StepTone = "success" | "primary" | "warning" | null;
+
+/**
+ * A step's number in a ring, one look wherever the console counts steps (the
+ * overview's track, a batch of the agent's questions): the ring takes the
+ * step's tone, and a done step fills green with a check in place of its
+ * number. A ticked step shows the check in the ring's own tone instead, for a
+ * count that marks progress without colouring it (the questions). Decorative:
+ * the step's name carries its state for assistive tech.
+ */
+export function StepMarker({
+  step,
+  tone,
+  done = false,
+  ticked = false,
+  sx,
+}: {
+  step: number;
+  tone: StepTone;
+  done?: boolean;
+  ticked?: boolean;
+  sx?: SxProps<Theme>;
+}) {
+  return (
+    <Box
+      aria-hidden
+      sx={[
+        {
+          width: 18,
+          height: 18,
+          flexShrink: 0,
+          borderRadius: "50%",
+          border: 1,
+          display: "grid",
+          placeItems: "center",
+          fontFamily: "monospace",
+          fontSize: "0.75rem",
+          borderColor: done ? "success.main" : tone ? `${tone}.main` : "divider",
+          color: done ? "success.contrastText" : tone ? `${tone}.main` : "text.secondary",
+          bgcolor: done ? "success.main" : "transparent",
+        },
+        ...(sx === undefined ? [] : Array.isArray(sx) ? sx : [sx]),
+      ]}
+    >
+      {done || ticked ? <Check size={12} strokeWidth={3} /> : step}
+    </Box>
+  );
+}

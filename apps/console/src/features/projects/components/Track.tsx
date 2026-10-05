@@ -27,7 +27,7 @@ import {
   Typography,
   keyframes,
 } from "@wso2/oxygen-ui";
-import { Check } from "@wso2/oxygen-ui-icons-react";
+import { StepMarker, type StepTone } from "../../../components/StepMarker";
 import { useBuildAction } from "../../builds/buildPicker";
 import { PHONE } from "../../shell/layout";
 import type { LegState } from "../model/track";
@@ -37,7 +37,7 @@ import { useProjectTrack } from "../useProjectTrack";
 const LegLink = createLink(ButtonBase);
 
 /** The palette colour a leg's number and lamp take; null is the muted default. */
-const TONE: Record<LegState, "success" | "primary" | "warning" | null> = {
+const TONE: Record<LegState, StepTone> = {
   done: "success",
   live: "primary",
   waiting: "warning",
@@ -70,30 +70,7 @@ function Lamp({ state }: { state: LegState }) {
 }
 
 function StepNumber({ leg }: { leg: TrackLegView }) {
-  const tone = TONE[leg.state];
-  const done = leg.state === "done";
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        width: 18,
-        height: 18,
-        mt: 0.25,
-        flexShrink: 0,
-        borderRadius: "50%",
-        border: 1,
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "monospace",
-        fontSize: "0.75rem",
-        borderColor: tone ? `${tone}.main` : "divider",
-        color: done ? "success.contrastText" : tone ? `${tone}.main` : "text.secondary",
-        bgcolor: done ? "success.main" : "transparent",
-      }}
-    >
-      {done ? <Check size={12} strokeWidth={3} /> : leg.step}
-    </Box>
-  );
+  return <StepMarker step={leg.step} tone={TONE[leg.state]} done={leg.state === "done"} sx={{ mt: 0.25 }} />;
 }
 
 const legSx = {

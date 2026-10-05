@@ -46,3 +46,12 @@ for console turns, and a disagreement is settled here.
 | **Request** | one change asked of the prototype: the selected elements and the text | comment, note, ticket |
 | **Send all (N)** | send the queued requests to the agent in one turn | submit |
 | **Reset data** | restore the prototype's mock data | clear |
+
+## The agent's questions
+
+| Say | Means | Not |
+|---|---|---|
+| **Answers** | the last page of a batch of questions: every question with the answer given, where the batch is sent | Review (a prototype term), Summary, Submit |
+| **Send answers** / **Send answer** | send a batch's answers, or one question's, to the agent as the next message | submit |
+| **Not answered** | a question in the batch still owed an answer | skipped, missing |
+| **Still asking…** | the batch is still arriving; it can be read, not yet answered | loading |
