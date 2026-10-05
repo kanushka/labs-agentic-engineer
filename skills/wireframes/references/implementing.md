@@ -116,7 +116,12 @@ Every `-> Screen` — on a button, a link, a table, a navbar or sidebar item —
 is **working navigation** to that screen's route — including the rail item
 pointing at the screen it sits on, which is the active nav link and still a
 link. A chrome item with no target names a section outside this wireframe set:
-render it and leave it inert rather than inventing a destination for it.
+render it and leave it inert rather than inventing a destination for it. The
+exception is `Sign out`: it is an action, not a section. Render it where the
+DSL draws it, outside the `Can` wrap, and make it call `signOut()`.
+
+A create's `-> Screen` lands where the new row shows. If that list has a
+filter, it opens with a filter value that includes the new row.
 
 Every `flow` block is a journey a role must be able to walk end to end by
 clicking: entry screen first, each screen reachable from the one before. A
