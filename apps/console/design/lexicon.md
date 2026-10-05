@@ -2,8 +2,37 @@
 
 The words the console says to a user. A feature draws its words from here;
 introducing a user-facing term means amending this file in the same PR. The
-older, fuller lexicon is `apps/console-old/design/lexicon.md`; terms are
-carried over here as their features are ported.
+older, fuller lexicon is the classic console's (`apps/console/design/lexicon.md`
+at the `classic-console` git tag); terms are carried over here as their
+features are ported.
+
+## Naming rules
+
+1. **A section names the class; an artifact names the document.** An artifact
+   label adds information, never repeats its header outright.
+2. **Filenames are never labels.** The user reads a document tree, not a repo.
+3. **Plural for things that accumulate over time, singular for the one a
+   project has.** Builds, Deployments, Issues, Validations — Overview, Spec.
+4. **No acronyms** the user has to expand.
+5. **The product is "Agentic Engineer", never "AEP".**
+6. **Don't name the system's behavior** — name the user's situation. "Build
+   refused" is the system describing itself; "Not ready to build yet" describes
+   them.
+
+## Spec artifacts
+
+The names the agent uses for what it touched; `skills/console` pins this table
+for console turns, and a disagreement is settled here.
+
+| Repo | Say |
+|---|---|
+| `specs/requirements/prd.md` | the **Product requirements** |
+| `specs/design/design.cell` | the **Architecture** |
+| `specs/design/domain-model.md` | the **Domain model** |
+| `specs/design/flows/<slug>.md` | the flow, by its title |
+| `specs/design/security.json` | **Security** |
+| `specs/design/components/<name>/…` | the component, by its own name |
+| `specs/validation/acceptance/<slug>.feature` | the **Acceptance criteria**, as one set |
 
 ## Prototype
 

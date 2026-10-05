@@ -26,7 +26,7 @@ import { parseLine, type LineBlock } from "../../features/spec/model/ids";
 // product with screens: a prototype made from the wireframes, a flow, roles,
 // the data model, the architecture (a cell), a component and its contract,
 // security, and one acceptance file per feature. The viewers' formats follow
-// the old console's fixtures (apps/console-old/src/mocks/fixtures/project.ts and
+// the old console's fixtures (classic-console tag, src/mocks/fixtures/project.ts and
 // validation.ts): wireframes DSL, cell DSL, design.json (the web app's too,
 // which is what Make prototype looks for), OpenAPI YAML,
 // Gherkin with rules tagged `@story-F2.3`. Payroll export is never designed

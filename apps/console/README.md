@@ -1,7 +1,7 @@
 # @aep/console
 
 The agentic-first console; see `AGENTS.md`. It replaced the earlier console,
-kept as source in `apps/console-old`; `design/console-old-gaps.md` lists what
+kept as source at the `classic-console` git tag; `design/classic-console-gaps.md` lists what
 that one has and this one does not yet.
 
 ## Run

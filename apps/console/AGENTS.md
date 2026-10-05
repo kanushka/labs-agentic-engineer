@@ -1,11 +1,9 @@
 # AGENTS.md — apps/console (`@aep/console`)
 
 The agentic-first console. It was built beside the earlier console (as
-`apps/console-next`) and replaced it; the earlier one is kept in
-`apps/console-old` as source to port from. That folder is outside the pnpm
-workspace: nothing builds, tests or ships it, and it goes once the last of its
-features is ported. `design/console-old-gaps.md` lists what it has and this
-app does not yet.
+`apps/console-next`) and replaced it; the earlier one is kept at
+the `classic-console` git tag (`apps/console/` there) as source to port from.
+`design/classic-console-gaps.md` lists what it has and this app does not yet.
 
 Every decision behind it lives on the wayfinder map "The agentic-first
 console" (https://claude.ai/artifact/LhkAvt26fS5XVLniiVyu2F). Its build items
@@ -24,8 +22,8 @@ an area before changing it.
   whether aep-api maps a new contract field onto the response, so the wiring
   step checks against the real API.
 - **Depend only on the contract and existing packages.** Code this app needs
-  from `apps/console-old` is copied in and owned here (auth was), not
-  extracted into a new shared package. Nothing imports from `apps/console-old`.
+  from the classic console is copied in and owned here (auth was), not
+  extracted into a new shared package.
 - **Tests:** unit tests with Vitest (node; `// @vitest-environment jsdom` per
   file for components). The live end-to-end walk lives in `tests/e2e`.
 - Request and response types come from the generated client
