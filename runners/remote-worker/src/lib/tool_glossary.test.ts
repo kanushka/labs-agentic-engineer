@@ -20,11 +20,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toolGlossary } from "./tool_glossary.js";
 
-// The wait role means opposite things on the two runtimes, and each glossary
-// has to say which. On Claude Code a backgrounded builder wakes the lead when
-// it finishes, so there is no tool to call and a blocking wait would hold the
-// lead off every other report. On OpenCode the fan-out is foreground: the
-// `task` call returns the report, and there is no turn to end while it runs.
 test("toolGlossary: Claude Code waits by ending its turn; OpenCode's task call is the wait", () => {
   const claude = toolGlossary("claude-code");
   assert.ok(claude.includes("- **wait tool**: none. End your turn. A finished agent wakes you with its report."));

@@ -223,8 +223,6 @@ const REFERENCE_RULES: Record<string, string[]> = {
     "a pinned contract wins when there is one",
     "external-dependency-research.md",
     "delete anything under the repo-root `specs/`",
-    // The subagent's own rules ride in the file it reads, not in a list the
-    // lead must relay through every prompt.
     "Never run `git`",
     "Run every command in the foreground",
   ],
