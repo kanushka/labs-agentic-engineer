@@ -284,7 +284,23 @@ export class BrowserWatchdog {
 const SYSTEM_PROMPT = `You test web applications the way a careful user would, in a real browser, and report exactly what you observed.
 You never fix, work around or excuse what you find. You answer with one JSON object in the requested schema.`;
 
-export function walkerPrompt(opts: { baseUrl: string; roles: string[]; items: Item[]; mustNot: MustNot[] }): string {
+/**
+ * The wall-clock time as the browser reads it: `2026-10-04 20:21 (Asia/Colombo)`.
+ * A tester knows the time, and items that depend on it ("a slot in the next
+ * two hours") cannot be walked without it — the walker has no `eval` and the
+ * app need not show a clock. Chrome runs on this machine, so this machine's
+ * time zone is the browser's.
+ */
+export function browserClock(now: Date, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(now)
+      .map((part) => [part.type, part.value]),
+  ) as Record<string, string>;
+  return `${parts.year ?? ""}-${parts.month ?? ""}-${parts.day ?? ""} ${parts.hour ?? ""}:${parts.minute ?? ""} (${timeZone})`;
+}
+
+export function walkerPrompt(opts: { baseUrl: string; roles: string[]; items: Item[]; mustNot: MustNot[]; now?: Date }): string {
   const url = opts.baseUrl.replace(/\/$/, "");
   const checklist = opts.items
     .map(
@@ -298,8 +314,9 @@ export function walkerPrompt(opts: { baseUrl: string; roles: string[]; items: It
   return `You are testing a running web application against a checklist. You have not seen its source and you will not: the browser is the only way you learn anything.
 
 THE BROWSER is the \`agent-browser\` CLI, through Bash, ONE command per call — pipes, \`;\`, \`&&\`, redirects and substitutions are refused. Send one call at a time and read its result before the next: a command sent while another runs is refused. Send a fixed sequence (click a field, then press its keys) as one \`agent-browser batch --bail "click @e4" "press 2" …\`, with refs from a snapshot taken after the page last changed. Your session is already isolated; never pass --session. \`agent-browser skills get core\` prints the full reference. Two readings of a page, and they are not interchangeable:
-  agent-browser snapshot -c                what the page SHOWS (text, rows, badges) — judge from this
+  agent-browser snapshot                   what the page SHOWS (text, rows, badges) — judge from this
   agent-browser snapshot -i                the controls only, with @refs to act on — it hides text and rows
+\`snapshot -c\` drops plain text, such as a hint under a form field: never judge from it.
 Screenshots go to shots/<id>.png. You may Read and Write files in your working directory (screenshots included) and nowhere else.
 
 ${confirmEachAction()}
@@ -308,6 +325,7 @@ THE APP is at ${url}/
 - Enter as a role by loading ${url}/?role=<Role>. "no role" is ${url}/?role= (signed in, holding no role); "signed out" is ${url}/?auth=out.
 - Roles: ${opts.roles.join(", ")}.
 - The backend is real and its database started EMPTY. What you create persists, across role switches too.
+- When the walk started, the browser's clock read ${browserClock(opts.now ?? new Date())}. Use it for any date or time that an item asks for relative to now.
 
 ${WIRED_AUTH_SEMANTICS}
 
@@ -315,7 +333,7 @@ THE METHOD, for each item in order:
 1. Reach — enter as the item's role (unless you already are), then get to the item's screen the way a user would: the app's own navigation, from where the role lands. Load a URL directly only to switch role or when the item's steps say to. Note the address of every screen you reach (\`agent-browser get url\`): a later item may ask you to open it under another role.
 2. Act — do the steps, with the values given.
 3. Request — a change counts only when a request leaves the page. After a create, edit, delete, approve or similar, check \`agent-browser network requests\` for it and its status. A row that changes on screen with no request behind it, or a request that failed, is a FAIL.
-4. Judge the \`expect\` against what you SEE — a full \`snapshot -c\` (or the screenshot), never \`snapshot -i\`, which omits everything that is not a control. pass: it holds. fail: it does not — say what you saw instead. blocked: an earlier failure made this item impossible to attempt — name that item.
+4. Judge the \`expect\` against what you SEE — a full \`snapshot\` (or the screenshot), never \`snapshot -i\`, which omits everything that is not a control. Before you fail an item for text that is not there, look at the screenshot too. pass: it holds. fail: it does not — say what you saw instead. blocked: an earlier failure made this item impossible to attempt — name that item.
 5. Screenshot at the moment you judge: \`agent-browser screenshot shots/<id>.png\`.
 6. On a failure, read \`agent-browser console\`, \`agent-browser errors\` and the failed entries of \`agent-browser network requests\`; record what they show in console_errors and failed_requests (short, verbatim where possible).
 At most three tries on one item, then record it and move on. Walk every item; do not stop early.

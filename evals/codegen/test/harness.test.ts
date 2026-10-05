@@ -29,7 +29,7 @@ import { dirtyPaths } from "../src/provenance.js";
 import { resolveCodingRun, usageByAgent } from "../src/log.js";
 import { PATHS, PROVENANCE } from "../src/config.js";
 import { baseUrl, isStopped, parseReady } from "../src/play.js";
-import { BrowserLane, confirmEachAction, guardTool, normalizeWalk, shellWords, walkerProblem } from "../src/walker.js";
+import { BrowserLane, browserClock, confirmEachAction, guardTool, normalizeWalk, shellWords, walkerProblem } from "../src/walker.js";
 import { bandFor, scoreAttempt, type Judgement } from "../src/score.js";
 import { countEvents, lastResultCost, readRunSettled } from "../src/metrics.js";
 import { attemptLine, compare, failureText, pickBaseline, renderReport, stat, summarize, type Summary } from "../src/report.js";
@@ -542,6 +542,13 @@ test("prompts: planner and walker both carry the wired-mode auth semantics; the 
   assert.match(planner, /the DSL wins for the walk/);
   const walker = walkerPrompt({ baseUrl: "http://localhost:5173/", roles: ["Employee"], items: [], mustNot: [] });
   assert.ok(walker.includes(WIRED_AUTH_SEMANTICS));
+});
+
+test("prompts: the walker knows the browser's clock", () => {
+  assert.equal(browserClock(new Date("2026-10-04T14:51:00Z"), "Asia/Colombo"), "2026-10-04 20:21 (Asia/Colombo)");
+  assert.equal(browserClock(new Date("2026-10-04T23:05:00Z"), "UTC"), "2026-10-04 23:05 (UTC)");
+  const walker = walkerPrompt({ baseUrl: "http://localhost:5173/", roles: ["Employee"], items: [], mustNot: [], now: new Date("2026-10-04T14:51:00Z") });
+  assert.match(walker, /browser's clock read 2026-10-04 \d\d:\d\d/);
 });
 
 test("prompts: the walker confirms actions by the agent-browser skill's own section, not a copy", () => {
