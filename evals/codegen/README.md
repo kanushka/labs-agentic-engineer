@@ -21,7 +21,8 @@ pnpm --filter @aep/codegen-evals eval save --from <abs dir> --name <name> [--for
 `save` finds the project's **pre-code** state — the project itself when its top
 level is exactly `specs/` + `issues/` and no issue carries an agent-written
 section (`## Progress`, `## Mock verification`), otherwise the oldest undo
-snapshot that is — copies it to `cases/<name>/`, and asks a planner (read-only
+snapshot that is — copies it to `cases/<name>/` without the compiled renderings
+(`*.excalidraw`, `*.gen.json`, which code generation never reads), and asks a planner (read-only
 tools) to derive `checklist.yaml` from the specs: one item per user-visible
 behaviour in the wireframe flows and PRD stories, each walkable from an empty
 database, under a role `wire --role` accepts. A project with no

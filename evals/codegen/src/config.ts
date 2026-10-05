@@ -66,6 +66,13 @@ export const SAVE = {
   /** A case is these two directories and nothing else (decision 1: from-scratch generation). */
   caseDirs: ["specs", "issues"],
   /**
+   * Files the platform compiles from a source beside them — `*.excalidraw`
+   * from `wireframes.dsl`, `*.gen.json` from `design.cell`. Code generation
+   * never reads them (the `wireframes` skill forbids it), and one wireframe
+   * picture is 8–20k lines, so a case does not keep them.
+   */
+  renderedSuffixes: [".excalidraw", ".gen.json"],
+  /**
    * Headings only an agent writes into an issue file. One of them in any issue
    * means the tree is post-run, whatever its top level looks like — `play undo`
    * restores the directories, and a hand-copied project can carry them too.

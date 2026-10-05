@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { parse } from "yaml";
 import { ChecklistSchema, CaseSchema, RunConfigSchema, parseYaml, unknownRoles, type Checklist } from "../src/case.js";
 import { assertNotApiKey, CredentialError, oauthTokenFrom, playEnv, sdkEnv } from "../src/credentials.js";
-import { chooseSource, renderChecklist, type TreeFacts } from "../src/save.js";
+import { chooseSource, isRendering, renderChecklist, type TreeFacts } from "../src/save.js";
 import { plannerPrompt, planProblems } from "../src/planner.js";
 import { walkerPrompt } from "../src/walker.js";
 import { WIRED_AUTH_SEMANTICS } from "../src/wired-auth.js";
@@ -290,6 +290,14 @@ test("walker: Read and Write stay inside walk/", () => {
   assert.equal(guardTool("Read", { file_path: "/w/project/src/App.tsx" }, dir).allow, false);
   assert.equal(guardTool("Write", { file_path: "../x" }, dir).allow, false);
   assert.equal(guardTool("Write", { file_path: "/w/walk-evil/x" }, dir).allow, false);
+});
+
+test("save: a case leaves out the compiled renderings, keeps their sources", () => {
+  assert.equal(isRendering("specs/design/components/web/wireframes.excalidraw"), true);
+  assert.equal(isRendering("specs/design/cell-diagram.gen.json"), true);
+  assert.equal(isRendering("specs/design/components/web/wireframes.dsl"), false);
+  assert.equal(isRendering("specs/design/design.cell"), false);
+  assert.equal(isRendering("specs/design/components/api/design.json"), false);
 });
 
 test("walker: one browser command runs at a time; a finished one frees the lane", () => {

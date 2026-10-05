@@ -65,6 +65,11 @@ export type SourceChoice = { ok: true; dir: string; snapshot: string } | { ok: f
  * `## Progress` sections in its issues, and a case saved from it would hand
  * every attempt a project that claims to be half done.
  */
+/** A compiled rendering, which a case leaves out (`SAVE.renderedSuffixes`). */
+export function isRendering(path: string): boolean {
+  return SAVE.renderedSuffixes.some((suffix) => path.endsWith(suffix));
+}
+
 export function chooseSource(current: TreeFacts, snapshots: TreeFacts[]): SourceChoice {
   if (isPreCode(current)) return { ok: true, dir: current.dir, snapshot: "current" };
   const oldestFirst = [...snapshots].sort((a, b) => a.dir.localeCompare(b.dir));
@@ -155,7 +160,9 @@ export async function saveCase(opts: SaveOptions): Promise<string> {
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true });
   try {
-    for (const name of SAVE.caseDirs) cpSync(join(choice.dir, name), join(staging, name), { recursive: true });
+    for (const name of SAVE.caseDirs) {
+      cpSync(join(choice.dir, name), join(staging, name), { recursive: true, filter: (src) => !isRendering(src) });
+    }
     const planned = await planInto(staging, opts.name, token, opts.say);
     const meta: CaseFile = CaseSchema.parse({
       name: opts.name,
