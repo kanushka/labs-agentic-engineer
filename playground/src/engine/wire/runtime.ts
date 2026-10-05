@@ -179,11 +179,7 @@ export async function isPortAvailable(port: number): Promise<boolean> {
   return (await isPortFree(port)) && !(await isPortBusy(port));
 }
 
-/**
- * The first port from `from` that `take` grants. A wired session passes its
- * port leases' `take` (ports.ts), because a probe alone answers only for this
- * instant and two sessions starting together would both be told the same port.
- */
+/** The first port from `from` that `take` grants. */
 export async function findFreePort(
   from: number,
   take: (port: number) => Promise<boolean> = isPortAvailable,
@@ -298,8 +294,7 @@ export function delay(ms: number): Promise<void> {
  * forever, and the loop never comes back round to notice its own timeout. A
  * server that is up but slow is the case the per-attempt cap is sized for, and
  * it is clamped to what is left so the whole wait still ends when it said it
- * would. `gone` ends it early: a server whose process has already exited will
- * not start answering.
+ * would.
  */
 export async function waitForHttp(url: string, timeoutMs = 120_000, gone: () => boolean = () => false): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;

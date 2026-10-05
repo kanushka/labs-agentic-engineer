@@ -17,16 +17,8 @@
  */
 
 /**
- * Which runner image a runtime runs on — on its own, apart from
- * `coding-run.ts`, because two callers need the answer and only one of them
- * runs a coding run. `evals/codegen` stamps the image's ID into every
- * attempt's provenance, and importing `coding-run.ts` for one lookup would
- * pull in `@aep/agents`, whose module scope merges `deployments/.env` into the
- * importer's environment.
- *
- * The OpenCode image is the Claude Code one plus the `opencode` binary, the
- * guard plugin and a pre-warmed home, but a Claude Code run stays on its own
- * image — the one a Claude Code org's pods run.
+ * Which runner image a runtime runs on. Its own module so `evals/codegen` reads
+ * it without importing `@aep/agents`, which merges `deployments/.env` at load.
  */
 
 import type { RuntimeName } from "remote-worker/src/runtime/port.js";

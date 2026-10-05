@@ -48,6 +48,8 @@ panel rebuilds one.
 container, as the component contract requires, and siblings reach each other by
 service name. Only the host side is mapped. Nothing in the stack skills changes,
 and two or ten services never collide.
+Host ports across concurrent sessions are not: ADR-0004 supersedes this for
+them.
 
 **The dev server is the gateway.** With `AEP_WIRED_API` set, `mock/plugin.ts`
 proxies `/api` to the real service and registers `mock/wired.ts` in front of it.
@@ -121,6 +123,29 @@ not), and whether the dev server exited. A failure ends with `FAILED
 <app|environment> <reason>` and exit status 3 or 4. Triage now reads logs only
 when the app's own service died: a held port or a failed pull is nothing a
 service log explains.
+
+Two BuildKit edges are known and accepted. A RUN step that fails on the network
+(a package install, for example) counts as the app's, because BuildKit sees a
+project step. A base image tag that does not exist counts as the environment's,
+because BuildKit sees a source that did not resolve. In both cases the reason
+quotes BuildKit, so a reader can tell what really happened.
+
+A plan blocker has a cause too. The project is at fault when it lacks something
+it should have built (a Dockerfile, the wired mock assets). The environment is
+at fault when the design asks for something wired mode cannot supply, because no
+app could pass that. When both kinds are present, the environment blocker wins.
+
+**A host install is detected by a stamp, not by platform probes** (added
+2026-10-05). The coding run installs `node_modules` in the Linux runner image,
+so on a Mac Vite's bundler finds no native binding and fails as if the app were
+broken. `wire` runs `npm ci` unless the tree holds a stamp that only a host
+install writes. The stamp records the platform, the architecture, the Node ABI
+and npm's hidden lockfile (`node_modules/.package-lock.json`). Any later
+install rewrites that lockfile, so the stamp stops matching. The first version
+probed for rollup's platform package. Vite 8 uses rolldown's binding instead, so
+the probe passed a Linux tree to the Mac and the dev server died. Probes are per
+bundler, and a list of bundlers goes stale with the next Vite major, so they
+were dropped.
 
 ### Four decisions the shape forced
 

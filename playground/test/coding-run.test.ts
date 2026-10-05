@@ -527,8 +527,7 @@ test("docker mode mounts the working-tree bal library jar, or leaves the install
 // `bal` tool resolved out of the developer's own ~/.ballerina. So the environment
 // must come through untouched — the failure this guards is a well-meant PATH or
 // HOME edit that makes a host run read a different tool than a bare `bal library`
-// in the same shell would. The ONE addition is the pinned `agent-browser`, put
-// ahead of the developer's PATH and in front of nothing else.
+// in the same shell would.
 test("host mode leaves the developer's own environment alone, but for the pinned agent-browser", () => {
   const { env } = hostInvocation(invocationOpts, "/r");
   assert.equal(env.PATH, `${agentBrowserBinDir(join(REPO_ROOT, "playground"))}${delimiter}${process.env.PATH ?? ""}`);

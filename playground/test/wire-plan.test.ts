@@ -122,7 +122,6 @@ test("a dependency wired mode cannot stand in for stops the run, and --skip is t
   const blocked = planBlockers(wire, TWO);
   assert.equal(blocked.length, 1);
   assert.match(blocked[0]?.text ?? "", /stripe .*--skip stripe/s);
-  // No app could satisfy a dependency wired mode cannot supply: not the app's failure.
   assert.equal(blocked[0]?.cause, "environment");
   assert.deepEqual(planBlockers(wire, TWO, ["stripe"]), []);
 });

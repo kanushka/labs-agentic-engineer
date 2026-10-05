@@ -17,35 +17,9 @@
  */
 
 /**
- * PORT LEASES: which wired session on this machine owns which host port.
- *
- * A probe alone cannot hand out ports to concurrent sessions. `isPortAvailable`
- * answers "is anything holding it NOW", and a wired session does not bind its
- * ports until much later: compose publishes a service's port only after a
- * minutes-long image build, and Vite binds its port seconds after spawning.
- * Two sessions started together both probed 19090 as free, both wrote it into
- * their compose files, and the second `up` failed with "port is already
- * allocated" (an evals sweep at --concurrency 2, measured).
- *
- * So a session LEASES each port it is assigned, in a registry every playground
- * process on this machine reads, and holds the lease until its teardown has
- * released the port. A port another live session leases is not offered, even
- * while nothing is bound to it yet, which also covers the gap while `r` on the
- * panel recreates a container. The probe still runs, for holders that are not
- * playground sessions.
- *
- * A lease belongs to a process: one whose pid is gone has leases nobody holds,
- * and the next writer drops them. That is the whole stale-holder story for a
- * `wire` that was SIGKILLed before its teardown ran.
- *
- * The registry is one JSON file changed under a lock file created with
- * `link(2)`, which fails atomically when the name exists and publishes the
- * holder's pid with the file. The lock is held for a few file operations, never
- * across a probe, a build or a bind. A lock whose holder is dead, or that is
- * older than any critical section can last, is abandoned and is removed. Two
- * sessions can both take over one abandoned lock only if its holder died inside
- * that few-millisecond window and both read it in the same instant; the probe
- * is the backstop for that.
+ * PORT LEASES: a machine-wide registry of which wired session owns which host
+ * port, so concurrent sessions are never handed one port before either binds
+ * it (ADR-0004).
  */
 
 import { randomBytes } from "node:crypto";
@@ -116,7 +90,6 @@ export function portLeases(options: PortLeaseOptions): PortLeases {
     }
   };
 
-  /** The registry minus every lease whose process is gone. */
   const live = (registry: Registry): Registry =>
     Object.fromEntries(Object.entries(registry).filter(([, lease]) => lease.pid === pid || isAlive(lease.pid)));
 
@@ -127,6 +100,7 @@ export function portLeases(options: PortLeaseOptions): PortLeases {
     renameSync(temporary, registryFile);
   };
 
+  /** `link(2)` fails atomically when the lock exists and publishes the holder's pid. */
   const tryLock = (): boolean => {
     const temporary = `${lockFile}.${String(pid)}.${session}`;
     writeFileSync(temporary, String(pid), "utf8");

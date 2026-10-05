@@ -406,8 +406,6 @@ export function buildWirePlan(specs: WireSpecs, options: PlanOptions = {}): Wire
  * port?" answer as an argument, because whether 19090 is taken is a fact about
  * the machine at this second: folding it into the plan would make the plan
  * untestable and its golden file a lie the moment anything else was listening.
- * The session answers with its port leases (ports.ts), so a port granted here
- * is this session's until teardown, not merely free when it was asked.
  */
 export async function assignHostPorts(
   plan: WirePlan,
@@ -492,12 +490,7 @@ function webappBlockers(webapp: WireWebapp, projectDir: string): PlanBlocker[] {
   ];
 }
 
-/**
- * One reason `wire` cannot start, and whose it is (failure.ts): the project's
- * when it is missing something it should have built (a Dockerfile, the wired
- * mock assets), the environment's when the DESIGN asks for what wired mode
- * cannot supply — no app could pass that, however it was written.
- */
+/** One reason `wire` cannot start, and whose it is (failure.ts). */
 export interface PlanBlocker {
   cause: WireCause;
   text: string;

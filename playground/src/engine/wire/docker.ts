@@ -37,12 +37,6 @@ function compose(target: ComposeTarget, args: string[]): string[] {
   return ["compose", "-f", target.file, "-p", target.project, ...args];
 }
 
-/**
- * A bring-up is three calls rather than one `up --build`, so that a failure
- * says which of them it was (failure.ts): fetching the images `wire` supplies,
- * building the project's own, and starting everything.
- */
-
 /** Pull the images the plan names outright (the database), never the ones built here. */
 export function composePull(target: ComposeTarget, onLine?: (line: string) => void): Promise<RunResult> {
   return run("docker", compose(target, ["pull", "--ignore-buildable"]), { capture: true, ...(onLine ? { onLine } : {}) });

@@ -81,19 +81,9 @@ function currentStamp(modules: string, host: InstallHost): InstallStamp {
 /**
  * Whether `npm ci` has to run before the dev server will start.
  *
- * The coding run installs `node_modules` INSIDE the Linux runner image, so a
- * project that has never been touched on the host carries Linux binaries. Vite's
- * bundler (rollup's `@rollup/rollup-<platform>-<arch>`, rolldown's
- * `@rolldown/binding-*`, esbuild's `@esbuild/*`, and whichever comes next) then
- * finds no binding for this machine and dies with a missing-module error that
- * reads as a broken app rather than a foreign install.
- *
- * So the question is not "does some package look like this platform's" (that
- * answer is per bundler, and a list of bundlers goes stale with the next Vite
- * major) but "did THIS host install this tree, and has nothing reinstalled it
- * since". Only a host install writes the stamp; a container install never does,
- * and `npm ci` anywhere deletes it with the rest of the tree. A tree a developer
- * installed by hand on this machine has no stamp either, and costs one `npm ci`.
+ * The coding run installs `node_modules` inside the Linux runner image, whose
+ * bundler bindings fail here as a missing module. Only a host install writes the
+ * stamp; a container install never does, and `npm ci` deletes it (ADR-0002).
  */
 export function needsInstall(appPath: string, host: InstallHost = thisHost()): boolean {
   const modules = join(appPath, "node_modules");

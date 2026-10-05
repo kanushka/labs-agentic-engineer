@@ -281,10 +281,6 @@ test("node_modules installed anywhere but this host is reinstalled, whatever the
   const empty = mkdtempSync(join(tmpdir(), "wire-app-"));
   assert.equal(needsInstall(empty, MAC), true, "nothing installed at all");
 
-  // The case that broke: Vite 8 resolves rolldown's binding, not rollup's, so
-  // a check that looked only at @rollup read this Linux tree as "not a rollup
-  // app" and handed it to the Mac, where the dev server died on
-  // rolldown-binding.darwin-arm64.node.
   const container = installedTree();
   mkdirSync(join(container, "node_modules", "@rolldown", "binding-linux-arm64-gnu"), { recursive: true });
   assert.equal(needsInstall(container, MAC), true, "a container install leaves no stamp");
@@ -298,14 +294,10 @@ test("a tree this host installed is kept until the host or the tree changes", ()
   stampHostInstall(app, MAC);
   assert.equal(needsInstall(app, MAC), false, "installed here");
 
-  // ARCHITECTURE COUNTS, not just the platform: an x64 tree on an arm64 Mac
-  // matches on "darwin" and still carries the wrong binaries.
   assert.equal(needsInstall(app, { ...MAC, arch: "x64" }), true, "right platform, wrong architecture");
   assert.equal(needsInstall(app, { ...MAC, platform: "linux" }), true, "wrong platform");
   assert.equal(needsInstall(app, { ...MAC, abi: "127" }), true, "another Node ABI: compiled addons do not load");
 
-  // An install since — the coding run's `npm install` in the container, say —
-  // rewrites npm's hidden lockfile, and the stamp no longer describes the tree.
   writeFileSync(join(app, "node_modules", ".package-lock.json"), '{"lockfileVersion":3,"packages":{}}');
   assert.equal(needsInstall(app, MAC), true, "reinstalled by something else since");
 });

@@ -27,8 +27,6 @@ import { REPO_ROOT } from "../src/paths.js";
 
 const PACKAGE_ROOT = join(REPO_ROOT, "playground");
 
-// ONE source of truth: the runner image's ARG. A pin bump moves both in one
-// commit, or this fails.
 test("the pinned agent-browser is the runner image's version", () => {
   const dockerfile = readFileSync(join(REPO_ROOT, "runners", "remote-worker", "Dockerfile"), "utf8");
   const imageVersion = /^ARG AGENT_BROWSER_VERSION=(\S+)$/m.exec(dockerfile)?.[1];

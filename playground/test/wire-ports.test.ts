@@ -21,7 +21,6 @@
  *
  * Every probe here says "free", because that is the race: neither session has
  * bound anything yet when the other asks. Only the lease can tell them apart.
- * Each test uses its own registry directory, never the developer's real one.
  */
 
 import { test } from "node:test";

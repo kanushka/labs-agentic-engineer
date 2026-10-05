@@ -17,28 +17,10 @@
  */
 
 /**
- * WHOSE FAILURE a bring-up was: the generated app's, or everything around it.
+ * WHOSE FAILURE a bring-up was: the generated app's, or everything around it (ADR-0002).
  *
- * `wire` is the one place a generated app meets a real machine, so when it
- * does not come up there are two very different answers, and a reader (a
- * developer, or the codegen eval that scores the app) must not have to guess
- * which from prose:
- *
- *   app          — the project failed: its Dockerfile did not build, its
- *                  service started and then died or never turned healthy, its
- *                  dev server crashed on start, or it lacks a file wired mode
- *                  needs.
- *   environment  — anything else: this machine, docker, the network, a port
- *                  someone else holds, a dependency wired mode cannot stand in
- *                  for, or `wire` itself.
- *
- * Each rule below reads a STRUCTURED signal — a BuildKit vertex, a container's
- * `State`, whether a process exited — never the wording of an error message.
- * The wording rides along as the reason, for a person to read.
- *
- * THE CONTRACT with a driver is one line and one exit code, both defined here:
- * `FAILED <cause> <reason>` on stdout, and `WIRE_EXIT[cause]` as the process
- * status. `READY <url>` (panel.ts) is its success twin.
+ * Contract: `FAILED <cause> <reason>` on stdout, exit `WIRE_EXIT[cause]`;
+ * `READY <url>` (panel.ts) on success.
  */
 
 export type WireCause = "app" | "environment";
@@ -61,9 +43,7 @@ export const WIRE_EXIT: Readonly<Record<WireCause, number>> = { app: 3, environm
 
 /**
  * `FAILED <cause> <reason>` — the reason folded onto one line, so the line is
- * the whole record. Its parser is the driver's (`parseFailed` in
- * `evals/codegen/src/play.ts`, beside `parseReady`), and that package's tests
- * round-trip this function's output through it.
+ * the whole record. Parsed by `parseFailed` in `evals/codegen/src/play.ts`.
  */
 export function failedLine(failure: WireFailure): string {
   return `FAILED ${failure.cause} ${oneLine(failure.reason)}`;
@@ -85,26 +65,9 @@ interface Vertex {
 }
 
 /**
- * Why `compose build` failed, from BuildKit's own solve status.
- *
- * `--progress json` makes compose print BuildKit's progress records as JSON
- * lines: `vertexes` (one step of the build graph: name, inputs, and an `error`
- * when it failed) and `logs` (that step's output, base64). The FIRST vertex to
- * fail is the cause; whatever failed after it is the rest of the build being
- * cancelled, which in a multi-service build includes other services' pulls.
- *
- *   failing vertex has inputs  → app. It ran on top of something already
- *     built: a RUN, a COPY, a stage of the project's own Dockerfile.
- *   failing vertex has none    → environment. A source: resolving or pulling a
- *     base image, loading the build context — fetching what the build needs.
- *   no failing vertex at all   → app. BuildKit refused the Dockerfile before
- *     it had a graph (a parse error reports no vertex).
- *
- * Known edges, by design: a RUN that fetches from the network (a package
- * install) and dies of the network reads as the app's, because to BuildKit it
- * is the project's step; a base image tag that does not exist reads as the
- * environment's, because it is a source that did not resolve. Either way the
- * reason quotes BuildKit, so the record says which it actually was.
+ * Why `compose build` failed, from BuildKit's own solve status. The first
+ * failing vertex is the cause (later ones are cancellation): one with inputs is
+ * a Dockerfile step, one without is a source fetch, none at all is a parse error.
  */
 export function classifyBuild(output: string): WireFailure & { log: string } {
   const vertices = new Map<string, Vertex>();
@@ -161,7 +124,6 @@ function lastSentence(message: string): string {
 
 /** What `docker inspect` says about one container of the project. */
 export interface ContainerFacts {
-  /** The compose service it belongs to. */
   service: string;
   status: string;
   /** Null when the container never started — docker's zero time. */
@@ -198,21 +160,9 @@ export function parseInspect(json: string): ContainerFacts[] {
 }
 
 /**
- * Why `compose up --no-build --wait` failed, from the containers it left.
- *
- * The images are already built, so what is left is starting them, and the
- * daemon records the two ways that goes wrong differently:
- *
- *   never started, with `State.Error` → environment. The daemon could not
- *     start it: a host port already allocated, a network, a mount. Checked
- *     FIRST, because the app was never given its chance — and a dependent left
- *     waiting on it is a consequence, not a second cause.
- *   started, then exited or unhealthy → the app's when the container is one
- *     of the project's own services (`appServices`, built from its
- *     Dockerfile); the environment's when it is one `wire` supplies (the
- *     database).
- *   nothing to point at → environment: compose failed before or around the
- *     containers (its network, the image store).
+ * Why `compose up --no-build --wait` failed, from the containers it left. A
+ * never-started container with a daemon error is checked first: a dependent
+ * waiting on it is a consequence, not a cause.
  */
 export function classifyUp(containers: ContainerFacts[], appServices: ReadonlySet<string>): WireFailure & { service: string } {
   const unstartable = containers.find((c) => c.startedAt === null && c.error);
@@ -244,19 +194,9 @@ export interface DevServerFacts {
 }
 
 /**
- * Why the dev server did not answer within its wait.
- *
- * The tree it runs from was installed by THIS host (`needsInstall`'s stamp is
- * the precondition `startWiredDevServer` runs under), so a foreign install
- * cannot be what killed it. That leaves:
- *
- *   exited, and another process holds its port → environment. `--strictPort`
- *     makes Vite exit rather than move when its port is taken.
- *   exited otherwise → app. Vite died on the project's own startup path: its
- *     config, its mock plugin, a dependency its package.json does not carry.
- *   still running, never answered → environment. Vite binds and serves its
- *     index before it compiles a single module, so silence for the whole wait
- *     is the machine, not the app's code.
+ * Why the dev server did not answer within its wait. `--strictPort` makes Vite
+ * exit when its port is taken; Vite serves its index before compiling, so
+ * silence is the machine.
  */
 export function classifyDevServer(facts: DevServerFacts): WireFailure {
   if (facts.exitCode !== null) {

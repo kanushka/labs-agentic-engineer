@@ -209,8 +209,6 @@ async function runHeadless(
       // terminal until you quit, and tears everything down on the way out.
       const wired = await wireCommand(projectDir, wireOptions, confirmWireDir(projectDir));
       if (!wired.ok) {
-        // Its own status per cause (failure.ts): a driver tells the app's
-        // failure from the machine's without reading a word of it.
         output.write(`✗ wire: ${wired.detail}\n`);
         return WIRE_EXIT[wired.cause];
       }
@@ -257,8 +255,6 @@ async function runHeadless(
     case "check":
       return printCheckFindings(projectDir) ? 0 : 1;
     case "eval-save":
-      // The evals CLI owns the case format and prints its own outcome; its exit
-      // code is this verb's.
       if (!commandArg) {
         output.write("usage: play <dir> eval-save <name>\n");
         return 1;

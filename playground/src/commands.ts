@@ -233,10 +233,7 @@ export async function codeCommand(
   const snapshot = takeUndoSnapshot(projectDir); // mandatory (§12), once per session
   if (!opts.silent) output.write(`  ⛑ undo snapshot: ${snapshot}\n`);
 
-  // What POST /build does before it cuts a tag: stamp exposesAPI.auth and every
-  // dependency's wiring into design.json. After the snapshot, so `--restore`
-  // returns the design as the engineer left it; a refusal refuses the run, as it
-  // refuses a production build.
+  // Production's pre-tag derivation (ADR-0003); after the snapshot so `--restore` undoes it.
   const derived = await (opts.deriveDesign ?? deriveDesign)(projectDir);
   if (!derived.ok) return { ok: false, detail: derived.detail };
   if (!opts.silent) {
@@ -292,15 +289,8 @@ export function undoCommand(projectDir: string, opts: PhaseOptions): PhaseOutcom
 /**
  * `play <dir> eval-save <name>` — save this project as a codegen eval case.
  *
- * Thin on purpose: it SPAWNS the evals CLI rather than importing it. `evals/*`
- * deep-import the playground, so an import the other way would be a cycle, and
- * the case format, the pre-code snapshot rule and the checklist planner are the
- * eval's to own (`evals/codegen/src/save.ts`). stdio is inherited and the exit
- * code passed through, so the verb scripts exactly like the CLI it wraps.
- *
- * `ANTHROPIC_API_KEY` is withheld: `main` has merged `deployments/.env` into
- * this process by now, and the evals run on the Claude OAuth token alone — a
- * key in their environment could only ever be the wrong credential.
+ * Spawns, never imports, the evals CLI: `evals/*` import the playground.
+ * Withholds ANTHROPIC_API_KEY: evals authenticate with the OAuth token only.
  */
 export function evalSaveCommand(projectDir: string, name: string): Promise<number> {
   const env = { ...process.env };

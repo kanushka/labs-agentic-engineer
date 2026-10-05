@@ -285,7 +285,6 @@ interface RuntimeProfile {
   refusal(mode: "docker" | "host", credential: CodingCredential | undefined): string | undefined;
 }
 
-/** One entry per runtime the contract names. */
 const RUNTIME_PROFILES: Record<RuntimeName, RuntimeProfile> = {
   "claude-code": {
     sessionDir: IMAGE_AGENT_SESSION_DIR,
@@ -548,9 +547,7 @@ export function hostInvocation(opts: CodingRunOptions, runDir: string): Invocati
   // `~/.ballerina`, so there is no PATH entry to point anywhere. What that
   // resolves to is reported by `hostToolAdvice`, not patched here.
   //
-  // `agent-browser` is the exception: the mock walk drives it, and a walk on
-  // another version than the image's is a different tool, so this package's
-  // pinned copy goes first on PATH (`agent-browser.ts`).
+  // `agent-browser` is the exception: the pinned copy goes first on PATH (`agent-browser.ts`).
   const env = withAgentBrowserFirst(
     {
       ...process.env,
@@ -832,27 +829,22 @@ async function ensureRunnerImage(silent?: boolean): Promise<void> {
 }
 
 /**
- * Spawn one coding run over the WHOLE project; resolves with the exit code +
- * archived run dir. Success (`exitCode === 0`) means the session completed,
- * NOT that every issue got resolved — leaving some open is normal (mirrors
- * prod: "a later cycle picks it up"). Which issues actually landed is never
- * read back here; it is whatever the project tree looks like afterward.
- */
-/**
  * Names a run's container so its scratch can be copied out after it exits.
- *
- * The run dir's timestamp is unique within ONE project, not across projects:
- * two projects started in the same millisecond (an eval sweep at
- * `--concurrency 2` did exactly that) got the same name, and the second
- * `docker run` died on the conflict. The project's directory name makes it
- * unique on the machine. Docker accepts `[a-zA-Z0-9][a-zA-Z0-9_.-]`, so anything
- * else in the name becomes `-`. Exported for its test.
+ * The project dir name makes it unique across concurrent projects; anything
+ * outside Docker's `[a-zA-Z0-9_.-]` becomes `-`.
  */
 export function runContainerName(projectDir: string, stamp: string): string {
   const project = basename(projectDir).replace(/[^a-zA-Z0-9_.-]/g, "-");
   return `aep-play-${project}-${stamp}`;
 }
 
+/**
+ * Spawn one coding run over the WHOLE project; resolves with the exit code +
+ * archived run dir. Success (`exitCode === 0`) means the session completed,
+ * NOT that every issue got resolved — leaving some open is normal (mirrors
+ * prod: "a later cycle picks it up"). Which issues actually landed is never
+ * read back here; it is whatever the project tree looks like afterward.
+ */
 export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunResult> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const runDir = join(opts.projectDir, ".aep-playground", "runs", `${stamp}-code`);
@@ -899,8 +891,6 @@ export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunR
     }
     await reapExitedRuns();
   } else {
-    // Refused rather than left to PATH: without the pinned copy a bare
-    // `agent-browser` resolves to the global CLI, whatever version that is.
     const problem = agentBrowserProblem(AGENT_BROWSER_BIN);
     if (problem) {
       progressLog.end();
@@ -1022,11 +1012,8 @@ export async function runCodingAgent(opts: CodingRunOptions): Promise<CodingRunR
       void settle(signal ? 130 : (code ?? 2));
     });
 
-    // Ctrl-C, or SIGTERM from a driver stopping the run (evals/codegen on a
-    // timeout or an interrupted sweep): kill the child and let `settle` copy the
-    // transcripts out and remove the container. SIGTERM needs its own listener:
-    // without one Node exits at once, `settle` never runs, and the `docker run`
-    // is orphaned with its container still working.
+    // SIGTERM needs its own listener: without one Node exits at once, `settle`
+    // never runs, and the container is orphaned.
     const onSignal = (): void => {
       child.kill("SIGTERM");
     };

@@ -33,11 +33,6 @@
  * the session: quitting is the cleanup, and a session that died hard is reaped
  * by the next start, by compose project name. That is one thing to learn and
  * one thing that can be left running by mistake, rather than four.
- *
- * A session that cannot come up says WHOSE failure that was — the app's or the
- * environment's — as `FAILED <cause> <reason>` and a matching exit code
- * (failure.ts), so a driver never has to read the prose to know whether the
- * generated app is what broke.
  */
 
 import { appendFileSync, existsSync, readdirSync, statSync } from "node:fs";
@@ -173,9 +168,7 @@ async function wireSession(
   const plan = buildWirePlan(readWireSpecs(projectDir, slug), {
     secret: (database) => databaseSecret(projectDir, database),
   });
-  // Leased, not just probed: a port stays this session's from here until its
-  // teardown, so a session starting beside this one cannot be handed it while
-  // this one is still building the image that will bind it (ports.ts).
+  // Leased, not probed (ports.ts).
   const leases = portLeases({ isAvailable: isPortAvailable });
   try {
     try {
@@ -513,8 +506,7 @@ function logFile(projectDir: string, name: string): string {
 
 /**
  * The containers did not come up: say which and why, tail its log, and — when
- * it is the app's own service that died — offer the model a look. A port or a
- * database is nothing a reading of the service's log can explain.
+ * it is the app's own service that died — offer the model a look.
  */
 async function reportBringUpFailure(
   projectDir: string,
