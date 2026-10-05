@@ -10,7 +10,8 @@ The **entry point for frontend feature work**: a feature goes through this
 skill — grilled first, then built. It takes either end — a raw **idea** (no
 issue yet), or an **issue number** for one already open.
 
-`apps/console-old/design/development-flow.md` is the **spec**: it defines every
+The classic console's `design/development-flow.md`
+(`git show classic-console:apps/console/design/development-flow.md`) is the **spec**: it defines every
 stage, every rule, and the issue template. **Read it now**, before anything
 else. This skill carries only what the spec doesn't — which mode to route
 into, where each pause sits, and the commands to run. Console work requires
@@ -42,8 +43,9 @@ answer:
 
 ## The interview
 
-First read `apps/console-old/PRD.md` and the ADRs in
-`apps/console-old/design/decisions/` — the interview is only as sharp as the
+First read the classic console's `PRD.md`
+(`git show classic-console:apps/console/PRD.md`) and the ADRs in
+`apps/console/design/decisions/` — the interview is only as sharp as the
 product picture behind it.
 
 Run the `grill-me` skill on the subject — the raw idea in idea mode, the
@@ -94,7 +96,7 @@ earlier; step 3 tells them apart.
    - Edit the body for whatever the interview changed, per spec step 1, and
      add the `console` and `feature` labels if the filer didn't.
 4. **Detect the furthest completed stage** — ADR in
-   `apps/console-old/design/decisions/`? contract change, mocks, UI, PRD entry
+   `apps/console/design/decisions/`? contract change, mocks, UI, PRD entry
    on the feature branch? handshake issue open, and have its backend changes
    landed on that branch? — report what you found, then continue the stage
    walk from the next incomplete stage.

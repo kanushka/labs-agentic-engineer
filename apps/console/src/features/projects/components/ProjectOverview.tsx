@@ -77,7 +77,7 @@ function SectionHeading({ id, children }: { id: string; children: string }) {
 export function ProjectOverview({ projectName }: { projectName: string }) {
   const project = useProject(projectName);
   // The repository comes with the project's status (the track reads it too),
-  // as it did in console-old: the project itself does not carry it.
+  // as it did in the classic console: the project itself does not carry it.
   const status = useProjectStatus(projectName);
   const repoUrl = status.data?.repoUrl;
 
