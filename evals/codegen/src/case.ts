@@ -20,9 +20,8 @@
  * The data a sweep reads — a case, its checklist, the run matrix — as zod
  * schemas, and the loaders that hold every file to them.
  *
- * STRICT everywhere: an unknown key is refused, not ignored. These files are
- * hand-edited (decision 3), and a misspelled `wieght:` or `mustNto:` that
- * parsed silently would score every attempt against a checklist nobody wrote.
+ * Strict: these files are hand-edited (ADR-0004), so a misspelled key must
+ * fail, not parse.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -88,11 +87,7 @@ export const CaseSchema = z
     description: z.string(),
     source: z
       .object({
-        /**
-         * The playground project's directory NAME — never a path. Projects live in
-         * the gitignored `playground/.projects/` or outside the repo, so any path
-         * would resolve only on the machine that saved the case. Informational.
-         */
+        /** Directory name, never a path (paths do not resolve across machines). Informational. */
         project: z.string(),
         /** `current` or the undo snapshot's directory name. */
         snapshot: z.string(),
@@ -128,9 +123,7 @@ export const RunConfigSchema = z
   })
   .strict()
   .superRefine((config, ctx) => {
-    // The playground refuses OpenCode on an OAuth token, and the token is the
-    // only Anthropic credential this harness holds — so an opencode entry
-    // without its own connection could never authenticate.
+    // OpenCode cannot run on the OAuth token, the only Anthropic credential held.
     if (config.runtime === "opencode" && !config.connection) {
       ctx.addIssue({ code: "custom", message: `${config.id}: an opencode config needs a connection` });
     }
@@ -153,7 +146,6 @@ export interface EvalCase {
   checklist: Checklist;
 }
 
-/** Every case under `casesDir`, sorted. A directory without `case.yaml` is not a case. */
 export function listCases(casesDir: string): string[] {
   if (!existsSync(casesDir)) return [];
   return readdirSync(casesDir, { withFileTypes: true })
@@ -180,18 +172,13 @@ export function loadConfigs(file: string): RunConfig[] {
 
 /**
  * Every item an attempt walks and scores, in walking order: the checklist,
- * then the hand-added `mustCover` extras. ONE definition, because the walker,
- * the judge and the score all have to agree on it.
+ * then the hand-added `mustCover` extras.
  */
 export function scoredItems(checklist: Checklist): Item[] {
   return [...checklist.items, ...checklist.extras.mustCover];
 }
 
-/**
- * Items whose role `wire` would not accept. `roles` is the case's own list
- * (`caseRoles` in `save.ts`), so a role renamed in a hand edit fails here, at
- * load, rather than an hour into an attempt as a walk that could not sign in.
- */
+/** Items whose role `wire` would not accept. `roles` is the case's own list (`caseRoles` in `save.ts`). */
 export function unknownRoles(checklist: Checklist, roles: string[]): string[] {
   const known = new Set([...roles, ...SPECIAL_ROLES]);
   return scoredItems(checklist)

@@ -17,20 +17,8 @@
  */
 
 /**
- * `play` as a child process: spawn, tee, watch for a line, stop.
- *
- * Spawned as `node --import tsx src/cli.ts` in the playground package, NOT as
- * `pnpm play`. pnpm and tsx's own CLI each sit a process between the harness
- * and `play`, and a SIGTERM sent to the outer one is not reliably forwarded:
- * the wrapper dies, `play` keeps running, and its `docker run` / compose
- * project outlives the attempt. With `play` as the direct child the signal
- * lands on the process that owns the teardown (`coding-run.ts` kills its
- * container on SIGTERM; `wire` takes its compose project down and prints
- * `STOPPED`). The argv carries paths and flags only — every credential rides
- * in the env (`credentials.ts`).
- *
- * stdin is ignored: both verbs run headless, and a TTY-less `play` never
- * prompts (`--yes` covers consent).
+ * `play` as a direct child (`node --import tsx`, not `pnpm play`): wrappers do
+ * not reliably forward SIGTERM to the process that owns the teardown.
  */
 
 import { spawn, execFile, type ChildProcess } from "node:child_process";
@@ -183,17 +171,13 @@ export function dockerAnswers(): Promise<boolean> {
 
 /**
  * An attempt's compose project, gone: containers, volumes — and the images it
- * BUILT. `--rmi local` removes exactly the images compose named itself
- * (`<project>-<service>`, a service with no `image:` key), which are the
- * project's own Dockerfile builds, ~430 MB each and never reused by another
- * attempt; the `postgres:16` it pulled has an `image:` key and stays.
+ * BUILT. `--rmi local` removes only the images compose named itself (a service
+ * with no `image:` key): the project's own Dockerfile builds.
  *
- * `file` is `wire`'s compose file, while the staged project still has it:
- * compose resolves which images it built from the file's services, and with
- * only the project name — once `wire`'s own teardown has removed the
- * containers — it finds nothing to remove. Without it this is the backstop
- * for a `wire` that would not stop: containers and volumes by name, the same
- * handle `wire` reaps a crashed session by.
+ * `file` is `wire`'s compose file: compose resolves which images it built from
+ * the file's services, and by project name alone, once `wire`'s teardown has
+ * removed the containers, it finds nothing to remove. Without it, containers
+ * and volumes go by name.
  */
 export async function composeDown(project: string, file?: string): Promise<void> {
   const down = (args: string[]): Promise<boolean> =>

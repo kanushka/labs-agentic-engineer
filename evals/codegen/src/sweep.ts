@@ -17,17 +17,9 @@
  */
 
 /**
- * The sweep: every (case × config × repeat), N at a time, from one queue.
- *
- * A fixed pool pulling from one queue, as in `evals/ballerina/src/sweep.ts`:
- * attempts here differ by an order of magnitude in length (a hard fail at
- * minute 3, a full walk at minute 70), and batching would idle lanes behind
- * the slowest member.
- *
- * Interrupting the sweep (SIGINT, SIGTERM) aborts ONE controller every live
- * attempt listens to, so each tears its own children down through the same
- * path a finished attempt takes — never a second, emergency cleanup that
- * would have to know what each attempt had running.
+ * The sweep: every (case × config × repeat), N at a time, from one queue
+ * (ADR-0005). SIGINT/SIGTERM abort one shared signal; each attempt tears down
+ * through its normal path.
  */
 
 import type { EvalCase, RunConfig } from "./case.js";
@@ -59,7 +51,6 @@ export async function runSweep(opts: SweepOptions): Promise<AttemptRecord[]> {
   let next = 0;
   const workers = Array.from({ length: Math.max(1, opts.concurrency) }, async () => {
     for (;;) {
-      // An interrupted sweep starts nothing new; the attempts in flight finish their teardown.
       if (opts.signal.aborted) return;
       const item = queue[next];
       next += 1;

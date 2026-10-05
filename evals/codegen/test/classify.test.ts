@@ -20,8 +20,7 @@
  * Whose failure each phase was — the app's (a hard fail, scored 0) or the
  * environment's (a harness error, excluded) — and the one line `wire` and this
  * harness agree on. A false zero in the statistics is the defect these guard
- * against: three were measured in one day (a port race, a host reinstall gap,
- * a wedged headless browser).
+ * against.
  */
 
 import { test } from "node:test";

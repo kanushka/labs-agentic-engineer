@@ -17,16 +17,9 @@
  */
 
 /**
- * The score, in code (decision 5) — the judge says pass or fail per item and
- * whether each mustNot was violated; it never produces a number.
- *
- * Weighted pass ratio × 100 over the checklist items plus the `mustCover`
- * extras. An item the walker could not attempt (`blocked`) is a FAIL: from a
- * user's side a screen they cannot reach does not work. A violated mustNot
- * caps the band at `review`, whatever the ratio — the same rule as the
- * spec-agents evals (`evals/spec-agents/src/scoring/bands.ts`).
- *
- * Pure: everything it needs arrives as arguments.
+ * The score, computed in code from the judge's verdicts (ADR-0004).
+ * Weighted pass ratio × 100; blocked is a fail; a violated mustNot caps the
+ * band at review.
  */
 
 import type { Item } from "./case.js";
@@ -73,15 +66,6 @@ export function bandFor(score: number, mustNotViolated: boolean): { band: Band; 
   return { band: raw, capped: false };
 }
 
-/**
- * Score one attempt.
- *
- * An item passes only when the judge says pass AND the walker did not report
- * it blocked — a judge that passes an item nobody could attempt is wrong, and
- * the score should not inherit the mistake. An item the judge returned no
- * entry for is a fail, named as such, rather than silently left out of the
- * denominator (which would raise the score).
- */
 export function scoreAttempt(
   items: Item[],
   judgement: Judgement,

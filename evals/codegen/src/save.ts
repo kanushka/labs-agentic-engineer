@@ -19,9 +19,8 @@
 /**
  * `save`: turn a playground project into a committed case.
  *
- * A case is the PRE-CODE state of a project — `specs/` + `issues/` and nothing
- * else (decision 1) — so every attempt generates the whole app from scratch.
- * The work here is finding that state, which a project that has already been
+ * A case is the PRE-CODE state of a project: `specs/` + `issues/` and nothing
+ * else (ADR-0001). The work here is finding that state, which a project that has already been
  * coded no longer shows at its top level: the undo snapshots
  * (`playground/src/state/undo.ts`) are where it survives, and the OLDEST of
  * them is the one taken before the first coding run.
@@ -52,24 +51,15 @@ export interface TreeFacts {
 
 export type SourceChoice = { ok: true; dir: string; snapshot: string } | { ok: false; reason: string };
 
-/**
- * Which tree is the pre-code state. Pure — the facts are read elsewhere.
- *
- *   1. the project itself, when its top level is exactly `specs/` + `issues/`
- *      and no issue carries an agent-written section;
- *   2. else the OLDEST undo snapshot meeting the same two conditions;
- *   3. else a refusal that says what was seen.
- *
- * The snapshots are held to the issue check too, not only to their top level:
- * a snapshot taken before a SECOND coding run has the first run's
- * `## Progress` sections in its issues, and a case saved from it would hand
- * every attempt a project that claims to be half done.
- */
 /** A compiled rendering, which a case leaves out (`SAVE.renderedSuffixes`). */
 export function isRendering(path: string): boolean {
   return SAVE.renderedSuffixes.some((suffix) => path.endsWith(suffix));
 }
 
+/**
+ * Which tree is the pre-code state. Snapshots must also pass the issue check:
+ * one taken before a second coding run carries the first run's `## Progress`. Pure.
+ */
 export function chooseSource(current: TreeFacts, snapshots: TreeFacts[]): SourceChoice {
   if (isPreCode(current)) return { ok: true, dir: current.dir, snapshot: "current" };
   const oldestFirst = [...snapshots].sort((a, b) => a.dir.localeCompare(b.dir));
@@ -114,10 +104,8 @@ export function readTreeFacts(dir: string): TreeFacts {
 }
 
 /**
- * The role names `play wire --role` accepts for a project, derived the way
- * `wire` itself derives them (`buildWirePlan` → `readRoles`) rather than
- * re-read from `security.json` here — two derivations are how a checklist ends
- * up naming a role the session refuses.
+ * The role names `play wire --role` accepts for a project, from `wire`'s own
+ * derivation, so the checklist and the session cannot disagree.
  */
 export function caseRoles(dir: string): string[] {
   return buildWirePlan(readWireSpecs(dir, "case")).roles.map((role) => role.name);
@@ -219,11 +207,8 @@ function sayPlanned(planned: Planned, say: (line: string) => void): void {
 }
 
 /**
- * Re-plan a SAVED case's checklist from its committed specs — the same source
- * `save` planned from, so the snapshot choice cannot drift — leaving
- * `case.yaml`, `specs/` and `issues/` untouched. For when the planner's rules
- * change; a hand-edited checklist is overwritten (its extras survive), so this
- * is never run behind anyone's back.
+ * Re-plan a saved case's checklist from its committed specs; other files
+ * untouched, hand edits overwritten, extras kept.
  */
 export async function replanCase(name: string, say: (line: string) => void): Promise<string> {
   const dir = join(PATHS.casesDir, name);

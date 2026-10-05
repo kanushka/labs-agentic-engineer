@@ -21,7 +21,7 @@
  * the playground's own developer view (`renderLogView` in
  * `playground/src/engine/log-read.ts`, called by the CLI) — the same three
  * views `play log` prints, over the run dir the archive kept whole under
- * `coding/`. Nothing here re-parses a transcript.
+ * `coding/`.
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -31,8 +31,6 @@ export type CodingRunLookup = { ok: true; runDir: string } | { ok: false; reason
 
 /**
  * The coding run archived under an attempt: the newest `coding/*-code` dir.
- * A rewalk has none — its code is its parent attempt's — and says so with the
- * parent's path, which is the one to read instead.
  */
 export function resolveCodingRun(attemptDir: string): CodingRunLookup {
   if (/^rewalk-\d+$/.test(basename(attemptDir))) {
@@ -76,21 +74,14 @@ interface UsageFields {
 
 /**
  * Tool calls, wall clock and cache tokens per agent, out of the run's
- * `.logs/runtime.log`.
+ * `.logs/runtime.log`. The SDK forwards every subagent message with
+ * `parent_tool_use_id` (the lead's fan-out call, whose `description` names the
+ * subagent) and closes each subagent with a `task_notification` whose `usage`
+ * holds its own `tool_uses` and `duration_ms`.
  *
- * The progress feed cannot answer this: `task_settled` carries no usage, and
- * `run_settled` only the run's total. The transcript can, because the SDK
- * forwards every subagent message with `parent_tool_use_id` — the id of the
- * lead's fan-out call, whose `description` names the subagent — and closes each
- * subagent with a `task_notification` whose `usage` holds its own `tool_uses`
- * and `duration_ms`.
- *
- * Only CACHE tokens are read off the messages, because only they are final
- * there: a transcript line carries the usage reported when the message STARTED,
- * so its `output_tokens` is a handful where the real count is thousands (summed
- * over the 2026-10-03 expense-claims run: 2.2k against `run_settled`'s 201k).
- * Cache read/write per line ARE final, and they sum to `run_settled` exactly.
- * One message spans several lines sharing `message.id`, so each id counts once.
+ * Only cache tokens are summed: a line's `output_tokens` is the
+ * start-of-message value. One message spans several lines sharing
+ * `message.id`, so each id counts once.
  */
 export function usageByAgent(runtimeLog: string): AgentUsage[] {
   const names = new Map<string, string>();

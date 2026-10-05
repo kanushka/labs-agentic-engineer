@@ -17,19 +17,9 @@
  */
 
 /**
- * THE credential rule, in one module: the Claude subscription OAuth token from
- * `deployments/.env`'s `AEP_CODING_ANTHROPIC_KEY`, and never an API key — for
- * the coding run, the planner, the walker and the judge alike.
- *
- * Why one credential: a sweep is a comparison, and a harness whose billing
- * path can differ between two sweeps (a stray exported key here, a keychain
- * login there) compares runs that were not made the same way — Claude Code
- * ranks `ANTHROPIC_API_KEY` above every other credential, so a key that merely
- * EXISTS in the environment silently wins. Every env this module builds is
- * therefore built by removing the competitors, not by adding the token.
- *
- * The token value never leaves this module's return values: it is not logged,
- * not written to any archive, and not put on an argv (`ps` reads argv).
+ * One credential for every session: the OAuth token in AEP_CODING_ANTHROPIC_KEY,
+ * never an API key (ADR-0002). Claude Code ranks ANTHROPIC_API_KEY above all
+ * other credentials, so every env here strips the competitors.
  */
 
 import { readFileSync } from "node:fs";
@@ -48,10 +38,7 @@ export class CredentialError extends Error {
 
 /**
  * Read the token out of `envFile` without loading the file into this process.
- *
- * `util.parseEnv` over `process.loadEnvFile` on purpose: loading would put
- * the file's `ANTHROPIC_API_KEY` into `process.env`, where every child env
- * built from it would have to remember to strip it again.
+ * Not `loadEnvFile`: that would put the file's ANTHROPIC_API_KEY into process.env.
  */
 export function readOAuthToken(envFile: string): string {
   let text: string;
@@ -94,21 +81,9 @@ export interface RunEnvSpec {
 }
 
 /**
- * The env of a `play` subprocess (`code`, `wire`).
- *
- * `ANTHROPIC_API_KEY` is set to the EMPTY STRING rather than deleted: `play`
- * calls `process.loadEnvFile("deployments/.env")`, which fills only variables
- * that are absent — an empty one stays empty, a deleted one comes back holding
- * the platform key. The playground then sees the OAuth token in
- * `AEP_CODING_ANTHROPIC_KEY` and forwards ONLY `CLAUDE_CODE_OAUTH_TOKEN` into
- * the runner container (`codingCredential` in `playground/src/engine/coding-run.ts`).
- *
- * The connection variables are blanked the same way for a Claude Code config:
- * an `AEP_MODEL_FORMAT` exported in the developer's shell would otherwise put
- * the run on that connection, and the report would credit Claude with it.
- *
- * For an `opencode` config the connection IS the credential, and the token is
- * blanked instead — the playground refuses OpenCode on an OAuth token.
+ * The env of a `play` subprocess (`code`, `wire`). API key and connection vars
+ * are blanked, not deleted: `play`'s loadEnvFile refills only absent vars. An
+ * opencode config blanks the token instead.
  */
 export function playEnv(
   parent: NodeJS.ProcessEnv,
@@ -143,8 +118,7 @@ export function playEnv(
 /**
  * The env of the harness's own Agent SDK sessions (planner, walker, judge):
  * the parent's, minus every API-key form, plus the token where Claude Code
- * reads an OAuth token. `assertNotApiKey` then checks what the session
- * actually authenticated with, because the env is only what was intended.
+ * reads an OAuth token.
  */
 export function sdkEnv(parent: NodeJS.ProcessEnv, token: string): NodeJS.ProcessEnv {
   const env = withoutClaudeSession(parent);
@@ -155,12 +129,8 @@ export function sdkEnv(parent: NodeJS.ProcessEnv, token: string): NodeJS.Process
 }
 
 /**
- * The parent's env minus every trace of a SURROUNDING Claude Code session:
- * `CLAUDECODE` and every `CLAUDE_CODE_*` variable, `CLAUDE_CODE_OAUTH_TOKEN`
- * included. A sweep started from inside Claude Code would otherwise hand each
- * child that session's identity, its messaging socket and the token that
- * authenticates to it — none of which is the harness's to pass on, and any of
- * which can change how a nested CLI behaves.
+ * Drops a surrounding Claude Code session's vars, which would hand each child
+ * its identity, socket and token.
  */
 export function withoutClaudeSession(parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};

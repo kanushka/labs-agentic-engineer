@@ -21,18 +21,14 @@
  * planner, the walker and the judge all share, so the three differ only in
  * prompt, tools and schema.
  *
- * Three things every session here must get right, and gets here once:
+ * Two things every session here must get right, and gets here once:
  *
  *   1. The prompt is a HELD-OPEN stream, never a string. A string prompt makes
  *      the SDK close the CLI's stdin at the first `result`, and stdin is the
  *      channel every SDK-side hook answers on — from that moment each hooked
- *      tool call reports as cancelled, which the agent reads as a denial
- *      (the runner's `openPromptStream`, hit twice in production). The walker's
- *      guard is such a hook.
- *   2. The credential is checked, not assumed: `system/init` says where the
- *      session's credential came from, and an API key aborts it
- *      (`assertNotApiKey`).
- *   3. Isolation: `settingSources: []` loads no user or project settings, so a
+ *      tool call reports as cancelled, which the agent reads as a denial.
+ *      The walker's guard is such a hook.
+ *   2. Isolation: `settingSources: []` loads no user or project settings, so a
  *      developer's own `apiKeyHelper`, hooks or CLAUDE.md cannot reach a
  *      harness agent and change what it does or what it bills.
  */

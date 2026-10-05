@@ -17,16 +17,9 @@
  */
 
 /**
- * The judge: reads the checklist and the walker's evidence and says, per item,
- * pass or fail and what a user would see — the SYMPTOM, never a cause
- * (decision 6). Root cause is a later stage with the whole archive in front of
- * it; a judge that guessed at causes from a walk transcript would put a
- * confident wrong answer in the report where the next reader starts.
- *
- * A separate call from the walker on purpose (decision 5): the walker is
- * invested in the run it just made, and the number must not be its own.
- * No tools — the judge sees exactly the evidence it is handed. The score is
- * computed from its verdicts in code (`score.ts`).
+ * The judge, a separate call from the walker (ADR-0004): reads the checklist
+ * and the walker's evidence. Per item: pass/fail and the user-visible symptom,
+ * never a cause.
  */
 
 import { z } from "zod";

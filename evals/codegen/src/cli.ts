@@ -17,12 +17,11 @@
  */
 
 /**
- * The entry point: `save`, `run`, `report`, `list`.
+ * The entry point: `save`, `run`, `rewalk`, `replan`, `log`, `report`, `list`.
  *
  * Exits nonzero when something could not be DONE — a refused credential, a
  * case that will not load, docker down, a planner that never produced a valid
- * list — and never because an app scored badly. A bad score is this tool's
- * output; a harness that exits 1 on it cannot be scripted.
+ * list — and never because an app scored badly (ADR-0005).
  */
 
 import { execFileSync } from "node:child_process";
@@ -160,8 +159,6 @@ async function run(args: string[]): Promise<number> {
   }
   const selected = configs.filter((c) => c !== undefined);
 
-  // Load every case and check its roles BEFORE anything is spent: a checklist
-  // naming a role `wire` would refuse is an hour of coding run wasted.
   const cases = caseNames.map(loadWalkableCase);
 
   if (values.list) {
@@ -306,7 +303,6 @@ async function rewalk(args: string[]): Promise<number> {
   }
   process.off("SIGINT", interrupt);
   process.off("SIGTERM", interrupt);
-  // The parent sweeps' reports gain their rewalk lines.
   for (const sweepId of sweeps) rerenderReport(sweepId);
   return 0;
 }
@@ -373,8 +369,6 @@ function log(args: string[]): number {
     return 2;
   }
   if (values.usage) {
-    // Not one of `play log`'s views: the feed has no per-subagent usage, so it
-    // is read from the transcript here (usageByAgent says why).
     console.log(`  usage per agent — ${found.runDir}`);
     const rows = usageByAgent(readFileSync(join(found.runDir, ".logs", "runtime.log"), "utf8"));
     for (const r of rows) {
@@ -386,7 +380,7 @@ function log(args: string[]): number {
     console.log("  (input/output tokens per agent are not in the transcript; the run total is run_settled in progress.ndjson)");
     return 0;
   }
-  // `play log`'s own precedence: --slow over --thinking, per step by default.
+  // Same precedence as `play log`.
   const view: LogView = values.slow ? "slow" : values.thinking ? "thinking" : "steps";
   console.log(`  ${view} — ${found.runDir}`);
   for (const line of renderLogView(found.runDir, view)) console.log(line);
@@ -425,7 +419,6 @@ function list(): number {
   return 0;
 }
 
-/** Write `attempts.json`, `summary.json` and `report.md`; return the report. */
 function writeReport(sweepId: string, records: AttemptRecord[], facts: Record<string, string>, notes: string[]): string {
   const dir = join(PATHS.runsDir, sweepId);
   const summaries = summarize(records);

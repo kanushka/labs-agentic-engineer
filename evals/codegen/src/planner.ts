@@ -18,16 +18,8 @@
 
 /**
  * The planner: reads a saved case's specs and writes the checklist every
- * attempt at that case is walked against (decision 3).
- *
- * It runs ONCE, at save time, and its output is frozen and committed. That is
- * the point: a rubric derived per attempt would move with the model's mood and
- * two attempts would be scored against two different lists. A person can edit
- * the result by hand; nothing re-derives it behind their back.
- *
- * Read-only tools, cwd = the case. It never sees generated code — there is
- * none yet — so the list describes what the spec promises, not what some build
- * happened to do.
+ * attempt at that case is walked against. Runs once at save; the checklist is
+ * frozen (ADR-0004).
  */
 
 import { z } from "zod";
@@ -48,12 +40,6 @@ export type Plan = z.infer<typeof PlanSchema>;
 const SYSTEM_PROMPT = `You write acceptance checklists for web applications from their specifications.
 You read files; you never write or run anything. You answer with one JSON object in the requested schema.`;
 
-/**
- * The instructions. Every rule here is one an attempt's walk depends on:
- * a role name `wire` does not know cannot be entered, an item that needs a row
- * nobody created cannot pass, and an item phrased against source code cannot
- * be checked by a walker that never sees any.
- */
 export function plannerPrompt(roles: string[]): string {
   return `This directory holds the specification of a web application that has NOT been built yet.
 Write the acceptance checklist a tester will walk against the finished app.

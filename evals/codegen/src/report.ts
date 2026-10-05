@@ -19,19 +19,10 @@
 /**
  * The report — median and spread per case × config, a baseline diff that says
  * `inconclusive` when a move is inside the noise, and one line per attempt
- * pointing at its archive.
+ * pointing at its archive (ADR-0005).
  *
- * The shape is `evals/ballerina/src/report.ts`'s (stat, compare, a baseline
- * picked by coverage), copied small rather than imported: that module's types
- * are its own sweep's, and the two harnesses should be free to diverge.
- *
- * What is EXCLUDED from the statistics, and why: a `harness-error` attempt
- * (docker down, credential refused, the harness itself crashed) says nothing
- * about the code under test, so it is counted and listed but never averaged
- * in. A `hard-fail` (the coding run failed, `wire` never came up) is the
- * code's failure and scores 0 — it IS in the median.
- *
- * Pure: records in, text out.
+ * Harness errors are counted but excluded from statistics; hard fails score 0
+ * and count.
  */
 
 import type { AttemptRecord } from "./attempt.js";
@@ -64,12 +55,7 @@ export function summaryKey(caseName: string, config: string): string {
   return `${caseName} × ${config}`;
 }
 
-/**
- * Per case × config. Rewalks are dropped here, not only by the caller: a
- * rewalk re-scores code an attempt already produced, against a checklist that
- * may since have changed, so counting it would weight one coding run twice and
- * mix two rubrics in one median.
- */
+/** Per case × config, without rewalks (they re-score an existing coding run). */
 export function summarize(records: AttemptRecord[]): Summary[] {
   const groups = new Map<string, AttemptRecord[]>();
   for (const record of records.filter((r) => r.kind !== "rewalk")) {
@@ -108,12 +94,8 @@ export function stat(values: number[]): Stat {
 
 /**
  * The baseline for ONE row: the most recent earlier sweep that ran the same
- * case × config with no harness errors in it.
- *
- * Per row, not per sweep (unlike ballerina's coverage rule): a codegen sweep is
- * one or two cases at an hour each, so sweeps rarely share a whole case set,
- * and requiring one would leave the column empty. A row with a harness error
- * is skipped because its n is not the n it claims to compare against.
+ * case × config with no harness errors in it (ADR-0005). A row with a harness
+ * error is skipped because its n is not the n it claims to compare against.
  *
  * `candidates` are sweep ids; ids sort chronologically (ISO timestamps).
  */
@@ -131,11 +113,7 @@ export function pickBaseline(
   return undefined;
 }
 
-/**
- * A delta and whether it means anything. Inconclusive when it sits inside the
- * WIDER of the two spreads — and always when either side is one attempt,
- * because one attempt has no spread to measure noise by.
- */
+/** A delta, and whether it clears the noise. */
 export function compare(now: Summary, before: Summary | undefined): string {
   if (!before) return "—";
   const delta = round(now.score.median - before.score.median);
@@ -214,8 +192,7 @@ export function attemptLine(r: AttemptRecord): string {
 /**
  * Why a record did not score, as one line: the phase, whose failure it was
  * (`app` is the generated app's, `environment` everything else's), and the
- * reason — then any note on the record. Records written before `failure`
- * existed carry only the note.
+ * reason — then any note on the record.
  */
 export function failureText(r: AttemptRecord): string {
   const parts: string[] = [];

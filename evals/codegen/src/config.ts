@@ -17,14 +17,7 @@
  */
 
 /**
- * EVERY knob, in one file — the same rule `evals/ballerina/src/config.ts` keeps.
- *
- * A value here is one you would change to re-point or re-tune the harness:
- * where things live, how long each phase may take, which model plays which
- * part, what the walker may run, where the bands sit. Behaviour is not here.
- *
- * Precedence: a CLI flag beats an env var beats the default. Env vars exist so
- * a sweep can be scripted without threading flags through `make eval-codegen`.
+ * Every tunable of the harness. Precedence: CLI flag > env var > default.
  */
 
 import { homedir } from "node:os";
@@ -45,32 +38,20 @@ export const PATHS = {
   runsDir: join(PACKAGE_ROOT, ".runs"),
   /** The playground package — `play` is run out of it, see `play.ts`. */
   playgroundDir: join(REPO_ROOT, "playground"),
-  /**
-   * The ONE credential file. Parsed with `util.parseEnv` for one key
-   * (`credentials.ts`); never loaded into this process's environment.
-   */
+  /** The one credential file (`credentials.ts`). */
   envFile: join(REPO_ROOT, "deployments", ".env"),
   /**
-   * Where an attempt's project is staged. UNDER $HOME because Colima shares
-   * only $HOME with its VM: a project under `$TMPDIR` mounts EMPTY in the
-   * runner container, and the coding run would build nothing and say so
-   * nowhere. OUTSIDE the repo because the coding agent reads its whole
-   * project, and a project inside `evals/codegen/` would sit beside the very
-   * checklists it is scored against.
+   * Where an attempt's project is staged: under $HOME (Colima shares only $HOME
+   * with its VM) and outside the repo (the coding agent reads its whole project).
    */
   stageRoot: envString("CODEGEN_EVAL_STAGE_ROOT", join(homedir(), ".aep-evals", "codegen")),
 } as const;
 
 /** What `save` reads off a playground project. */
 export const SAVE = {
-  /** A case is these two directories and nothing else (decision 1: from-scratch generation). */
+  /** A case is these two directories and nothing else (ADR-0001). */
   caseDirs: ["specs", "issues"],
-  /**
-   * Files the platform compiles from a source beside them — `*.excalidraw`
-   * from `wireframes.dsl`, `*.gen.json` from `design.cell`. Code generation
-   * never reads them (the `wireframes` skill forbids it), and one wireframe
-   * picture is 8–20k lines, so a case does not keep them.
-   */
+  /** Platform-compiled renderings, which code generation never reads. */
   renderedSuffixes: [".excalidraw", ".gen.json"],
   /**
    * Headings only an agent writes into an issue file. One of them in any issue
@@ -88,33 +69,20 @@ export const SAVE = {
 
 /** What an attempt's archive keeps of the generated project (`excludedFromProject` in attempt.ts). */
 export const ARCHIVE = {
-  /**
-   * Build output, dropped where it sits directly in a component's App Path:
-   * what the stacks' own toolchains regenerate from the sources beside it.
-   * Ballerina's `target/` (`bal build`: the jar and its caches, 163 of a
-   * project's ~170 MB) and the React webapp's `dist/` (`vite build`). A
-   * root-cause pass reads sources, and at many cases × repeats the output is
-   * nearly the whole archive. Only at an App Path's root, so a source directory
-   * that shares a name deeper in a tree is kept. `build/` is not listed: no
-   * stack here emits it, and a Go layout keeps packaging sources there.
-   */
+  /** Regenerable build output (`bal build` target/, `vite build` dist/), dropped only at an App Path's root. */
   buildOutputDirs: ["target", "dist"],
 } as const;
 
 export const DEFAULTS = {
-  /** Attempts per case × config. One shows a case runs; three is the floor for believing a delta. */
+  /** Attempts per case × config. */
   repeats: envInt("CODEGEN_EVAL_REPEATS", 1),
-  /**
-   * Attempts in flight. ONE by default, unlike the ballerina sweep: an attempt
-   * here is a coding container, a compose project and a browser, and two at once
-   * on a laptop measure the laptop.
-   */
+  /** Attempts in flight. Each attempt is a coding container, a compose project and a browser. */
   concurrency: envInt("CODEGEN_EVAL_CONCURRENCY", 1),
 } as const;
 
 /** Per-phase ceilings. Every one ends in the same teardown, never an orphan. */
 export const TIMEOUTS = {
-  /** `play code`. A realistic two-component project runs 30-60 minutes. A case's `timeoutMinutes` overrides it. */
+  /** `play code`; a case's `timeoutMinutes` overrides it. */
   codingMinutes: envInt("CODEGEN_EVAL_CODING_TIMEOUT_MINUTES", 90),
   /** SIGTERM → this → SIGKILL, for every `play` child. The coding run copies transcripts out on SIGTERM. */
   killGraceSeconds: 60,
@@ -122,7 +90,6 @@ export const TIMEOUTS = {
   wireReadyMinutes: envInt("CODEGEN_EVAL_WIRE_TIMEOUT_MINUTES", 20),
   /** SIGTERM to `STOPPED`/exit before the harness takes the compose project down itself. */
   wireStopMinutes: 2,
-  /** The walk's wall clock. */
   walkMinutes: envInt("CODEGEN_EVAL_WALK_TIMEOUT_MINUTES", 30),
   /** The planner and the judge: one structured answer each. */
   plannerMinutes: 15,
@@ -130,10 +97,8 @@ export const TIMEOUTS = {
 } as const;
 
 /**
- * The models of the harness's OWN agents. Not the model under test — that is a
- * `configs.yaml` entry. Pinned rather than left to the SDK's default, which
- * drifts across releases: a judge that changes model between two sweeps makes
- * their delta unreadable.
+ * The harness's own agents' models (the model under test is in configs.yaml),
+ * pinned so they cannot drift between sweeps (ADR-0003).
  */
 export const MODELS = {
   planner: envString("CODEGEN_EVAL_PLANNER_MODEL", "claude-sonnet-5-5"),
@@ -142,7 +107,6 @@ export const MODELS = {
 } as const;
 
 export const PLANNER = {
-  /** Read-only: the planner reads a case, it never edits one. */
   tools: ["Read", "Glob", "Grep"],
   maxTurns: 60,
   /** Structured output that fails the schema is retried once, then refused. */
@@ -152,30 +116,12 @@ export const PLANNER = {
 export const WALKER = {
   /** Bash is `agent-browser` only and Read/Write stay in `walk/` — `walker.ts`'s guard enforces both. */
   tools: ["Bash", "Read", "Write"],
-  /**
-   * The walker's `agent-browser`: this package's devDependency, put first on
-   * the walk's PATH. Pinned to the runner image's version (a test holds the two
-   * equal) because a walker on another version measures a different tool —
-   * see `@aep/playground/src/engine/agent-browser.ts`.
-   */
+  /** This package's `agent-browser`, held equal to the runner image's by a test, first on the walk's PATH. */
   binDir: agentBrowserBinDir(PACKAGE_ROOT),
-  /**
-   * The section of the platform's agent-browser skill the walker prompt
-   * embeds, by its exact heading: the coding run's walk and this one confirm
-   * an action by the same text. Read at prompt-build time, refused at startup
-   * when the heading is gone.
-   */
+  /** The skill section the walker prompt embeds, so both walks confirm an action by the same text. */
   confirmSection: { file: join(REPO_ROOT, "skills", "agent-browser", "SKILL.md"), heading: "## Confirm each action" },
   maxTurns: envInt("CODEGEN_EVAL_WALK_MAX_TURNS", 400),
-  /**
-   * `agent-browser` commands that may run to their timeout IN A ROW before the
-   * browser is declared unresponsive and the walk stops as a harness error
-   * (`BrowserWatchdog`). Three: one is a slow page and two a slow page retried,
-   * but three with nothing completing between them is a browser that no longer
-   * answers — measured once at six, each 30-120 s, after which the walker
-   * marked every remaining item failed. At the walker's usual 120 s timeout
-   * that ends a dead walk in about six minutes rather than thirty.
-   */
+  /** Consecutive agent-browser timeouts before the browser is declared unresponsive (`BrowserWatchdog`). */
   unresponsiveAfter: 3,
   /**
    * Shell metacharacters a walker command may not contain. With these gone a
@@ -183,15 +129,7 @@ export const WALKER = {
    * no substitution, no redirect to a file the guard never saw.
    */
   forbiddenShell: [";", "&", "|", "$(", "`", ">", "<", "\n"],
-  /**
-   * `agent-browser` verbs a walk has no business with, matched on the FIRST
-   * argument (where a verb sits) so text typed into a field cannot trip them.
-   * `chat` is a second model; `eval` runs script in the page, which is reading
-   * or changing the app from behind it rather than using it, and so does
-   * `webmcp` (0.36+), which calls tools the page registers instead of its UI;
-   * the rest reach outside one isolated, headless browser session. A `batch`
-   * is checked command by command against the same lists.
-   */
+  /** Verbs refused as the first argument: they act behind the page's UI or outside the isolated session (ADR-0003). */
   forbiddenVerbs: ["chat", "eval", "webmcp", "connect", "auth", "install", "upgrade", "dashboard", "stream", "inspect"],
   /**
    * `network route`/`unroute` would let the walker answer the app's own
@@ -221,19 +159,13 @@ export const WALKER = {
 } as const;
 
 export const JUDGE = {
-  /** No tools: the judge reads the evidence it is handed, nothing else. */
   tools: [] as string[],
   attempts: 2,
 } as const;
 
 /** What every attempt records about the tree it ran against (`provenance.ts`). */
 export const PROVENANCE = {
-  /**
-   * Uncommitted paths under these roots are listed in `provenance.json`: the
-   * coding run reads `skills/` and the runner's `local.ts` from the working
-   * tree, `wire` is the playground's, and the harness is this package — an
-   * edit in any of them changes what an attempt measured.
-   */
+  /** Uncommitted paths under these roots change what an attempt measured. */
   dirtyRoots: ["skills/", "runners/remote-worker/", "playground/", "evals/codegen/"],
   /** `skills.diff` covers this root — the part a skill edit loop changes between sweeps. */
   diffRoot: "skills/",
@@ -265,7 +197,6 @@ function envInt(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
   const parsed = Number(raw);
-  // A malformed value falls back rather than becoming NaN or 0, as in evals/ballerina.
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 

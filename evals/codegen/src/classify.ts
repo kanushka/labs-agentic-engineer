@@ -18,17 +18,13 @@
 
 /**
  * WHOSE FAILURE an attempt's phase was, decided from structured facts — the
- * rules `attempt.ts` applies, kept pure so each one is tested.
+ * rules `attempt.ts` applies.
  *
  *   app          — the generated app (or the coding agent that wrote it)
  *                  failed. A hard fail: score 0, counted.
  *   environment  — anything else: docker, the runner, the model provider,
  *                  `wire`'s machine, the browser, the harness. A harness
  *                  error: reported with its reason, excluded from statistics.
- *
- * The same two words `wire` reports its own failures in
- * (`playground/src/engine/wire/failure.ts`), so a wire failure maps across
- * unchanged.
  */
 
 import type { WireCause, WireFailure } from "@aep/playground/src/engine/wire/failure.js";
@@ -51,21 +47,7 @@ export interface CodingFacts {
   builtAnything: boolean;
 }
 
-/**
- * The coding phase, in order:
- *
- *   the agent never started            → environment (docker, the runner
- *                                        image, the credential, provisioning:
- *                                        the agent never had a turn)
- *   settled with `provider_limit`      → environment (the model provider
- *                                        refused the calls)
- *   timed out                          → app (the agent did not finish)
- *   ended without settling             → environment (its process or
- *                                        container died under it)
- *   settled `cancelled`                → environment (taken away, not failed)
- *   settled anything but `success`     → app (the agent gave up or failed)
- *   success, but no App Path exists    → app (it built nothing)
- */
+/** The coding phase's failure; first matching rule wins. */
 export function codingFailure(facts: CodingFacts): Classified | null {
   const exit = `exit ${String(facts.exitCode)}`;
   if (!facts.agentStarted) {
@@ -99,10 +81,8 @@ export interface WireFacts {
 }
 
 /**
- * The wire phase, when no `READY` came: `wire`'s own classification when it
- * gave one; otherwise the environment's, because an unclassified end — a
- * crash, a hang past the limit — is `wire` or the machine failing to say,
- * which is no evidence against the app.
+ * The wire phase, when no `READY` came. An unclassified wire end is the
+ * environment's: it is no evidence against the app.
  */
 export function wireFailure(facts: WireFacts): Classified {
   if (facts.failed) return facts.failed;

@@ -265,7 +265,6 @@ test("walker: every command inside a batch is held to the same rules", () => {
     (guardTool("Bash", { command: `agent-browser batch "click @e4" "press 2"` }, dir) as { reason: string }).reason,
     /--bail/,
   );
-  // Kept: one call for a date typed key by key.
   assert.deepEqual(
     guardTool("Bash", { command: `agent-browser batch --bail "click @e4" "press 2" "press ArrowRight" "fill @e5 'route 66'"` }, dir),
     { allow: true },
@@ -504,7 +503,6 @@ test("archive: build output at an App Path's root stays out; the same names anyw
   ]) {
     assert.ok(!excludedFromProject(rel, appPaths), rel);
   }
-  // Without the App Paths there is nothing to anchor the rule to, and nothing is dropped for it.
   assert.ok(!excludedFromProject("onboarding-api/target/bin/app.jar"));
 });
 
@@ -615,7 +613,6 @@ test("log: the newest archived coding run is read; a rewalk points at its parent
 test("log: usageByAgent names subagents by their fan-out description and counts each message's cache tokens once", () => {
   const lines = [
     { type: "assistant", message: { id: "m1", usage: { cache_read_input_tokens: 10, cache_creation_input_tokens: 1 }, content: [{ type: "tool_use", id: "t-agent", name: "Agent", input: { description: "Build api issue #1" } }] } },
-    // Two lines of ONE message: counted once.
     { type: "assistant", parent_tool_use_id: "t-agent", message: { id: "m2", usage: { cache_read_input_tokens: 5, cache_creation_input_tokens: 7 }, content: [{ type: "thinking" }] } },
     { type: "assistant", parent_tool_use_id: "t-agent", message: { id: "m2", usage: { cache_read_input_tokens: 5, cache_creation_input_tokens: 7 }, content: [{ type: "tool_use", id: "t2", name: "Bash", input: {} }] } },
     // The SDK's own count wins over the forwarded calls seen.

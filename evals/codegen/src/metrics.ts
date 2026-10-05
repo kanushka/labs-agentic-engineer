@@ -24,10 +24,7 @@
  *   `progress.ndjson` → `run_settled`: the run's OUTCOME and token usage, as
  *     the runner reports it to the console. The outcome decides hard fail.
  *   `.logs/runtime.log` → the last SDK `result`: `total_cost_usd`, Claude
- *     Code's own estimate. Recorded as given, null when absent — never
- *     recomputed from a price table this harness would have to keep current.
- *
- * Pure: text in, numbers out. The files are read by `attempt.ts`.
+ *     Code's own estimate, recorded as reported (ADR-0005); null when absent.
  */
 
 export interface Tokens {
@@ -39,7 +36,7 @@ export interface Tokens {
 
 export interface RunSettled {
   outcome: string;
-  /** The event's closed `code` (only `provider_limit` today), when it carries one. */
+  /** The event's closed `code`, when it carries one. */
   code?: string;
   /** Why it failed, in the producer's words — for a reason line, never for a decision. */
   error?: string;
@@ -69,15 +66,13 @@ export function readRunSettled(ndjson: string): RunSettled | null {
 
 /**
  * Whether the coding AGENT ever started: `run_started` is emitted when the
- * runtime's session reports in (its `init`). Everything a run does before it —
- * provisioning the workspace, mirroring skills — is the runner's, and a run
- * that settles there never gave the agent a turn.
+ * runtime's session reports in (its `init`).
  */
 export function sawRunStarted(ndjson: string): boolean {
   return jsonLines(ndjson).some((event) => event.kind === "run_started");
 }
 
-/** How many events the feed holds — zero means the run never started, which is the harness's failure, not the agent's. */
+/** How many events the feed holds. */
 export function countEvents(ndjson: string): number {
   return jsonLines(ndjson).length;
 }

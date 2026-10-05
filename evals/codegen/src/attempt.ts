@@ -24,29 +24,9 @@
  * Both run the same phase functions below; they differ only in how the staged
  * project comes to exist.
  *
- * Every phase is timed, and every way it can end is CLASSIFIED, because the
- * report's whole value rests on telling three things apart (decision 8):
- *
- *   scored        — the app came up and was walked; the score is the judge's.
- *   hard-fail     — the CODE failed (cause `app`): the coding agent did not
- *                   succeed or built nothing, or `wire` says the app would not
- *                   come up. Score 0, counted.
- *   harness-error — something that is not the code (cause `environment`):
- *                   docker, the runner, the model provider, a port, an
- *                   unresponsive browser, a refused credential, a walker or
- *                   judge that produced no answer, an interrupt, a crash in
- *                   here. Counted, never averaged in.
- *
- * Either failure is recorded as `failure: {phase, cause, reason}`; the rules
- * that decide the cause are `classify.ts`'s, and `wire` decides its own.
- *
- * Teardown is unconditional and runs in `finally`: a `play` child left alive
- * is a compose project and a container still running when the next attempt
- * starts on the same ports.
- *
- * The archive keeps EVERYTHING a later root-cause stage could want (decision
- * 6) — the generated project, the coding transcripts, the walk with its
- * screenshots, the wire logs — minus dependencies and the session's secrets.
+ * Failures are classified (`classify.ts`, ADR-0001): app → hard-fail scored 0;
+ * environment → harness-error, never averaged in. Teardown always runs, since a
+ * live `play` child holds the next attempt's ports. What the archive keeps: ADR-0003.
  */
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -96,8 +76,7 @@ export interface AttemptFailure {
 export interface AttemptRecord {
   /**
    * `rewalk` records re-walk an archived attempt's code against the current
-   * checklist; they never enter a sweep's statistics. Absent in records
-   * written before rewalks existed, which are attempts.
+   * checklist; they never enter a sweep's statistics. Absent means `attempt`.
    */
   kind?: "attempt" | "rewalk";
   /** A rewalk's number under its attempt (`rewalk-<n>/`). */
@@ -114,10 +93,7 @@ export interface AttemptRecord {
   capped: boolean;
   /** A hard fail or harness error: where, whose, and why. Absent when scored. */
   failure?: AttemptFailure;
-  /**
-   * A note on the record itself (an incomplete archive). Records written
-   * before `failure` existed carry their failure's one line here instead.
-   */
+  /** A note on the record itself (an incomplete archive). */
   symptom?: string;
   failing: { id: string; weight: number; symptom: string }[];
   violated: string[];
@@ -490,7 +466,6 @@ async function servePhases(run: Run, env: NodeJS.ProcessEnv): Promise<void> {
 /** Teardown, archive, records, and the staged directory — whichever way the run ended. */
 async function finalize(run: Run): Promise<void> {
   const { record, stage } = run;
-  // The code phase's own wall clock, whichever way it ended.
   if (record.phases.code !== undefined) record.coding.minutes = round(record.phases.code / 60_000);
   if (run.live.code) {
     run.codeKilled = (await run.live.code.stop(TIMEOUTS.killGraceSeconds * 1000)) === "killed" || run.codeKilled;
@@ -520,25 +495,16 @@ async function finalize(run: Run): Promise<void> {
 }
 
 /**
- * Take a wired session down: capture the services' logs, SIGTERM and wait for
- * `STOPPED` (or exit), SIGKILL past the deadline. Then ALWAYS `compose down -v` by project name: `wire`
- * keeps its database volume on purpose, so a person's rows survive to their
- * next session, but an attempt is throwaway and a kept volume is a leak — one
- * per attempt, forever (measured: the first live sweep left one behind). The
- * same goes for the images it built (~430 MB each; twelve had piled up in the
- * VM), so the down removes those too (`composeDown`). The dev server is reaped by the port `session.json` recorded only when `wire`
- * could not do it itself.
+ * Capture logs, SIGTERM until STOPPED, SIGKILL past the deadline, then always
+ * `compose down -v` with built images: `wire` keeps its volume for a person, an
+ * attempt must not.
  */
 async function stopWire(run: Run): Promise<void> {
   const play = run.live.wire;
   if (!play) return;
   delete run.live.wire;
   const project = `aep-wire-${projectSlug(run.stage)}`;
-  // BEFORE the SIGTERM: `wire`'s teardown removes the containers and their logs
-  // with them. On every path that reaches here — the stop phase, and a hard
-  // fail where compose came up but READY never printed. A `wire` that already
-  // exited took its containers down itself; its wire.log carries the tail it
-  // printed on the way out.
+  // Before the SIGTERM: `wire`'s teardown removes the containers and their logs.
   const logs = join(run.archive, "wire", "logs");
   mkdirSync(logs, { recursive: true });
   await composeLogsTo(project, join(logs, "services.log"));
@@ -581,12 +547,8 @@ function componentAppPaths(stage: string): string[] {
 }
 
 /**
- * Paths (relative to the staged project) that stay out of `project/`.
- * `node_modules` anywhere — reinstallable and enormous; build output at an App
- * Path's root (`ARCHIVE.buildOutputDirs`) — regenerable from the sources kept
- * beside it; the session's secrets, bearers and private key; the undo
- * snapshots (the case already is that state); and the coding run dirs, which
- * `coding/` holds whole. Pure.
+ * Paths (relative to the stage) kept out of `project/`: reinstallable,
+ * regenerable, secret, or archived elsewhere. Pure.
  */
 export function excludedFromProject(rel: string, appPaths: readonly string[] = []): boolean {
   if (rel.split(sep).includes("node_modules")) return true;

@@ -17,20 +17,10 @@
  */
 
 /**
- * The walker: an agent that uses the running app through a real browser,
- * item by item, and records what it saw. It does not score — the judge does
- * (decision 5) — and it does not fix: an evaluator that repairs the app on
- * the way through measures itself.
- *
- * BLACK BOX. Its cwd is the attempt's `walk/` directory, never the project,
- * and its only tools are `agent-browser` through Bash plus Read/Write inside
- * `walk/` (screenshots, notes). The guard below is a PreToolUse hook, which is
- * why the session's prompt is a held-open stream (`session.ts`).
- *
- * The method is the platform's own mock-verification walk
- * (`skills/mock-verification/SKILL.md`): Reach, Act, Request — and a mutation
- * counts only when a request leaves the page, because a row that flips on
- * screen and sends nothing is the one defect a screenshot cannot see.
+ * The walker: an agent that uses the running app through a real browser and
+ * records what it saw; it neither scores nor fixes (ADR-0004). Its cwd and tools
+ * are confined to `walk/` by a PreToolUse hook, hence the held-open prompt
+ * stream (`session.ts`).
  */
 
 import { execFile, spawnSync } from "node:child_process";
@@ -133,9 +123,8 @@ export function guardTool(tool: string, input: unknown, walkDir: string): GuardD
 
 /**
  * The arguments of one `agent-browser` command. A `batch` runs every positional
- * argument as a command line of its own (`batch "eval …"` ran script in the
- * page while only its first word was checked), so each is split and held to
- * these same rules — a nested `batch` included.
+ * argument as a command line of its own, so each is split and held to these
+ * same rules — a nested `batch` included.
  */
 function guardBrowserArgs(words: string[]): GuardDecision {
   const flag = words.find((word) => WALKER.forbiddenFlags.some((f) => word === f || word.startsWith(`${f}=`)));
@@ -150,10 +139,7 @@ function guardBrowserArgs(words: string[]): GuardDecision {
       const decision = guardBrowserArgs(shellWords(inner));
       if (!decision.allow) return decision;
     }
-    // Without --bail a batch goes on after a failed command: a click on a
-    // stale ref fails, and the key presses after it land wherever focus is. On
-    // a native date input's picker button, headless Chrome then repeats the
-    // key without end and the browser stops answering (measured).
+    // Without --bail a batch continues after a failed command, and later keys land wherever focus is.
     if (!words.includes("--bail")) return deny("use `agent-browser batch --bail …`: a command after a failed one acts on the wrong element");
   }
   return { allow: true };
@@ -164,13 +150,8 @@ function deny(reason: string): GuardDecision {
 }
 
 /**
- * One browser command at a time. The browser is one page: commands that
- * overlap race, so a ref goes stale under a click and a key press lands on
- * whatever holds focus. Measured once: a walker sent a date input's clicks and
- * key presses as twenty parallel tool calls, the keys reached the input's
- * picker button, and headless Chrome froze. The session runs parallel tool
- * calls at once, so the prompt alone does not hold this: a command that starts
- * while another runs is refused, and the walker sends it again after.
+ * One browser command at a time: overlapping commands race on the one page, and
+ * the session runs parallel tool calls at once.
  */
 export class BrowserLane {
   private running: string | undefined;
@@ -234,20 +215,8 @@ export function guardHooks(walkDir: string): Partial<Record<"PreToolUse" | "Post
 }
 
 /**
- * Whether the BROWSER is still answering, read off the walk's own Bash results.
- *
- * A headless Chrome can wedge so that every `agent-browser` command hangs —
- * measured once: after a keystroke into a native date input, six commands in
- * a row (snapshot, get url, tab list, close) each ran to the Bash tool's
- * timeout. The walker cannot tell that from an app that hangs, keeps going,
- * and records every item after as a fail: a score of the browser, charged to
- * the app. So the walk stops instead, and the attempt is the environment's.
- *
- * The signal is structural: the Bash tool's result carries `timedOutAfterMs`
- * when a command hit its timeout and was moved to the background. `limit` of
- * them IN A ROW — with no command completing in between — is a browser that
- * no longer answers; any command that completes resets the count, so one
- * slow page does not end a walk. Pure: messages in, a reason out.
+ * Stops the walk when `limit` consecutive Bash results carry `timedOutAfterMs`
+ * with none completing between. Pure.
  */
 export class BrowserWatchdog {
   private readonly bashCalls = new Set<string>();
@@ -286,10 +255,7 @@ You never fix, work around or excuse what you find. You answer with one JSON obj
 
 /**
  * The wall-clock time as the browser reads it: `2026-10-04 20:21 (Asia/Colombo)`.
- * A tester knows the time, and items that depend on it ("a slot in the next
- * two hours") cannot be walked without it — the walker has no `eval` and the
- * app need not show a clock. Chrome runs on this machine, so this machine's
- * time zone is the browser's.
+ * Chrome runs on this machine, so its time zone is the browser's.
  */
 export function browserClock(now: Date, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): string {
   const parts = Object.fromEntries(

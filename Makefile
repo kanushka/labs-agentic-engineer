@@ -119,7 +119,7 @@ eval-bal:
 	$(PNPM) --filter @aep/ballerina-evals eval $(if $(ARGS),-- $(ARGS),)
 
 # Codegen evals (evals/codegen): saved case → play code → play wire → walk → judge.
-# On demand only, never CI; Claude OAuth token from deployments/.env, never an API key.
+# On demand, OAuth token only: policy in evals/codegen ADR-0002.
 #   make eval-codegen ARGS="run --case expense-claims --repeats 3"
 #   make eval-codegen ARGS="list" | ARGS="report"
 eval-codegen:

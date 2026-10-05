@@ -24,9 +24,8 @@
  * `wire` runs the generated SPA against the mock session the react-webapp /
  * thunder-authentication skills ship (`skills/thunder-authentication/assets/
  * app/mock/authz/session.ts`): there is no identity provider, so there is no
- * sign-in page. Measured on the first live sweep: two items expecting "a
- * sign-in prompt" failed on an app that did exactly what the asset does. If
- * that asset's `signIn`/`signOut` change, this text changes with them.
+ * sign-in page. If that asset's `signIn`/`signOut` change, this text changes
+ * with them.
  */
 export const WIRED_AUTH_SEMANTICS = `WIRED-MODE AUTH — how identity behaves in the app under test (a mock session stands in for the identity provider):
 - \`?role=<Role>\` signs in as that role, and the choice persists for the browser tab, so the app's own links keep it. \`?role=\` (empty) is signed in holding no role: the app shows its no-access page.

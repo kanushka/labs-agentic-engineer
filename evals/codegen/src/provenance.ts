@@ -22,10 +22,7 @@
  * skill diff, the runner image's ID, every model id in play, and the
  * `agent-browser` version the walker drove.
  *
- * A sweep on a branch with uncommitted skill edits measures those edits, and
- * the commit sha alone hides them — `skills.diff` is what lets a root-cause
- * pass say which skill text produced the run. Paths and ids only: no env
- * value is ever recorded here.
+ * Paths and ids only: no env value is ever recorded.
  *
  * Best-effort throughout: a git or docker command that fails leaves its field
  * null rather than failing an attempt that has not started spending yet.
@@ -51,8 +48,6 @@ export interface Provenance {
 
 /**
  * Paths from `git status --porcelain` (v1) that fall under one of `roots`.
- * A rename (`R  old -> new`) counts by its new path; quoted paths are unquoted.
- * Pure.
  */
 export function dirtyPaths(porcelain: string, roots: readonly string[]): string[] {
   const out: string[] = [];
@@ -67,7 +62,6 @@ export function dirtyPaths(porcelain: string, roots: readonly string[]): string[
   return out.sort();
 }
 
-/** Write `provenance.json` and `skills.diff` into `dir`. */
 export function writeProvenance(dir: string, config: RunConfig): Provenance {
   const image = runnerImage(config.runtime);
   const provenance: Provenance = {
