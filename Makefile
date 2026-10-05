@@ -49,7 +49,7 @@ LICENSE_HEADER := .github/license-header.txt
 LICENSE_MATCH = grep -E '\.(go|ts|tsx|sh)$$|(^|/)Dockerfile$$' | \
 	grep -vE '\.gen\.(go|ts)$$|_mock\.go$$|/mocks/|/node_modules/|/dist/|/generated/|(^|/)\.(agents|claude)/'
 
-.PHONY: install gen build dev test lint eval-ui typecheck license license-check tools clean eval cover build-runner workflow-skill deadcode-ts deadcode-ts-check manifests-check dev-env dev-images dev-update dev-runner obs-park obs-unpark obs-status bal-library-tool e2e-walk
+.PHONY: install gen build dev test lint eval-ui eval-codegen typecheck license license-check tools clean eval cover build-runner workflow-skill deadcode-ts deadcode-ts-check manifests-check dev-env dev-images dev-update dev-runner obs-park obs-unpark obs-status bal-library-tool e2e-walk
 
 install:
 	$(PNPM) install
@@ -118,6 +118,13 @@ eval-ui:
 # Needs an installed `bal library` — packages/bal-library-tool/install-local.sh.
 eval-bal:
 	$(PNPM) --filter @aep/ballerina-evals eval $(if $(ARGS),-- $(ARGS),)
+
+# Codegen evals (evals/codegen): saved case → play code → play wire → walk → judge.
+# On demand, OAuth token only: policy in evals/codegen ADR-0002.
+#   make eval-codegen ARGS="run --case expense-claims --repeats 3"
+#   make eval-codegen ARGS="list" | ARGS="report"
+eval-codegen:
+	$(PNPM) --filter @aep/codegen-evals eval $(if $(ARGS),-- $(ARGS),)
 
 lint:
 	$(TURBO) run lint

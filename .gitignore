@@ -115,6 +115,8 @@ deployments/scripts/setup-local
 
 # Ballerina eval sweeps: scratch packages, transcripts and reports (on-demand, never CI)
 evals/ballerina/.runs/
+# Codegen eval sweeps: archived generated projects, transcripts, walks and reports (on-demand, never CI)
+evals/codegen/.runs/
 tools/aectl/aectlv2
 
 # Python bytecode from the deployment helper scripts

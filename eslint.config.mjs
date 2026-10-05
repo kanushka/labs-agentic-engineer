@@ -30,6 +30,8 @@ export default tseslint.config(
       "playground/.devtools/**",
       // Prototype fixtures: some are deliberately broken (a syntax error, a forbidden API) for `prototype check` to report.
       "packages/prototype-cli/test/fixtures/**",
+      // Codegen eval archives: each attempt keeps the generated app's source.
+      "evals/codegen/.runs/**",
     ],
   },
   js.configs.recommended,

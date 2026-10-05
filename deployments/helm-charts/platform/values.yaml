@@ -44,7 +44,7 @@ aepAgents:
     pullPolicy: IfNotPresent
   port: 9090
   logLevel: "info"
-  model: "claude-sonnet-5"
+  model: "claude-sonnet-5-5"
   # A runaway guard, not a budget: a design turn that hits it still commits
   # its half-written design as complete. Matches the agents service's own
   # default; the reasoning is in services/agents/src/shared/config.ts.

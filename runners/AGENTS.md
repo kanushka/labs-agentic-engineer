@@ -347,7 +347,7 @@ into the runner pod at `/app/skills` for live skill edits (see
   by `delivery/codingagent`, copied from the org's `/config` `agents`
   section — copied, not referenced, so a change applies from the NEXT cycle and a
   run in flight keeps the model its usage lines were billed against. Unset means
-  the platform defaults (`claude-code`, `claude-sonnet-5`), which is what every
+  the platform defaults (`claude-code`, `claude-sonnet-5-5`), which is what every
   dispatch carried before the setting existed and what the playground still runs
   under. An unrecognised runtime is an error, never a silent fallback: running
   the one we do have would bill an org for a runtime it did not choose. The model

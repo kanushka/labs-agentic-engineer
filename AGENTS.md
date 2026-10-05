@@ -26,6 +26,8 @@ SDLC platform built on OpenChoreo.
   infrastructure or a deliberate test seam only with a reason attached: a
   `@knipkeep <reason>` JSDoc tag in TS, `//deadcode:keep` in Go. What each
   gate covers and why is in `knip.jsonc` and `services/aep-api/Makefile`.
+- `skills/`, `.agents/skills/` and `AGENTS.md` files change through the
+  `writing-skills` loop: a proposal doc first, then the edits, logged in that doc.
 
 ## Design docs
 

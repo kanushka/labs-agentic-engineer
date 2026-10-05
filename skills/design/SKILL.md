@@ -161,7 +161,15 @@ turn — apply them directly, and load one only if you find you do not have it.
    `grants` against a design it could only intend; the operations the screens
    in each role's flow load are decidable only here. Walk each flow, open the
    contract behind each screen, and make sure the role holds the handle of the
-   operation each screen loads. Re-emit the file only if a grant changes. Skip
+   operation each screen loads. Make sure also that each field the screen
+   draws (a column, a value, a name in a select or a list) comes from that
+   operation, or from one list operation that each role loading the screen
+   may call. A field that no operation gives is a gap in the contract, and the
+   build cannot change the contract: add the field now to the response of the
+   operation that the screen loads (a name next to its id). Do not widen a
+   scope to close the gap. The service fills a name from its own records,
+   never from a name that the client sends. Re-emit a file only if it
+   changes. Skip
    the step only when step 5 wrote no security.json at all. No gate refuses a
    role that is one handle short — the build's mock walk is what catches it, as
    a hidden screen — so this pass is where it is cheap.
