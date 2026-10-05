@@ -27,7 +27,6 @@ import (
 
 const repoCatalog = "../../../../deployments/single-cluster/resource-types"
 
-// copyTree copies a testdata tree into a fresh temp dir and returns it.
 func copyTree(t *testing.T, src string) string {
 	t.Helper()
 	dst := t.TempDir()
@@ -52,11 +51,8 @@ func copyTree(t *testing.T, src string) string {
 	return dst
 }
 
-// THE ORACLE. testdata/track-each-hire9665/production holds two design.json
-// files exactly as the platform committed them after a POST /build;
-// input/ is the same pair with every derived field (`wiring`, `exposesAPI`)
-// removed. Deriving input/ with the repo catalog and the production project id
-// must reproduce production/ byte for byte.
+// production/ holds design.json files as the platform committed them; input/ is
+// the same with derived fields removed.
 func TestDeriveDir_ReproducesProductionByteForByte(t *testing.T) {
 	t.Parallel()
 	dir := copyTree(t, "testdata/track-each-hire9665/input")
@@ -112,8 +108,6 @@ func runCLI(args ...string) (code int, stdout, stderr string) {
 	return code, out.String(), errOut.String()
 }
 
-// An unknown resourceType is production's build refusal: exit 1, production's
-// own message, and the design left untouched.
 func TestRun_UnknownResourceTypeRefusesWithProductionText(t *testing.T) {
 	t.Parallel()
 	dir := writeDesign(t, `[{"kind":"platform-resource","name":"receipts","resourceType":"object-storage"}]`)
@@ -188,8 +182,7 @@ func TestRun_UsageErrors(t *testing.T) {
 	}
 }
 
-// With no --resource-types the repo catalog is found from the working
-// directory, which `go test` sets to this package's directory.
+// `go test` runs in this package's directory.
 func TestFindRepoCatalog(t *testing.T) {
 	t.Parallel()
 	got, err := findRepoCatalog()

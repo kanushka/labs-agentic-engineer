@@ -21,12 +21,7 @@
 //
 //	design-derive --design-dir <project>/specs/design --project <id> [--resource-types <dir>]
 //
-// It is a thin shell over production code, not a port of it: the design is read
-// by spec's own assembler, the catalog is projected by the same
-// dependencies.ResourceTypeCatalog and crtcatalog code the service wires, the
-// derivation is spec.DerivePlatformResourceFacts, and each changed file is the
-// render production commits. Only the transport differs: files in a directory
-// instead of a commit, manifests instead of the OC API.
+// See playground ADR-0003.
 //
 // Exit status: 0 derived (or nothing to derive), 1 the derivation refused the
 // design (production's own error text on stderr), 2 a usage or I/O failure.

@@ -14,16 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package crtcatalog is the ONE projection of the dependencies resource-type
-// catalog onto spec's own CRTType vocabulary. Design-save's resourceTypeCatalog
-// port returns spec.CRTType, so the spec domain names the dependencies feature
-// nowhere (the "a domain names no other domain's entity, even in a port" rule);
-// this package is where the two meet.
-//
-// It is a package of its own, rather than an adapter inside internal/app, so
-// that cmd/design-derive (the playground's file-backed derivation) projects a
-// catalog through the same code the composition root wires, without importing
-// the whole service graph.
+// Package crtcatalog projects the dependencies resource-type catalog onto spec's
+// CRTType vocabulary (ADR-0041).
 package crtcatalog
 
 import (
@@ -39,8 +31,7 @@ type Catalog struct {
 	cat *dependencies.ResourceTypeCatalog
 }
 
-// New wraps cat. Its source decides where the types come from: the OC client in
-// production, openchoreo.ResourceTypeDir for the CLI.
+// New wraps cat.
 func New(cat *dependencies.ResourceTypeCatalog) Catalog {
 	return Catalog{cat: cat}
 }

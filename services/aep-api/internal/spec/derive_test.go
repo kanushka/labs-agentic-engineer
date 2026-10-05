@@ -22,10 +22,6 @@ import (
 	"testing"
 )
 
-// DerivePlatformResourceFacts is the pass both POST /build and cmd/design-derive
-// run. These pin its contract as a pure function: what it returns, that it
-// refuses before mutating, and that its own output derives to nothing.
-
 func assembled(t *testing.T, files map[string]string) *DesignFile {
 	t.Helper()
 	d, err := AssembleDesign(files)

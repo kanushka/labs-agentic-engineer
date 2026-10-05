@@ -91,7 +91,6 @@ func newCardDB(t *testing.T, apiStatus int) *cardDB {
 	return &cardDB{db: db, svc: svc, conns: conns, config: config, store: store, repo: repo, connRepo: connRepo, endpoint: endpoint}
 }
 
-// sonnetRates prices (api.anthropic.com, claude-sonnet-5-5), the default, only.
 func sonnetRates() *modelcost.Stamper {
 	return modelcost.NewStamper([]modelcost.ModelRate{{Host: "api.anthropic.com", ModelID: "claude-sonnet-5-5", InputPerMTok: 2}})
 }

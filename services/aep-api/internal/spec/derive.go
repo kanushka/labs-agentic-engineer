@@ -88,15 +88,8 @@ type DerivedDesignFile struct {
 	CreateOnly bool
 }
 
-// DerivePlatformResourceFacts is THE platform-resource derivation, as a pure
-// function: it refuses an unknown resourceType, derives exposesAPI.auth
-// (derive_auth.go) and every dependency's wiring (derive_wiring.go) in place on
-// designFile, and returns the design files that now differ, rendered.
-//
-// It is the one implementation behind two callers: production's POST /build
-// pre-tag step (persistPlatformResourceDerivation, which commits the result)
-// and cmd/design-derive, which writes the same files to a directory for the
-// playground. Neither re-implements a rule, an order or a render.
+// DerivePlatformResourceFacts derives a design's platform facts in place and
+// returns the design files that changed, rendered.
 //
 // types is the installed resource-type catalog; nil or empty skips the
 // membership check (the disabled-catalog path) and qualifies nothing. projectID
@@ -162,26 +155,16 @@ func DerivePlatformResourceFacts(designFile *DesignFile, types map[string]CRTTyp
 
 // persistPlatformResourceDerivation runs DerivePlatformResourceFacts over
 // designFile and commits the files it returns to main via the committed-truth
-// write surface (the same designFileCommitter port CollectSpec uses). Only
-// changed components are written, so a re-save that derives the same values
-// commits nothing — the derivations are re-run on every save (they must be,
-// since a rename or a catalog change moves them), and without this an
-// unchanged design would churn a commit each time.
+// write surface (the same designFileCommitter port CollectSpec uses).
 //
 // Returns (true, nil) when at least one commit landed — the caller must then
-// re-resolve HEAD (its designFile + any pinned commitSHA are now stale), the
-// same convention SaveAndProceed's auto-fetch-on-save step already follows.
+// re-resolve HEAD (its designFile + any pinned commitSHA are now stale).
 // Returns a non-nil error (wrapping ErrUnknownResourceType or
 // ErrEndUserAuthConflict) with NO commit attempted when the derivation refuses
-// the design — the save must stop there, exactly like the unresolved-dependency
-// proceed-gate. Wiring derivation cannot reject: an underivable dependency is
-// an absent wiring the coding agent reports, not a design the platform refuses
-// to save.
+// the design; the save stops there (ADR-0041).
 //
-// A nil fileCommitter (degraded boot — mirrors CollectSpec) is a best-effort
-// no-op after a successful derivation: designFile.Components is still mutated
-// in place so THIS response reflects the derived value, but nothing is
-// persisted, so it will not survive to the next independent design read.
+// A nil fileCommitter (degraded boot) commits nothing; designFile is still
+// mutated in place.
 func (s *designService) persistPlatformResourceDerivation(ctx context.Context, orgID, projectID string, designFile *DesignFile, types map[string]CRTType) (bool, error) {
 	derived, err := DerivePlatformResourceFacts(designFile, types, projectID)
 	if err != nil {

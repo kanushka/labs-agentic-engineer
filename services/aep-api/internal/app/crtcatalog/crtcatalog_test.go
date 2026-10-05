@@ -26,8 +26,6 @@ import (
 	"github.com/wso2/aep/aep-api/internal/spec"
 )
 
-// The repo's manifests, projected through the production catalog and this
-// projection, give design-save exactly the markers and outputs it keys on.
 func TestCatalog_ProjectsTheRepoCatalogForDesignSave(t *testing.T) {
 	t.Parallel()
 	src := openchoreo.ResourceTypeDir("../../../../../deployments/single-cluster/resource-types")

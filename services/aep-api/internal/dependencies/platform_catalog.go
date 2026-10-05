@@ -48,10 +48,8 @@ type PlatformResourceType struct {
 	Markers TypeMarkers `json:"-"`
 }
 
-// ClusterResourceTypeSource is the one read the catalog makes: every installed
-// ClusterResourceType, decoded into the OC wire type. The live OC client is the
-// production source; openchoreo.ResourceTypeDir reads the same CRs off manifest
-// files, so cmd/design-derive projects a local catalog through this exact code.
+// ClusterResourceTypeSource lists every installed ClusterResourceType in the OC
+// wire type.
 type ClusterResourceTypeSource interface {
 	ListClusterResourceTypes(ctx context.Context) ([]openchoreo.ResourceType, error)
 }

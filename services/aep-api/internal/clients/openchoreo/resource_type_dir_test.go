@@ -25,7 +25,6 @@ import (
 	"testing"
 )
 
-// repoCatalog is the repo's local resource-type catalog, from this package.
 const repoCatalog = "../../../../../deployments/single-cluster/resource-types"
 
 func outputNames(rt ResourceType) []string {
@@ -36,9 +35,6 @@ func outputNames(rt ResourceType) []string {
 	return names
 }
 
-// The repo's two manifests decode into the API's own struct: names, the
-// aep.wso2.com markers on labels/annotations, outputs in declared order, and the
-// parameter schema — the fields the catalog projection reads.
 func TestResourceTypeDir_DecodesTheRepoCatalog(t *testing.T) {
 	t.Parallel()
 	types, err := ResourceTypeDir(repoCatalog).ListClusterResourceTypes(context.Background())
@@ -85,8 +81,6 @@ func TestResourceTypeDir_DecodesTheRepoCatalog(t *testing.T) {
 	}
 }
 
-// Documents that are not resource types (RBAC, a comment-only header) are
-// skipped; a ResourceType document counts like a ClusterResourceType.
 func TestResourceTypeDir_SkipsOtherKinds(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -120,8 +114,6 @@ func TestResourceTypeDir_SkipsOtherKinds(t *testing.T) {
 	}
 }
 
-// An empty catalog is an error, never an empty list: the derivation reads an
-// empty catalog as "disabled" and skips its membership check.
 func TestResourceTypeDir_EmptyDirectoryIsAnError(t *testing.T) {
 	t.Parallel()
 	if _, err := ResourceTypeDir(t.TempDir()).ListClusterResourceTypes(context.Background()); err == nil {

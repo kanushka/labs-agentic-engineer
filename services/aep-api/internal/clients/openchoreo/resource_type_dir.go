@@ -37,19 +37,16 @@ const ResourceTypeFileName = "resourcetype.yaml"
 // ResourceTypeDir is a ClusterResourceType source read off manifest files
 // instead of the OC API: every `<dir>/*/resourcetype.yaml`, each a multi-document
 // YAML stream whose ClusterResourceType document is decoded into the SAME
-// ResourceType struct ListClusterResourceTypes returns. It exists so a caller
-// with no cluster (cmd/design-derive, for the playground) projects a catalog
-// through the same dependencies.ResourceTypeCatalog code production runs.
+// ResourceType struct ListClusterResourceTypes returns.
 //
 // The decode goes YAML → generic value → JSON → ResourceType, so the struct's
 // json tags are the only schema and a field the API would carry is read the
 // same way here.
 type ResourceTypeDir string
 
-// ListClusterResourceTypes decodes every ClusterResourceType (or ResourceType)
-// document under the directory, in file-name order. Documents of any other
-// kind (RBAC, CRDs) are skipped. A directory with no manifest is an error: an
-// empty catalog would silently skip the derivation's membership check.
+// ListClusterResourceTypes decodes every resource-type document under the
+// directory; none is an error: an empty catalog would silently skip the
+// derivation's membership check.
 func (d ResourceTypeDir) ListClusterResourceTypes(_ context.Context) ([]ResourceType, error) {
 	files, err := filepath.Glob(filepath.Join(string(d), "*", ResourceTypeFileName))
 	if err != nil {
