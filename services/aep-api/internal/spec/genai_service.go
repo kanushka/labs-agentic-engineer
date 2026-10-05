@@ -156,7 +156,10 @@ func SkillsRepoForTurns(skills *SkillService, repos RepoResolver) SkillsRepoReso
 type TurnInput struct {
 	ConversationID string
 	Instruction    string
-	Target         string
+	// Scope is what the user was looking at when they sent this message (S6):
+	// a feature, or the design review. Nil means the whole product, and such a
+	// turn reaches the agents service exactly as one sent before scopes existed.
+	Scope *agentsvc.ScopeBlock
 	// Collab makes this a room-scoped turn (#86 phase 4): the agents service
 	// joins the project's spec room as a live Yjs peer with the prompting
 	// user's bearer, edits the shared doc, and nothing is committed to git.
@@ -169,6 +172,10 @@ type TurnInput struct {
 	// Nil for an ordinary chat turn, which then reaches the agents service
 	// byte-identical to one sent before this channel existed.
 	Aim *agentsvc.AimBlock
+	// PrototypeFeedback is a reviewer's batch of requests on one prototype,
+	// already validated by the edge to ride a collab `/prototype` turn. Nil for
+	// every other turn, which then reaches the agents service byte-identical.
+	PrototypeFeedback *agentsvc.PrototypeFeedbackBlock
 }
 
 // TurnStatus is the read view of one turn (the status GET body).
@@ -448,6 +455,9 @@ func (s *Service) StartTurn(ctx context.Context, orgID, projectID string, in Tur
 	// every turn snapshot; an idea typed inline wins). Best-effort — no
 	// descriptor, no idea, and the start skill asks the user instead.
 	turnSpec, flow := s.turnSpecFor(ctx, ref, baseRef, in.Instruction)
+	if in.PrototypeFeedback != nil {
+		turnSpec.PrototypeFeedback = in.PrototypeFeedback
+	}
 	// What the transcript will SHOW for this turn. Ordinarily the instruction
 	// verbatim — but a bare `/start` says nothing about what it is starting,
 	// and the idea it carries is exactly the reassurance the user needs on the
@@ -491,7 +501,7 @@ func (s *Service) StartTurn(ctx context.Context, orgID, projectID string, in Tur
 		conversationID:   in.ConversationID,
 		nsConversationID: nsConversationID,
 		turn:             turnSpec,
-		target:           in.Target,
+		scope:            in.Scope,
 		summary:          summary,
 		attachments:      in.Attachments,
 		aim:              in.Aim,

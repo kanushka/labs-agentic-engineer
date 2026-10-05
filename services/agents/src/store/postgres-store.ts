@@ -39,7 +39,7 @@
 
 import type { ModelMessage } from "ai";
 import type { Conversation, ConversationStore, TurnJournalEntry } from "./conversation-store.js";
-import type { TurnAnchor } from "@aep/agent-stream";
+import { isPrototypeFeedback, isTurnScope, type TurnAnchor } from "@aep/agent-stream";
 
 /** The subset of a `pg.Pool`/`pg.Client` this store uses. */
 export interface Queryable {
@@ -179,6 +179,10 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
     // dropped WHOLE when any part of it is malformed: a tag naming fewer nodes
     // than the user selected is a quieter, worse failure than no tag.
     const anchor = anchorOf(t.anchor);
+    // The scope (S6), kept only when it still reads as one.
+    const scope = isTurnScope(t.scope) ? t.scope : undefined;
+    // The prototype review batch (#860), likewise kept only when it still reads as one.
+    const prototypeFeedback = isPrototypeFeedback(t.prototypeFeedback) ? t.prototypeFeedback : undefined;
     return {
       turnId: String(t.turnId ?? ""),
       text: String(t.text ?? ""),
@@ -187,6 +191,8 @@ function rowToConversation(row: Record<string, unknown>): Conversation {
         : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
       ...(anchor ? { anchor } : {}),
+      ...(scope ? { scope } : {}),
+      ...(prototypeFeedback ? { prototypeFeedback } : {}),
       messageIndex: Number(t.messageIndex ?? -1),
       ...(typeof t.connection === "string" && t.connection !== "" ? { connection: t.connection } : {}),
       createdAt: asDate(t.createdAt),

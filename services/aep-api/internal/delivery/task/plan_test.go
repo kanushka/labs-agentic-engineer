@@ -102,6 +102,10 @@ var rigScope spec.BuildScope
 func newPlanRig(t *testing.T, seed map[string]string, specTag string) *planRig {
 	t.Helper()
 	fx := workspacetest.New(t, seed)
+	// The plan reads the version's tag, never main's tip (B2): cut it.
+	if specTag != "" {
+		fx.Origin.Tag(t, specTag, "spec version "+specTag)
+	}
 	skillsOrigin := gittest.NewRemote(t, gittest.WithSeed(map[string]string{
 		"skills/task-planning/SKILL.md": "---\nname: task-planning\ndescription: plan tasks\nmetadata:\n  aep:\n    kind: platform\n---\n# Task planning",
 	}, "seed skills"))
@@ -223,6 +227,7 @@ func TestPlanIntoMilestone_SkillsRepoGone_TypedError(t *testing.T) {
 		"specs/design/components/hello-world-api/design.json": `{"name":"hello-world-api"}`,
 		"specs/requirements/prd.md":                           "# reqs",
 	})
+	fx.Origin.Tag(t, "v1", "spec version v1")
 	repoRow := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: "proj1", RepoURL: fx.Origin.URL(),
 		DefaultBranch: "main", RepoSlug: workspacetest.DefaultSlug, Status: "ready"}
 	staleSkills := &sourcecontrol.GitRepository{OrgID: "org1", ProjectID: spec.SkillsRepoSentinelProjectID,
@@ -333,9 +338,9 @@ func TestPlanIntoMilestone_WriteFailureIsAnError(t *testing.T) {
 // claimed stories — zero LLM discretion on either.
 func TestPlanIntoMilestone_DeltaScopeAndStamp(t *testing.T) {
 	rigScope = spec.BuildScope{
-		Tag: "v2", InScope: []int{1, 2},
-		StoryTitles:      map[int]string{1: "As a user, I want A.", 2: "As a user, I want B."},
-		ComponentStories: map[string][]int{"svc": {1, 2}},
+		Tag: "v2", InScope: []string{"F1.1", "F1.2"},
+		StoryTitles:      map[string]string{"F1.1": "As a user, I want A.", "F1.2": "As a user, I want B."},
+		ComponentStories: map[string][]string{"svc": {"F1.1", "F1.2"}},
 	}
 	defer func() { rigScope = spec.BuildScope{} }()
 
@@ -354,7 +359,7 @@ func TestPlanIntoMilestone_DeltaScopeAndStamp(t *testing.T) {
 	if scope.Tag != "v2" {
 		t.Errorf("scope tag = %q, want v2", scope.Tag)
 	}
-	want := agentsvc.PlanStory{Number: 1, Title: "As a user, I want A.", Covered: false}
+	want := agentsvc.PlanStory{ID: "F1.1", Title: "As a user, I want A.", Covered: false}
 	if !slices.Contains(scope.Stories, want) {
 		t.Errorf("scope missing the uncovered story: %+v", scope.Stories)
 	}
@@ -363,7 +368,22 @@ func TestPlanIntoMilestone_DeltaScopeAndStamp(t *testing.T) {
 	if len(created) != 1 {
 		t.Fatalf("created %d issues, want 1", len(created))
 	}
-	if got := delivery.ParseServesStories(created[0].Body); fmt.Sprint(got) != "[1 2]" {
-		t.Errorf("stamped stories = %v, want [1 2] (body: %q)", got, created[0].Body)
+	if got := delivery.ParseServesStories(created[0].Body); fmt.Sprint(got) != "[F1.1 F1.2]" {
+		t.Errorf("stamped stories = %v, want [F1.1 F1.2] (body: %q)", got, created[0].Body)
+	}
+}
+
+// The plan turn reads the version it plans, not main's tip (B2): an edit made
+// to the spec after the version was cut never reaches the planner.
+func TestPlanIntoMilestone_ReadsTheVersionNotMain(t *testing.T) {
+	r := newPlanRig(t, map[string]string{"specs/design/design.md": "# d\n"}, "v2")
+	versioned := r.fx.Origin.HeadSHA(t)
+	r.fx.Origin.Seed(t, map[string]string{"specs/design/design.md": "# edited after v2\n"}, "edit after the version")
+	r.turn.script = "data: [DONE]\n\n"
+	if err := r.svc.PlanIntoMilestone(context.Background(), "org1", "proj1", 7); err != nil {
+		t.Fatalf("PlanIntoMilestone: %v", err)
+	}
+	if got := r.turn.req.Workspace.Ref; got != versioned {
+		t.Errorf("plan read %s, want the version's commit %s", got, versioned)
 	}
 }

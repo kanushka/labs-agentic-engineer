@@ -23,6 +23,13 @@ reads this tree directly; a cluster picks up edits after `make dev-update`.
   editable.
 - `metadata.aep.audience`: `[design]`, `[coding]`, or absent for both.
 
+## Generated blocks
+
+`prototype`'s kit block (between `kit:start` and `kit:end`) is generated from
+`@wso2/prototype-kit`'s `reference.md`; run `pnpm --filter @aep/agents gen`,
+never edit it by hand. `services/agents/test/prototype-skill.test.ts` fails
+when it is stale.
+
 ## Who owns what
 
 | Owner | Holds |

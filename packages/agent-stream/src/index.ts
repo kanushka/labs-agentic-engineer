@@ -33,6 +33,7 @@ export type {
   OpOk,
   OpErr,
   OpResult,
+  PrototypeFinding,
   AddFileInput,
   EditFileInput,
   RemoveFileInput,
@@ -66,7 +67,10 @@ export type {
   TurnAnchor,
   TurnAnchorNode,
   TurnAim,
+  TurnScope,
   TurnAimIntent,
+  PrototypeFeedback,
+  PrototypeFeedbackRequest,
   WorkspaceRef,
   McpConfig,
   CollabConfig,
@@ -94,10 +98,13 @@ export {
   isToolset,
   isSurface,
   isTurnSpec,
+  isPrototypeFeedback,
+  PROTOTYPE_FLOW_SKILL,
   isTurnAttachment,
   isTurnAttachmentsOrAbsent,
   isTurnConnection,
   isTurnAim,
+  isTurnScope,
   TURN_AIM_LIMITS,
   isCollabConfig,
 } from "./contracts/sse-events.js";
@@ -149,6 +156,9 @@ export type { Equal } from "./type-equal.js";
 
 // --- The fold surface --------------------------------------------------------
 export { FileBundle, lf, FRONTMATTER_RE } from "./bundle.js";
+export type { PlannedWrite, WritePlan } from "./bundle.js";
+export { writeWithRenderCheck } from "./prototype-gate.js";
+export type { FileWrite, PrototypeFileTexts, PrototypeRenderCheck } from "./prototype-gate.js";
 export { toChange, applyToolCall, isFileMutationTool, opForTool, readToolInputPath } from "./change.js";
 
 // --- The component design.json write-gate (travels with FileBundle) ----------

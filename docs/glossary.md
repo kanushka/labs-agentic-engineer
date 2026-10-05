@@ -423,7 +423,7 @@ host).
 The agents of ONE cycle, arranged as the tree the runtime declared, each carrying
 how long it has been going and how long it has been quiet. Built by
 `buildCrew(events, now)` in `@aep/progress-view` and rendered by the console's
-crew view (`apps/console/design/crew-view.md`); the playground reads the same
+crew view ([`design/crew-view.md` at `classic-console`](https://github.com/wso2/labs-agentic-engineer/blob/classic-console/apps/console/design/crew-view.md)); the playground reads the same
 model, so a run looks the same wherever it is watched.
 
 A crew is not a log. The feed answers *what happened*; the crew answers *who is

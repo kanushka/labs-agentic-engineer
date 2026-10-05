@@ -315,6 +315,18 @@ test("400 when the turn or workspace is missing; retired body shapes are rejecte
     assert.equal(inlineSkills.status, 400);
     assert.match(((await inlineSkills.json()) as { error: string }).error, /skills is no longer accepted/);
 
+    // target is retired by scope (S6).
+    const target = await post(wsBody({ target: "specs/requirements/prd.md" }));
+    assert.equal(target.status, 400);
+    assert.match(((await target.json()) as { error: string }).error, /target is no longer accepted — send scope/);
+
+    // A scope that names nothing the agent can act on is refused before the stream.
+    for (const scope of [{ kind: "feature", feature: "Approvals" }, { kind: "feature" }, { kind: "product" }]) {
+      const bad = await post(wsBody({ scope }));
+      assert.equal(bad.status, 400, JSON.stringify(scope));
+      assert.match(((await bad.json()) as { error: string }).error, /scope must be/);
+    }
+
     const noWorkspace = await post({ turn: { kind: "chat", text: "x" } });
     assert.equal(noWorkspace.status, 400);
     assert.match(((await noWorkspace.json()) as { error: string }).error, /workspace is required/);
@@ -471,6 +483,38 @@ test("chat turn: an attachment rides the user message and the journal records it
     assert.equal(filePart!.mediaType, "application/pdf");
     // And the chip's source of truth.
     assert.deepEqual(stored!.turns[0]?.attachments, ["claim-form.pdf"]);
+  } finally {
+    await close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("prototype turn: the journal records the review batch the flow carried", async () => {
+  const root = makeMountRoot({ [REQUIREMENTS]: "# Req\n" });
+  const { baseUrl, close, store } = await boot(mockModel([{ kind: "text", text: "ok" }]), root);
+  const prototypeFeedback = {
+    prototypeHash: "0".repeat(64),
+    component: "expense-web",
+    requests: [{ screenId: "screen.queue", roleId: "approver", stateId: "state.default", elementIds: ["btn.approve"], text: "Make it primary" }],
+  };
+  try {
+    const token = await mintToken();
+    const res = await fetch(
+      `${baseUrl}/conversations/${WS_CONV}/turns`,
+      turnPost(
+        wsBody({
+          turn: { kind: "flow", skill: "prototype", text: "expense-web", prototypeFeedback },
+          journal: { text: "/prototype expense-web" },
+        }),
+        { token, org: WS_ORG },
+      ),
+    );
+    assert.equal(res.status, 200);
+    await res.text();
+
+    const stored = await store.get(WS_CONV);
+    assert.equal(stored!.turns[0]?.text, "/prototype expense-web");
+    assert.deepEqual(stored!.turns[0]?.prototypeFeedback, prototypeFeedback);
   } finally {
     await close();
     rmSync(root, { recursive: true, force: true });

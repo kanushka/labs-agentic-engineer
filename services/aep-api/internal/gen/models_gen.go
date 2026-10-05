@@ -1243,6 +1243,24 @@ func (e TurnInputMultipartIntent) Valid() bool {
 	}
 }
 
+// Defines values for TurnScopeKind.
+const (
+	DesignReview TurnScopeKind = "design-review"
+	Feature      TurnScopeKind = "feature"
+)
+
+// Valid indicates whether the value is a known member of the TurnScopeKind enum.
+func (e TurnScopeKind) Valid() bool {
+	switch e {
+	case DesignReview:
+		return true
+	case Feature:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TurnStatusCode.
 const (
 	TurnStatusCodeOutputTruncated TurnStatusCode = "output_truncated"
@@ -1581,9 +1599,19 @@ type BuildProgressRun struct {
 // BuildProgressRunKind What the run DOES, and the section marker the console renders — `dev` delivered the version, `task` worked a defect inside it, `validation` re-judged it. Same vocabulary as MilestoneRunView.kind.
 type BuildProgressRunKind string
 
+// BuildRepair A repair build (B4), "Fix" on a version whose validation failed. It cuts `<of>.<n>` ("v1.1") at the fixed version's commit, so it builds the same features from the same specs; the scenarios the fixed version's final validation failed become its work as repair issues, and nothing is planned. selection, version and inputs are ignored. A version with no failing scenario refuses with 409.
+type BuildRepair struct {
+	// Of The version to fix ("v1"). A repair of a repair fixes the version it fixed.
+	Of string `json:"of"`
+}
+
 // BuildRequest defines model for BuildRequest.
 type BuildRequest struct {
 	Inputs []BuildInputItem `json:"inputs,omitempty"`
+	Repair *BuildRepair     `json:"repair,omitempty"`
+
+	// Selection What this version builds (B1): the features the user picked, and any product-wide requirement added since the last build that they picked on its own. The server plans the rest — every unbuilt feature a picked one needs, every unbuilt product-wide requirement that reaches one — and holds back a story that needs a feature neither built nor in this build. A feature whose design is out of date, that waits on an open dependency, or that has not been interviewed cannot be built; picking one (or one a pick needs) refuses the build with a FEATURE_NOT_BUILDABLE row naming why. Absent, the build carries every feature that can be designed.
+	Selection BuildSelection `json:"selection,omitempty"`
 
 	// Version The tag name to cut for this version. Empty takes the suggested one. Must be a valid tag name; a name already in use is a 409. Ignored when the spec tree is unchanged, because that build reuses the existing version.
 	Version string `json:"version,omitempty"`
@@ -1602,6 +1630,12 @@ type BuildRunList struct {
 	// Runs Newest run first. A milestone sees SEQUENTIAL runs across its life — the spec build that created the version, then any later incident adoption into it.
 	Runs []MilestoneRunView `json:"runs"`
 	Tag  string             `json:"tag"`
+}
+
+// BuildSelection What this version builds (B1): the features the user picked, and any product-wide requirement added since the last build that they picked on its own. The server plans the rest — every unbuilt feature a picked one needs, every unbuilt product-wide requirement that reaches one — and holds back a story that needs a feature neither built nor in this build. A feature whose design is out of date, that waits on an open dependency, or that has not been interviewed cannot be built; picking one (or one a pick needs) refuses the build with a FEATURE_NOT_BUILDABLE row naming why. Absent, the build carries every feature that can be designed.
+type BuildSelection struct {
+	Features    []string `json:"features"`
+	ProductWide []string `json:"productWide,omitempty"`
 }
 
 // BuildStage Build-stage aggregate on ProjectStatus (#184) — the version the newest milestone run is working, and how that run is doing. Deliberately count-free - the only honest source of a per-version task tally is the version's milestone on GitHub, and this endpoint is polled at 5s. The console renders counts from the list-tasks response it already holds, on the surface that already pays for it.
@@ -1627,8 +1661,11 @@ type BuildSummary struct {
 	MilestoneNumber int64 `json:"milestoneNumber"`
 
 	// Reason The run's terminal reason for a failed version (empty otherwise), surfaced beside the Failed badge in the console. A cancelled version carries none — a person abandoning an increment is not a fault with a cause to report.
-	Reason    string    `json:"reason,omitempty"`
-	StartedAt time.Time `json:"startedAt"`
+	Reason string `json:"reason,omitempty"`
+
+	// Regressions How many scenarios the version's latest validation failed that passed in the previous validated version (B4). Absent when none.
+	Regressions int       `json:"regressions,omitempty"`
+	StartedAt   time.Time `json:"startedAt"`
 
 	// Status What became of this version. `cancelled` is its own value rather than a flavour of `failed`, because the two are different facts and a reader acts on them differently — a failure is the platform reporting it could not deliver the increment, while a cancel is a person deciding not to. Folding them lost that; a build somebody deliberately stopped rendered as Failed, with no reason beside it to say why, while the same page's run row said Cancelled two lines below.
 	Status BuildSummaryStatus `json:"status"`
@@ -1750,7 +1787,7 @@ type ConsumerDTO struct {
 	ProjectID     string `json:"projectId"`
 }
 
-// ConversationMessage One rehydrated message from a conversation's server-side history, sourced from the turn journal. The console's local chat log is display state; this is the durable record, and it is what makes a chip survive a reload.
+// ConversationMessage One rehydrated message from a conversation's server-side history, sourced from the turn journal. The console's local chat log is display state; this is the durable record, and it is what makes a chip survive a reload. A user message that sent a prototype review carries its `prototypeFeedback`, so a reloaded thread, and every teammate's, reads it as the requests it carried.
 type ConversationMessage struct {
 	// Anchor What the user pointed at when they aimed this turn at part of a spec document (#666; console ADR-0024). It LOCATES — it never carries the selected content.
 	//
@@ -1768,8 +1805,16 @@ type ConversationMessage struct {
 	// Content The message body as the journal recorded it. Deliberately untyped — a turn's content is model-shaped and varies by role, and this endpoint's job is to replay it, not to interpret it.
 	Content interface{} `json:"content,omitempty"`
 
+	// PrototypeFeedback A batch of review requests on ONE web-application prototype, sent as a single `/prototype` turn so the agent revises it once rather than once per note. The BFF validates the batch and forwards it unchanged; it never renders it into prose. The shape mirrors the prototype kit's feedback submission (`@wso2/prototype-kit/feedback`) plus `component`, and so do its limits. Lengths are counted in UTF-16 code units, as the kit counts them, so a character outside the Basic Multilingual Plane counts two.
+	PrototypeFeedback PrototypeFeedbackInput `json:"prototypeFeedback,omitempty"`
+
 	// Role Who the message is from, as the journal recorded it.
 	Role string `json:"role"`
+
+	// Scope What the user was looking at when they sent this message, so the agent reads it in that light: a feature's file open in the spec (`feature`, with its ID), or the design review (`design-review`). Absent means the whole product — the product page, any other spec file, or anywhere else in the project — and such a turn reads exactly as it did before scopes existed.
+	//
+	// A scope FOCUSES the turn; it fences nothing. The agent reads `prd.md` and the feature's file first, and may still change any file the message implies, saying in its reply which other files it touched. Every edit lands directly: what the agent decided on its own is tagged `*assumed*` in the requirements, and that tag is the user's review.
+	Scope TurnScope `json:"scope,omitempty"`
 }
 
 // ConversationMessageAuthor Who sent this message (#130 multi-user threads). Absent for the agent, and for history written before attribution existed.
@@ -2584,6 +2629,31 @@ type PromoteFromIssueRequest struct {
 	ComponentName string `json:"componentName"`
 }
 
+// PrototypeFeedbackInput A batch of review requests on ONE web-application prototype, sent as a single `/prototype` turn so the agent revises it once rather than once per note. The BFF validates the batch and forwards it unchanged; it never renders it into prose. The shape mirrors the prototype kit's feedback submission (`@wso2/prototype-kit/feedback`) plus `component`, and so do its limits. Lengths are counted in UTF-16 code units, as the kit counts them, so a character outside the Basic Multilingual Plane counts two.
+type PrototypeFeedbackInput struct {
+	// Component The web-application the batch is about, as named under `specs/design/components/`. Its `prototype.json` and `prototype.tsx` are the only files the turn may change.
+	Component string `json:"component"`
+
+	// PrototypeHash The revision of the prototype the reviewer looked at, as the kit's 64-character lowercase hex hash.
+	PrototypeHash string                     `json:"prototypeHash"`
+	Requests      []PrototypeFeedbackRequest `json:"requests"`
+}
+
+// PrototypeFeedbackRequest One reviewer request, made on one screen in one role and display state.
+type PrototypeFeedbackRequest struct {
+	// ElementIds The ids of the elements the request is about, in selection order. Empty means the whole screen.
+	ElementIds []string `json:"elementIds"`
+
+	// FlowID The flow the reviewer was walking; absent for free navigation.
+	FlowID   string `json:"flowId,omitempty"`
+	RoleID   string `json:"roleId"`
+	ScreenID string `json:"screenId"`
+	StateID  string `json:"stateId"`
+
+	// Text The reviewer's words, verbatim.
+	Text string `json:"text"`
+}
+
 // ProvisionBody defines model for ProvisionBody.
 type ProvisionBody struct {
 	// Environments Environments to provision (defaults to ["default"])
@@ -3209,6 +3279,26 @@ type SkillUpdateList struct {
 	Updates []SkillUpdate `json:"updates"`
 }
 
+// SourceDocument defines model for SourceDocument.
+type SourceDocument struct {
+	ID string `json:"id"`
+
+	// Pages How many pages it has; 0 when unknown.
+	Pages int `json:"pages"`
+
+	// Rows What it says, page by page, and where each point landed in the spec (S5); empty until its coverage is worked out.
+	Rows  []SourceDocumentRow `json:"rows"`
+	Title string              `json:"title"`
+}
+
+// SourceDocumentRow defines model for SourceDocumentRow.
+type SourceDocumentRow struct {
+	// LandedIn The spec line ID it landed in ("F2.4"), or null when it landed nowhere.
+	LandedIn *string `json:"landedIn"`
+	Page     string  `json:"page"`
+	Says     string  `json:"says"`
+}
+
 // SpecStage Spec-stage aggregate on ProjectStatus (#184). Approved/draft is derived, not stored — version set and not dirty = approved (vN); dirty = draft changes (vN+); no version = unpublished draft; exists false = no spec yet.
 type SpecStage struct {
 	// Agent Whether an agent is working on this project's spec right now, and how the last attempt ended (#562). `never-started` — no turn has EVER run for this project; `""` — a turn has run and the newest one completed; `working` — a turn is in flight; `failed` — the newest turn ended in failure and none has run since. `never-started` is distinct from `""` because the two need opposite treatment: one means the journey has not begun and the user needs a way to begin it, the other means it is under way between turns and offering to restart it would supersede a live interview. Derived from the newest `agent_turns` row for the project, which is what `exists`/`version`/`dirty` cannot say: all three read committed git, and a kickoff writes nothing until it lands. The overview's spec card needs it to say *Writing requirements* while the platform-fired `/start` runs, and the spec view needs it to explain an empty workspace instead of offering a file picker.
@@ -3235,6 +3325,39 @@ type SpecStage struct {
 
 	// Version The newest spec version's name; "" if never published.
 	Version string `json:"version"`
+}
+
+// SpecState defines model for SpecState.
+type SpecState struct {
+	// DesignedFrom Each designed feature by ID, and the basis its last design read — its file's lines by their words, then the product-wide items that reach it (reqspec.Basis, held to the shared fixture's basis.json). A feature no design run covered is absent.
+	DesignedFrom map[string]string `json:"designedFrom"`
+
+	// Documents The source documents the user attached, by name.
+	Documents []SourceDocument `json:"documents"`
+}
+
+// SpecVersion What one version built.
+type SpecVersion struct {
+	// Features Every feature the version carried, picked or pulled in, in ID order.
+	Features []VersionFeature `json:"features"`
+
+	// Fixes A repair build names the version it fixes ("v1.1" fixes "v1"); it builds the same features. Absent for a version of its own.
+	Fixes string `json:"fixes,omitempty"`
+
+	// HeldBack Stories of carried features it did not build, as each waits on a feature neither built nor in the version ("F1.3").
+	HeldBack []string `json:"heldBack"`
+
+	// Name The version's name, the tag the build cut ("v2").
+	Name string `json:"name"`
+
+	// ProductWide The product-wide requirements it carried ("P1").
+	ProductWide []string `json:"productWide"`
+}
+
+// SpecVersionList defines model for SpecVersionList.
+type SpecVersionList struct {
+	// Versions Oldest first.
+	Versions []SpecVersion `json:"versions"`
 }
 
 // StartConnectInputBody defines model for StartConnectInputBody.
@@ -3486,8 +3609,13 @@ type TurnInputBody struct {
 	// Deliberately a field and NOT a `/command` prefix on `instruction`: a command IS the user's message (the console adds nothing to a line they typed), and an anchored turn carries prose they wrote in their own words, so a prefix would put machinery in their voice. Mirrors the console's own resolve/reconsider intent, whose only job is the same. Absent for a turn with no anchor.
 	Intent TurnInputBodyIntent `json:"intent,omitempty"`
 
-	// Target Optional target (e.g. a doc type)
-	Target string `json:"target,omitempty"`
+	// PrototypeFeedback A prototype review batch. Valid only when `instruction` is the `/prototype` command and `collab` is true, and never together with `anchor`/`intent`: a batch aims at stable prototype ids, not at a selection in a document. Room turns only, because the room's committer is the one path an agent's revision reaches git by. When set, `instruction` is `/prototype` alone or followed by the batch's own `component`. Absent for every other turn. JSON-only: a review batch carries no attachments, so the multipart form has no such part.
+	PrototypeFeedback *PrototypeFeedbackInput `json:"prototypeFeedback,omitempty"`
+
+	// Scope What the user was looking at when they sent this message, so the agent reads it in that light: a feature's file open in the spec (`feature`, with its ID), or the design review (`design-review`). Absent means the whole product — the product page, any other spec file, or anywhere else in the project — and such a turn reads exactly as it did before scopes existed.
+	//
+	// A scope FOCUSES the turn; it fences nothing. The agent reads `prd.md` and the feature's file first, and may still change any file the message implies, saying in its reply which other files it touched. Every edit lands directly: what the agent decided on its own is tagged `*assumed*` in the requirements, and that tag is the user's review.
+	Scope TurnScope `json:"scope,omitempty"`
 }
 
 // TurnInputBodyIntent What the user wants done with `anchor` — `change` rewrites the selected nodes in place, `discuss` opens the same selection as a grilling. Read by the agents service when it renders the anchor into the prompt; the two differ only in how that preamble is phrased.
@@ -3524,8 +3652,10 @@ type TurnInputMultipart struct {
 	// Deliberately a field and NOT a `/command` prefix on `instruction`: a command IS the user's message (the console adds nothing to a line they typed), and an anchored turn carries prose they wrote in their own words, so a prefix would put machinery in their voice. Mirrors the console's own resolve/reconsider intent, whose only job is the same. Absent for a turn with no anchor.
 	Intent TurnInputMultipartIntent `json:"intent,omitempty"`
 
-	// Target As `TurnInputBody.target`.
-	Target string `json:"target,omitempty"`
+	// Scope What the user was looking at when they sent this message, so the agent reads it in that light: a feature's file open in the spec (`feature`, with its ID), or the design review (`design-review`). Absent means the whole product — the product page, any other spec file, or anywhere else in the project — and such a turn reads exactly as it did before scopes existed.
+	//
+	// A scope FOCUSES the turn; it fences nothing. The agent reads `prd.md` and the feature's file first, and may still change any file the message implies, saying in its reply which other files it touched. Every edit lands directly: what the agent decided on its own is tagged `*assumed*` in the requirements, and that tag is the user's review.
+	Scope TurnScope `json:"scope,omitempty"`
 }
 
 // TurnInputMultipartIntent As `TurnInputBody.intent`. What the user wants done with `anchor` — `change` rewrites the selected nodes in place, `discuss` opens the same selection as a grilling. Read by the agents service when it renders the anchor into the prompt; the two differ only in how that preamble is phrased.
@@ -3538,6 +3668,18 @@ type TurnOutputBody struct {
 	// TurnID The started turn's id — poll/attach with it
 	TurnID string `json:"turnId"`
 }
+
+// TurnScope What the user was looking at when they sent this message, so the agent reads it in that light: a feature's file open in the spec (`feature`, with its ID), or the design review (`design-review`). Absent means the whole product — the product page, any other spec file, or anywhere else in the project — and such a turn reads exactly as it did before scopes existed.
+//
+// A scope FOCUSES the turn; it fences nothing. The agent reads `prd.md` and the feature's file first, and may still change any file the message implies, saying in its reply which other files it touched. Every edit lands directly: what the agent decided on its own is tagged `*assumed*` in the requirements, and that tag is the user's review.
+type TurnScope struct {
+	// Feature The feature's ID (`F2`) when `kind` is `feature`; absent otherwise.
+	Feature string        `json:"feature,omitempty"`
+	Kind    TurnScopeKind `json:"kind"`
+}
+
+// TurnScopeKind defines model for TurnScope.Kind.
+type TurnScopeKind string
 
 // TurnStatus One turn's lifecycle view (create-turn 202 → poll/attach).
 type TurnStatus struct {
@@ -3623,6 +3765,12 @@ type Usage struct {
 	OutputTokens int64  `json:"outputTokens"`
 }
 
+// ValidationBaseline The previous validated version — the newest earlier version whose validation reached a verdict — at its final attempt, which "was passing" compares with (B4).
+type ValidationBaseline struct {
+	Commit  string `json:"commit"`
+	Version string `json:"version"`
+}
+
 // ValidationDetail One version's validation history, already filtered to what asks the question.
 // `runs` holds only runs that ATTEMPTED validation — ones holding at least one VALIDATION cycle, which is the fact rather than the kind: a task run never holds one, and a run that did ask the criteria is listed whatever its kind says it was for. Each run's `cycles` holds only its VALIDATION cycles. Both filters are applied here rather than by the client: they are the platform's own rules, and the surface that re-derived them read a newer non-validating run as the version's answer and hid a real verdict. The views are the same MilestoneRunView and RunCycleView the run story serves, so one projection describes a cycle everywhere.
 type ValidationDetail struct {
@@ -3653,14 +3801,23 @@ type ValidationList struct {
 
 // ValidationSnapshot One attempt's report and the criteria it was judged against, read at a single commit.
 type ValidationSnapshot struct {
+	Baseline *ValidationBaseline `json:"baseline,omitempty"`
+
 	// Commit The commit both halves were read at — the cycle's merge SHA, or empty when the attempt is still running and the criteria came from HEAD.
 	Commit string `json:"commit"`
 
 	// Criteria Every specs/validation/acceptance/*.feature file at that commit. The report annotates these; they are the spine the view renders and the report is the overlay.
 	Criteria []AcceptanceCriteriaFile `json:"criteria"`
 
+	// Regressions The failed scenarios that passed in the baseline, by key — the feature's ID, the rule and the scenario, joined with " / " ("F2 / A manager sees pending claims / The queue"). Empty when none, or with no baseline.
+	Regressions []string `json:"regressions,omitempty"`
+
 	// Report The raw tests/acceptance/report.json at that commit, verbatim, for the client's own parser to read. Null while the attempt is still running: it has not committed one yet, and an absent report is not the same fact as an empty one.
-	Report *string `json:"report,omitempty"`
+	Report *string                 `json:"report,omitempty"`
+	Scope  *ValidationVersionScope `json:"scope,omitempty"`
+
+	// StillFailing The failed scenarios that failed in the baseline too, keyed as regressions.
+	StillFailing []string `json:"stillFailing,omitempty"`
 }
 
 // ValidationState Where a version's validation stands — the one vocabulary every surface renders it with.
@@ -3689,6 +3846,27 @@ type ValidationSummary struct {
 	// failed and unreported fail the run only once its validation attempts are spent: while attempts remain the run repairs and re-validates, and reads awaiting-fix in the meantime.
 	State ValidationState `json:"state"`
 	Tag   string          `json:"tag"`
+}
+
+// ValidationVersionScope What a version validates (B4) — every feature built in it or an earlier version, minus the stories no version has built yet. Absent for a version cut before builds were selections, which validates its whole oracle; a scenario outside the scope was not run and counts for nothing.
+type ValidationVersionScope struct {
+	Features []string `json:"features"`
+	HeldBack []string `json:"heldBack"`
+}
+
+// VersionFeature A feature as a version built it.
+type VersionFeature struct {
+	ID string `json:"id"`
+
+	// Lines The feature's lines at the version's tag, in file order, headings left out.
+	Lines []VersionLine `json:"lines"`
+	Name  string        `json:"name"`
+}
+
+// VersionLine One line of a feature's file. A line with its own ID ("F2.4") is followed by it, so rewording it is an edit; one without (a decision) is known only by its words. Sources, Needs/Applies-to clauses and the closing assumed/blocking tag are not words.
+type VersionLine struct {
+	ID    string `json:"id,omitempty"`
+	Words string `json:"words"`
 }
 
 // Warning defines model for Warning.
@@ -3857,7 +4035,7 @@ type ListIssuesParams struct {
 
 // PutProjectReferencesMultipartBody defines parameters for PutProjectReferences.
 type PutProjectReferencesMultipartBody struct {
-	// Files Reference documents. Two groups, both readable by the models: binary read natively as file parts (`.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`), and text read as workspace files (`.md`, `.txt`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`, `.xml`, `.html`, `.rst`). At most 10 documents, each at most 5 MiB measured on the raw bytes. Office formats are not accepted — the models do not read them natively.
+	// Files Reference documents. Two groups, both readable by the models: binary read natively as file parts (`.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`), and text read as workspace files (`.md`, `.txt`, `.csv`, `.tsv`, `.json`, `.yaml`, `.yml`, `.xml`, `.html`, `.rst`). At most 10 documents, each at most 5 MiB measured on the raw bytes. Office documents (`.docx`, `.xlsx`, `.pptx`) are converted to markdown on upload — the models do not read them natively — and stored as `<name>.md`: a Word document's headings, paragraphs and tables, a workbook's sheets as tables, a deck's slides. One that cannot be read is refused with 400.
 	Files []openapi_types.File `json:"files"`
 }
 

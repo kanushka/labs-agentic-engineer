@@ -61,12 +61,12 @@ type turnJob struct {
 	turnID           string
 	orgID            string
 	projectID        string
-	flow             string            // recognised `/<skill>` token ("start", "design", …); "" for plain chat
-	conversationID   string            // FE-chosen uuid (agent_turns key)
-	nsConversationID string            // namespaced agents-service id
-	turn             agentsvc.TurnSpec // what this turn is FOR (the agents service composes the text)
-	target           string            // spec-bundle path this turn should write to, when pinned
-	summary          string            // raw user instruction (feed line subject + journal display, #463)
+	flow             string               // recognised `/<skill>` token ("start", "design", …); "" for plain chat
+	conversationID   string               // FE-chosen uuid (agent_turns key)
+	nsConversationID string               // namespaced agents-service id
+	turn             agentsvc.TurnSpec    // what this turn is FOR (the agents service composes the text)
+	scope            *agentsvc.ScopeBlock // what the user was looking at (S6); nil = the whole product
+	summary          string               // raw user instruction (feed line subject + journal display, #463)
 	// attachments are this message's chat attachments (#428), captured at POST
 	// time like everything else here (D20). They live ONLY in this struct
 	// between the POST and the dispatch — nothing writes them to disk (ADR-0019)
@@ -145,9 +145,11 @@ func designOrCollabTurn(job turnJob) bool {
 }
 
 // catalogTurn is the MCP discovery gate: every turn designOrCollabTurn admits,
-// plus the requirements flows wherever they run. A requirements interview
-// records a Registered External resource as a given instead of asking the
-// user which service to use, so it needs `list_external_resources` even from
+// plus the requirements flows wherever they run (the kickoff, a feature's
+// interview, and the refine loop with the older commands that open it). A
+// requirements interview records a Registered External resource as a given
+// instead of asking the user which service to use, so it needs
+// `list_external_resources` even from
 // the playground or the CLI, where no collab room scopes the turn. Web search
 // stays a design-turn affair.
 func catalogTurn(job turnJob) bool {
@@ -155,7 +157,7 @@ func catalogTurn(job turnJob) bool {
 		return true
 	}
 	switch job.flow {
-	case "start", "amend", "settle":
+	case "start", "interview", "refine", "feature", "actor", "amend", "settle":
 		return true
 	}
 	return false
@@ -327,7 +329,7 @@ func (s *Service) executeTurn(ctx context.Context, job turnJob) TurnTerminal {
 			Ref:            job.baseRef,
 			SkillsRef:      job.skillsRef,
 		},
-		Target:                 job.target,
+		Scope:                  job.scope,
 		FilesChangedExternally: filesChangedExternally,
 		PreviousTurnFailed:     previousTurnFailed,
 		MCP:                    s.mcpForTurn(ctx, job),

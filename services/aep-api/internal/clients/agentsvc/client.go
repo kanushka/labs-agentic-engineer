@@ -105,6 +105,32 @@ type TurnSpec struct {
 	// TaskContext carries the existing-Task renders: platform state, not
 	// repository files, so it cannot ride the workspace snapshot.
 	TaskContext []PlanContextFile `json:"taskContext,omitempty"`
+	// PrototypeFeedback is a reviewer's batch of requests on one prototype,
+	// riding a `/prototype` flow turn. Forwarded unchanged: the agents service
+	// words it into a revision brief. Nil for every other turn.
+	PrototypeFeedback *PrototypeFeedbackBlock `json:"prototypeFeedback,omitempty"`
+}
+
+// PrototypeFeedbackBlock is a prototype review batch. JSON field names match
+// @aep/agent-stream's PrototypeFeedback exactly.
+type PrototypeFeedbackBlock struct {
+	// PrototypeHash is the revision the reviewer looked at (64 lowercase hex).
+	PrototypeHash string `json:"prototypeHash"`
+	// Component is the web-application the batch is about.
+	Component string                     `json:"component"`
+	Requests  []PrototypeFeedbackRequest `json:"requests"`
+}
+
+// PrototypeFeedbackRequest is one reviewer request: where it was made, which
+// elements it is about (empty means the whole screen) and the reviewer's words,
+// verbatim.
+type PrototypeFeedbackRequest struct {
+	ScreenID   string   `json:"screenId"`
+	FlowID     string   `json:"flowId,omitempty"`
+	RoleID     string   `json:"roleId"`
+	StateID    string   `json:"stateId"`
+	ElementIDs []string `json:"elementIds"`
+	Text       string   `json:"text"`
 }
 
 // Turn kinds (the `TurnSpec.Kind` discriminant).
@@ -119,12 +145,34 @@ const (
 type PlanScope struct {
 	Tag     string      `json:"tag"`
 	Stories []PlanStory `json:"stories"`
+	// Features are the features the version carries, in ID order: one Task
+	// per feature per component (B3).
+	Features []PlanFeature `json:"features,omitempty"`
+	// ProductWide are the product-wide items the version carries, built by
+	// each component's Foundation Task.
+	ProductWide []PlanItem `json:"productWide,omitempty"`
+}
+
+// PlanFeature is one feature a version carries, and the carried features it
+// waits on.
+type PlanFeature struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name,omitempty"`
+	Needs []string `json:"needs,omitempty"`
+}
+
+// PlanItem is one product-wide item a version carries.
+type PlanItem struct {
+	ID        string   `json:"id"`
+	Text      string   `json:"text,omitempty"`
+	AppliesTo []string `json:"appliesTo,omitempty"`
 }
 
 // PlanStory is one in-scope story; Covered means it already has Tasks and the
 // planner must leave it alone.
 type PlanStory struct {
-	Number  int    `json:"number"`
+	// ID is the story's ID, "F2.3".
+	ID      string `json:"id"`
 	Title   string `json:"title,omitempty"`
 	Covered bool   `json:"covered"`
 }
@@ -154,9 +202,10 @@ type TurnRequest struct {
 	Connection             *TurnConnection `json:"connection,omitempty"`
 	Workspace              WorkspaceRef    `json:"workspace"`
 	FilesChangedExternally bool            `json:"filesChangedExternally,omitempty"`
-	// Target is the spec-bundle path this turn should write to, when the caller
-	// pins one. The agents service renders it; the BFF never formats it.
-	Target string `json:"target,omitempty"`
+	// Scope is what the user was looking at when they sent this turn (S6): a
+	// feature, or the design review; nil means the whole product. The agents
+	// service renders it and journals it; the BFF never formats it.
+	Scope *ScopeBlock `json:"scope,omitempty"`
 	// PreviousTurnFailed (D20) says the last terminal turn of this conversation
 	// failed: the conversation history claims work git never received, and the
 	// agents service leads the instruction with the note that reconciles them.
@@ -299,6 +348,15 @@ type JournalBlock struct {
 	// without these a reload would show the agent discussing a document that
 	// appears nowhere in the thread.
 	Attachments []string `json:"attachments,omitempty"`
+}
+
+// ScopeBlock is a turn's scope (S6). JSON field names match @aep/agent-stream's
+// TurnScope exactly.
+type ScopeBlock struct {
+	// Kind is "feature" or "design-review".
+	Kind string `json:"kind"`
+	// Feature is the feature's ID ("F2") for a feature scope.
+	Feature string `json:"feature,omitempty"`
 }
 
 // AimBlock is what a turn was aimed at (console #666). JSON field names match

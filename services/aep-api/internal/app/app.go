@@ -135,6 +135,13 @@ type Seam struct {
 // ImpersonateOrgResolver / SecretsProvider arrive via seam (nil = off).
 // Wiring order is load-bearing: several constructors read the value a prior
 // one produced; the comments call out the couplings.
+
+// designRunsConsidered bounds how far back the build gate looks for the run
+// that designed each feature. A feature last designed further back than this
+// many design runs is treated as never designed: the coverage check still
+// reports it if its stories are unclaimed.
+const designRunsConsidered = 50
+
 func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	var err error
 	if err := openchoreo.ValidateResourceLabels(seam.ResourceLabels); err != nil {
@@ -537,16 +544,21 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// …and the status poll reports whether it is still running, which is the
 	// one thing the git-derived spec fields cannot say.
 	projectService.SetSpecTurnSource(turnRepo)
-	// The build gate's staleness input (#575): the commit the newest successful
-	// design run read the project at. A build whose requirements have moved
-	// past its design is refused with the rest of the gate's conditions — the
-	// one refusal that is about the design being WRONG rather than incomplete.
-	artifactSvcGit.SetDesignBaselineResolver(func(ctx context.Context, orgID, projectID string) (string, error) {
-		last, err := turnRepo.NewestCompletedFlow(ctx, orgID, projectID, "design")
-		if err != nil || last == nil {
-			return "", err
+	// The build gate's staleness input (#575, per feature since E1): the
+	// completed design runs, newest first — the commit each read and the
+	// features it named. A build whose feature has moved past its design is
+	// refused with the rest of the gate's conditions — the one refusal that is
+	// about the design being WRONG rather than incomplete.
+	artifactSvcGit.SetDesignRunsResolver(func(ctx context.Context, orgID, projectID string) ([]spec.DesignRun, error) {
+		turns, err := turnRepo.CompletedFlows(ctx, orgID, projectID, "design", designRunsConsidered)
+		if err != nil {
+			return nil, err
 		}
-		return last.BaseRef, nil
+		runs := make([]spec.DesignRun, 0, len(turns))
+		for _, t := range turns {
+			runs = append(runs, spec.DesignRun{BaseRef: t.BaseRef, Features: spec.DesignedFeatures(t.Summary)})
+		}
+		return runs, nil
 	})
 
 	// The Task-keyed log endpoint (issue number → newest execution by default,
@@ -1210,9 +1222,20 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// The public build surface: its InputsCoordinator runs pre-tag work (collect
 	// external specs, derive end-user auth), derives unset external authoring from
 	// the design, and carries the provision payload into the dev workflow.
+	// The project's single validation task. The RUN mints it, at
+	// deployed-green: minting it at plan time would put an issue in the working
+	// set that nothing can work until every component is deployed.
+	validationSvc := validation.NewService(validation.Deps{
+		Issues:   issueService,
+		Writer:   deliveryIssues,
+		Criteria: acceptanceCriteria{files: filesSvc},
+	})
 	buildSvc := build.NewService(build.Deps{
 		Repos:  repoFullNameLookup{repos: repoRepo},
 		Tagger: buildSpecTagger{art: artifactSvcGit},
+		// A repair build (B4) reads the fixed version's final validation the
+		// way the run read it, and files its failures as the run would have.
+		Repairs: runValidation{svc: validationSvc, files: filesSvc, versions: artifactSvcGit, runs: milestoneRunRepo, cycles: runCycleRepo},
 		Coord: build.NewInputsCoordinator(
 			designService,                          // SpecCollector (CollectSpec)
 			buildDesignDeriver{svc: designService}, // DesignFactDeriver (sentinel translation)
@@ -1300,7 +1323,10 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 	// files are the oracle.
 	validationReads := runread.NewValidationReads(milestoneRunRepo, runCycleRepo,
 		acceptanceCriteria{files: filesSvc}).
-		WithRecordings(agentProgressReader)
+		WithRecordings(agentProgressReader).
+		// The same reading of an attempt the run made (B4): the judge needs no
+		// minter, only the reads.
+		WithJudge(runValidation{files: filesSvc, versions: artifactSvcGit, runs: milestoneRunRepo, cycles: runCycleRepo})
 
 	deliveryDeps := deliveryhttpapi.Deps{
 		BuildSvc:      buildSvc,
@@ -1329,14 +1355,6 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 		return nil, fmt.Errorf("assemble delivery domain: %w", err)
 	}
 	params.Deps.Delivery = deliveryHandlers
-	// The project's single validation task. The RUN mints it, at
-	// deployed-green: minting it at plan time would put an issue in the working
-	// set that nothing can work until every component is deployed.
-	validationSvc := validation.NewService(validation.Deps{
-		Issues:   issueService,
-		Writer:   deliveryIssues,
-		Criteria: acceptanceCriteria{files: filesSvc},
-	})
 	// A planned Task's prose body names the App Path the agent works in — the
 	// same component → appPath read the merged-PR build fan-out matches against.
 	taskPlan.SetComponentPaths(designComponents{store: artifactStore})
@@ -1681,7 +1699,7 @@ func Assemble(cfg config.Config, in Infra, seam Seam) (*App, error) {
 			PRs:        issueService,
 			Design:     designComponents{store: artifactStore},
 			Builds:     runBuilds{oc: componentClient},
-			Validation: runValidation{svc: validationSvc, files: filesSvc},
+			Validation: runValidation{svc: validationSvc, files: filesSvc, versions: artifactSvcGit, runs: milestoneRunRepo, cycles: runCycleRepo},
 			// The coding executor launches the cycle's runner Job and answers with
 			// its Job ref. It mints no execution row — the cycle record is the
 			// supervisor's own bookkeeping.

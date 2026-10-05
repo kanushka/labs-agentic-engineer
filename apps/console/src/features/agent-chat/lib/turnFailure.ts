@@ -20,10 +20,11 @@
 // service could name (TurnStatus.code — the model provider's usage limit, a
 // write the output limit cut off) is phrased from its fields, so a provider
 // limit says whose plan is spent and when to try again, in the reader's own
-// time zone; anything else shows the message the platform recorded.
+// time zone; anything else shows the message the platform recorded. Copied
+// from the old console's agent-chat/lib/turnFailure.ts.
 
 import type { components } from "../../../generated/aep-api";
-import { resetStamp } from "../../../lib/resetStamp";
+import { resetStamp } from "../../../lib/stamp";
 
 type TurnStatus = components["schemas"]["TurnStatus"];
 
