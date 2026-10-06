@@ -16,15 +16,12 @@
  * under the License.
  */
 
-import { useRef, useState } from "react";
-import { Alert, Box, Button, IconButton, TextField, Tooltip, Typography } from "@wso2/oxygen-ui";
+import { Alert, Box, Button, IconButton, Tooltip, Typography } from "@wso2/oxygen-ui";
 import { Trash2 } from "@wso2/oxygen-ui-icons-react";
-import { MAX_FEEDBACK_REQUESTS, MAX_FEEDBACK_TEXT, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
+import type { FeedbackRequest } from "@wso2/prototype-kit/feedback";
 
 export interface FeedbackPanelProps {
-  /** The selected elements' labels, in selection order. */
-  selection: string[];
-  /** Whether a click in the prototype selects (Annotate) rather than acts. */
+  /** Whether a click in the prototype comments (Annotate) rather than acts. */
   annotating: boolean;
   requests: readonly FeedbackRequest[];
   /** The queue was started on a revision that has since been replaced. */
@@ -32,28 +29,16 @@ export interface FeedbackPanelProps {
   /** Why the last Send all did not go; the queue is kept. */
   refused: string | null;
   sending: boolean;
-  onAdd: (text: string) => void;
   onRemove: (index: number) => void;
   onSend: () => void;
 }
 
 /**
- * Annotate's side panel, as the kit CLI's host has it: what is selected, a
- * request to attach to it, the queue (numbered as the pins on the prototype
+ * Annotate's side panel: the queue (numbered as the pins on the prototype
  * are), and Send all, which sends every request to the chat as one revision.
- * The contract's limits hold here: the request's length, and the queue's.
+ * Comments are written in the bubble an Annotate click opens at the element.
  */
-export function FeedbackPanel({ selection, annotating, requests, stale, refused, sending, onAdd, onRemove, onSend }: FeedbackPanelProps) {
-  const [text, setText] = useState("");
-  const field = useRef<HTMLTextAreaElement>(null);
-  const full = requests.length >= MAX_FEEDBACK_REQUESTS;
-  const add = () => {
-    if (full || text.trim() === "") return;
-    onAdd(text.trim());
-    setText("");
-    // Add request disables itself as the field empties; the next request is written where this one was.
-    field.current?.focus();
-  };
+export function FeedbackPanel({ annotating, requests, stale, refused, sending, onRemove, onSend }: FeedbackPanelProps) {
   return (
     <Box
       component="aside"
@@ -74,37 +59,9 @@ export function FeedbackPanel({ selection, annotating, requests, stale, refused,
       <Typography component="h2" sx={{ fontSize: "1rem", fontWeight: 600 }}>
         Requests
       </Typography>
-      {annotating ? (
-        <>
-          <Typography variant="body2" color="text.secondary">
-            {selection.length === 0
-              ? "Click elements in the prototype to select them, or write about the whole screen."
-              : `Selected: ${selection.join(", ")}`}
-          </Typography>
-          <TextField
-            label="Request"
-            multiline
-            minRows={3}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            inputRef={field}
-            slotProps={{ htmlInput: { maxLength: MAX_FEEDBACK_TEXT } }}
-            helperText={text.length > MAX_FEEDBACK_TEXT - 200 ? `${text.length} / ${MAX_FEEDBACK_TEXT}` : undefined}
-          />
-          <Button variant="outlined" onClick={add} disabled={full || text.trim() === ""} sx={{ alignSelf: "flex-start" }}>
-            Add request
-          </Button>
-          {full && (
-            <Alert severity="info" role="note">
-              {`The queue is full (${MAX_FEEDBACK_REQUESTS} requests): send it or remove one to add another.`}
-            </Alert>
-          )}
-        </>
-      ) : (
-        <Typography variant="body2" color="text.secondary">
-          Switch to Annotate to point at elements and add requests.
-        </Typography>
-      )}
+      <Typography variant="body2" color="text.secondary">
+        {annotating ? "Click an element in the prototype to comment on it." : "Switch to Annotate to comment on elements."}
+      </Typography>
       {stale && requests.length > 0 && (
         <Alert severity="warning" role="note">
           Queued on an earlier version of the prototype.

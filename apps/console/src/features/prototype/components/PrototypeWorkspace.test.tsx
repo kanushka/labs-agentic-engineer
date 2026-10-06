@@ -27,7 +27,7 @@ import type { ProjectChat } from "../../agent-chat/chatStore";
 import { SAMPLE_MANIFEST, SAMPLE_SOURCE } from "../../../mocks/fixtures/prototype";
 import { appPrototypes, manifestPath, revisingIn, sourcePath, type AppPrototype } from "../model/prototypes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { prototypeHash } from "@wso2/prototype-kit/feedback";
+import { MAX_FEEDBACK_REQUESTS, MAX_FEEDBACK_TEXT, prototypeHash } from "@wso2/prototype-kit/feedback";
 import { designKey } from "../../design/api/designModel";
 import { unreviewed } from "../model/reviewed";
 
@@ -58,6 +58,15 @@ vi.mock("../useReviewAssets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../useReviewAssets")>()),
   useFrameRuntime: () => ({ value: "/* frame runtime */", error: null }),
 }));
+
+// jsdom lays nothing out and has no ResizeObserver; the review's anchors only need it to exist.
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    observe() {}
+    disconnect() {}
+  },
+);
 
 const { PrototypeWorkspace } = await import("./PrototypeWorkspace");
 
@@ -117,9 +126,22 @@ function annotate(dialog: HTMLElement) {
   fireEvent.click(within(dialog).getByRole("button", { name: "Annotate" }));
 }
 
-function addRequest(dialog: HTMLElement, text: string) {
-  fireEvent.change(within(dialog).getByLabelText("Request"), { target: { value: text } });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Add request" }));
+/** Where an element is drawn in the frame's viewport, as the frame reports it (jsdom lays nothing out). */
+const BOX = { x: 40, y: 120, width: 160, height: 36 };
+
+/** A click on an element in the prototype, as the frame reports it: where it is, and whether it held Shift. */
+function clickElement(elementKey: string, { shift = false, box = BOX } = {}) {
+  fromFrame({ type: "proto:toggle", elementKey, box, additive: shift });
+}
+
+/** The comment bubble open by the prototype. */
+function bubble() {
+  return screen.getByRole("dialog", { name: /^Comment on/ });
+}
+
+function addComment(text: string) {
+  fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: text } });
+  fireEvent.click(within(bubble()).getByRole("button", { name: "Add" }));
 }
 
 beforeEach(() => {
@@ -218,12 +240,12 @@ describe("the full-screen review", () => {
     fireEvent.keyDown(frame(), { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    // Annotate: the frame's Escape clears the selection first, then closes.
+    // Annotate: the frame's Escape closes the comment bubble (and its selection) first, then the review.
     annotate(dialog);
-    fromFrame({ type: "proto:toggle", elementKey: "btn.new-claim" });
+    clickElement("btn.new-claim");
     fromFrame({ type: "proto:escape" });
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(within(dialog).queryByText(/^Selected:/)).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
     fromFrame({ type: "proto:escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -300,14 +322,14 @@ describe("the full-screen review", () => {
     fromFrame({ type: "proto:toggle", elementKey: "btn.submit" });
     expect(lastView(post)).toMatchObject({ mode: "preview", screenId: "screen.new-claim", selectedKeys: [] });
 
-    // Annotate: a click selects (and says what), and a navigation is ignored.
+    // Annotate: a click selects (and the comment bubble says what), and a navigation is ignored.
     annotate(dialog);
     fromFrame({ type: "proto:rendered", screenId: "screen.new-claim", elements: [{ key: "btn.submit", label: "Submit claim" }] });
-    fromFrame({ type: "proto:toggle", elementKey: "btn.submit" });
+    clickElement("btn.submit");
     fromFrame({ type: "proto:navigate", screenId: "screen.my-claims" });
     expect(screenPicker.value).toBe("screen.new-claim");
     expect(lastView(post)).toMatchObject({ mode: "annotate", screenId: "screen.new-claim", selectedKeys: ["btn.submit"] });
-    expect(within(dialog).getByText("Selected: Submit claim")).toBeInTheDocument();
+    expect(bubble()).toHaveAccessibleName("Comment on Submit claim");
   });
 
   it("frames the prototype in a browser window whose address follows the screen", async () => {
@@ -320,13 +342,14 @@ describe("the full-screen review", () => {
     expect(within(window).getByLabelText("Address")).toHaveTextContent("prototype://screen.new-claim");
   });
 
-  it("queues requests with numbered pins, and removes one", async () => {
+  it("queues comments with numbered pins, and removes one", async () => {
     const { dialog, post } = await openReview();
     annotate(dialog);
-    fromFrame({ type: "proto:toggle", elementKey: "btn.new-claim" });
-    addRequest(dialog, "Call it Submit a claim");
-    addRequest(dialog, "Too much white space");
-    expect(lastView(post)).toMatchObject({ selectedKeys: [], pins: { "btn.new-claim": [1] } });
+    clickElement("btn.new-claim");
+    addComment("Call it Submit a claim");
+    clickElement("btn.new-claim");
+    addComment("Too much white space");
+    expect(lastView(post)).toMatchObject({ selectedKeys: [], pins: { "btn.new-claim": [1, 2] } });
     const queue = within(dialog).getByRole("list", { name: "Queued requests" });
     expect(within(queue).getAllByRole("listitem")).toHaveLength(2);
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove request 1" }));
@@ -343,11 +366,12 @@ describe("the full-screen review", () => {
       screenId: "screen.pending",
       elements: [{ key: "btn.reject", label: "Reject" }, { key: "btn.approve", label: "Approve" }],
     });
-    fromFrame({ type: "proto:toggle", elementKey: "btn.reject" });
-    fromFrame({ type: "proto:toggle", elementKey: "btn.approve" });
-    addRequest(dialog, "Put Approve on the right");
+    clickElement("btn.reject");
+    clickElement("btn.approve", { shift: true });
+    addComment("Put Approve on the right");
     fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "state.empty" } });
-    addRequest(dialog, "Say who to ask when nothing waits");
+    clickElement("empty.pending");
+    addComment("Say who to ask when nothing waits");
     fireEvent.click(within(dialog).getByRole("button", { name: "Send all (2)" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -359,7 +383,7 @@ describe("the full-screen review", () => {
         component: C,
         requests: [
           { screenId: "screen.pending", flowId: "flow.approve", roleId: "manager", stateId: "state.default", elementIds: ["btn.reject", "btn.approve"], text: "Put Approve on the right" },
-          { screenId: "screen.pending", flowId: "flow.approve", roleId: "manager", stateId: "state.empty", elementIds: [], text: "Say who to ask when nothing waits" },
+          { screenId: "screen.pending", flowId: "flow.approve", roleId: "manager", stateId: "state.empty", elementIds: ["empty.pending"], text: "Say who to ask when nothing waits" },
         ],
       },
     });
@@ -381,7 +405,8 @@ describe("the full-screen review", () => {
     chat = busy;
     const { dialog } = await openReview();
     annotate(dialog);
-    addRequest(dialog, "Too much white space");
+    clickElement("btn.new-claim");
+    addComment("Too much white space");
     fireEvent.click(within(dialog).getByRole("button", { name: "Send all (1)" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent(/working on another turn.*kept/);
     expect(send).not.toHaveBeenCalled();
@@ -393,7 +418,8 @@ describe("the full-screen review", () => {
     send.mockResolvedValue(false);
     const { dialog } = await openReview();
     annotate(dialog);
-    addRequest(dialog, "Too much white space");
+    clickElement("btn.new-claim");
+    addComment("Too much white space");
     fireEvent.click(within(dialog).getByRole("button", { name: "Send all (1)" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/weren't sent/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
@@ -401,5 +427,148 @@ describe("the full-screen review", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     const again = await screen.findByRole("dialog");
     expect(within(again).getByRole("button", { name: "Send all (1)" })).toBeInTheDocument();
+  });
+});
+
+describe("commenting in place", () => {
+  const ELEMENTS = [
+    { key: "btn.reject", label: "Reject" },
+    { key: "btn.approve", label: "Approve" },
+  ];
+
+  async function annotating() {
+    const opened = await openReview();
+    fireEvent.change(within(opened.dialog).getByLabelText("Flow"), { target: { value: "flow.approve" } });
+    annotate(opened.dialog);
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: ELEMENTS });
+    return opened;
+  }
+
+  it("opens a comment bubble at the clicked element, with the input focused", async () => {
+    await annotating();
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    clickElement("btn.reject");
+    expect(bubble()).toHaveAccessibleName("Comment on Reject");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveFocus();
+  });
+
+  it("places the bubble by the element, where the frame sits in the console, and follows both", async () => {
+    await annotating();
+    /** The bubble's left edge in the console's viewport, as it is placed (jsdom lays nothing out; the placement is set inline). */
+    const bubbleLeft = async () => {
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      const placed = /translate\((-?[\d.]+)px/.exec(bubble().parentElement!.style.transform);
+      return Number(placed?.[1]);
+    };
+    const frameAt = (left: number) =>
+      vi.spyOn(frame(), "getBoundingClientRect").mockReturnValue({ left, top: 64, right: left + 800, bottom: 664, width: 800, height: 600, x: left, y: 64, toJSON: () => ({}) });
+
+    frameAt(100);
+    clickElement("btn.reject", { box: { x: 40, y: 120, width: 160, height: 36 } });
+    expect(await bubbleLeft()).toBe(140);
+
+    // The prototype scrolled or redrew: the frame re-reports where the element is.
+    fromFrame({ type: "proto:geometry", boxes: { "btn.reject": { x: 240, y: 20, width: 160, height: 36 } } });
+    expect(await bubbleLeft()).toBe(340);
+
+    // The console's window resized and the frame moved with it.
+    frameAt(20);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(await bubbleLeft()).toBe(260);
+  });
+
+  it("opens nothing in Preview: a click there acts", async () => {
+    await openReview();
+    clickElement("btn.new-claim");
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+  });
+
+  it("adds Shift-clicked elements to the open comment and names them all; a plain click starts another", async () => {
+    const { post } = await annotating();
+    clickElement("btn.reject");
+    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "Swap these" } });
+    clickElement("btn.approve", { shift: true });
+    expect(bubble()).toHaveAccessibleName("Comment on Reject, Approve");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Swap these");
+    expect(lastView(post).selectedKeys).toEqual(["btn.reject", "btn.approve"]);
+
+    clickElement("btn.approve");
+    expect(bubble()).toHaveAccessibleName("Comment on Approve");
+    expect(lastView(post).selectedKeys).toEqual(["btn.approve"]);
+  });
+
+  it("queues the comment with Add, closes the bubble and leaves its numbered pin", async () => {
+    const { dialog, post } = await annotating();
+    clickElement("btn.reject");
+    expect(within(bubble()).getByRole("button", { name: "Add" })).toBeDisabled();
+    addComment("Ask for a reason");
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastView(post)).toMatchObject({ selectedKeys: [], pins: { "btn.reject": [1] } });
+    const queue = within(dialog).getByRole("list", { name: "Queued requests" });
+    expect(within(queue).getByRole("listitem")).toHaveTextContent("Ask for a reason");
+  });
+
+  it.each([
+    ["Cmd", { metaKey: true }],
+    ["Ctrl", { ctrlKey: true }],
+  ])("queues the comment with %s+Enter", async (_name, modifier) => {
+    const { post } = await annotating();
+    clickElement("btn.approve");
+    const input = within(bubble()).getByLabelText("Comment");
+    fireEvent.change(input, { target: { value: "Make it green" } });
+    fireEvent.keyDown(input, { key: "Enter", ...modifier });
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastView(post).pins).toEqual({ "btn.approve": [1] });
+  });
+
+  it("closes an empty bubble with Escape, leaving the review open", async () => {
+    const { post } = await annotating();
+    clickElement("btn.reject");
+    fireEvent.keyDown(within(bubble()).getByLabelText("Comment"), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
+    expect(lastView(post).selectedKeys).toEqual([]);
+  });
+
+  it("closes an empty bubble on a click away from it, but not one holding text", async () => {
+    const { dialog } = await annotating();
+    const clickAway = async () => {
+      // A click away counts once the bubble has settled in, not the very event that opened it.
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      fireEvent.mouseDown(within(dialog).getByText("Prototype · Acme Expenses"));
+      fireEvent.click(within(dialog).getByText("Prototype · Acme Expenses"));
+    };
+    clickElement("btn.reject");
+    await clickAway();
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+
+    clickElement("btn.reject");
+    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "Half a thought" } });
+    await clickAway();
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
+  });
+
+  it("holds a comment to the length limit and counts down near it", async () => {
+    await annotating();
+    clickElement("btn.reject");
+    const input = within(bubble()).getByLabelText("Comment");
+    expect(input).toHaveAttribute("maxlength", String(MAX_FEEDBACK_TEXT));
+    expect(within(bubble()).queryByText(`10 / ${MAX_FEEDBACK_TEXT}`)).toBeNull();
+    fireEvent.change(input, { target: { value: "x".repeat(MAX_FEEDBACK_TEXT - 10) } });
+    expect(within(bubble()).getByText(`${MAX_FEEDBACK_TEXT - 10} / ${MAX_FEEDBACK_TEXT}`)).toBeInTheDocument();
+  });
+
+  it("refuses another comment once the queue is full, and says why", async () => {
+    await annotating();
+    for (let i = 0; i < MAX_FEEDBACK_REQUESTS; i++) {
+      clickElement("btn.reject");
+      addComment(`Comment ${i + 1}`);
+    }
+    clickElement("btn.approve");
+    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "One more" } });
+    expect(within(bubble()).getByRole("button", { name: "Add" })).toBeDisabled();
+    expect(within(bubble()).getByRole("note")).toHaveTextContent(`The queue is full (${MAX_FEEDBACK_REQUESTS} comments)`);
   });
 });

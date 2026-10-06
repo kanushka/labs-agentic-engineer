@@ -46,7 +46,10 @@ export interface HostRect {
 export interface FrameAnchors {
   /** Give to `PrototypeFrame`'s `onGeometry`. */
   onGeometry: (geometry: FrameGeometry) => void;
-  /** The smallest host rectangle around the drawn elements among `keys`; null when the frame draws none of them. */
+  /**
+   * The smallest host rectangle around the drawn elements among `keys`; null
+   * when the frame draws none of them. The same object while nothing moved.
+   */
   anchor: (keys: readonly string[]) => HostRect | null;
 }
 
@@ -54,6 +57,17 @@ const NO_BOXES: Readonly<Record<string, FrameBox>> = Object.freeze({});
 
 function sameOrigin(a: { top: number; left: number } | null, b: { top: number; left: number }): boolean {
   return a !== null && a.top === b.top && a.left === b.left;
+}
+
+/** The smallest rectangle around the drawn elements among `keys`, moved from the frame's viewport into the host's. */
+function around(origin: { top: number; left: number }, boxes: Readonly<Record<string, FrameBox>>, keys: readonly string[]): HostRect | null {
+  const drawn = keys.map((k) => (Object.hasOwn(boxes, k) ? boxes[k] : undefined)).filter((b): b is FrameBox => b !== undefined);
+  if (drawn.length === 0) return null;
+  const left = Math.min(...drawn.map((b) => b.x));
+  const top = Math.min(...drawn.map((b) => b.y));
+  const right = Math.max(...drawn.map((b) => b.x + b.width));
+  const bottom = Math.max(...drawn.map((b) => b.y + b.height));
+  return { top: origin.top + top, left: origin.left + left, width: right - left, height: bottom - top };
 }
 
 export function useFrameAnchors(): FrameAnchors {
@@ -87,19 +101,15 @@ export function useFrameAnchors(): FrameAnchors {
     };
   }, [frame]);
 
-  const anchor = useCallback(
-    (keys: readonly string[]): HostRect | null => {
-      if (!origin) return null;
-      const drawn = keys.map((k) => (Object.hasOwn(boxes, k) ? boxes[k] : undefined)).filter((b): b is FrameBox => b !== undefined);
-      if (drawn.length === 0) return null;
-      const left = Math.min(...drawn.map((b) => b.x));
-      const top = Math.min(...drawn.map((b) => b.y));
-      const right = Math.max(...drawn.map((b) => b.x + b.width));
-      const bottom = Math.max(...drawn.map((b) => b.y + b.height));
-      return { top: origin.top + top, left: origin.left + left, width: right - left, height: bottom - top };
-    },
-    [origin, boxes],
-  );
+  // One rectangle per set of keys while nothing moved, so a host can memoise on it.
+  const anchor = useMemo(() => {
+    const placed = new Map<string, HostRect | null>();
+    return (keys: readonly string[]): HostRect | null => {
+      const id = keys.join("\n");
+      if (!placed.has(id)) placed.set(id, origin && around(origin, boxes, keys));
+      return placed.get(id) ?? null;
+    };
+  }, [origin, boxes]);
 
   return useMemo(() => ({ onGeometry, anchor }), [onGeometry, anchor]);
 }

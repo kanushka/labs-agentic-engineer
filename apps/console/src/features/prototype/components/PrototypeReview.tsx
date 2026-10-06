@@ -25,13 +25,15 @@ import {
   frameViewOf,
   initialPrototypeView,
   reducePrototypeView,
+  useFrameAnchors,
   type PrototypeViewEvent,
 } from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
-import { pinsOnScreen, requestFor } from "@wso2/prototype-kit/feedback";
+import { MAX_FEEDBACK_REQUESTS, pinsOnScreen, requestFor } from "@wso2/prototype-kit/feedback";
 import { dequeue, enqueue, feedbackBatch, type ReviewQueue } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
+import { CommentBubble } from "./CommentBubble";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { ReviewToolbar } from "./ReviewToolbar";
 
@@ -221,6 +223,9 @@ function Session({
   const pins = useMemo(() => pinsOnScreen(requests, view.screenId), [requests, view.screenId]);
   const frameView = useMemo(() => frameViewOf(view, pins), [view, pins]);
   const annotating = view.mode === "annotate";
+  const anchors = useFrameAnchors();
+  // An Annotate click opens the comment bubble on what it selected; closing the bubble lets the selection go.
+  const commenting = annotating && view.selectedKeys.length > 0;
 
   const add = (text: string) => {
     onQueue(enqueue(queue, hash, requestFor(view, text)));
@@ -267,7 +272,8 @@ function Session({
                 // The frame is untrusted: only Preview navigates (the reducer checks the target against the role).
                 if (view.mode === "preview") dispatch({ type: "NAVIGATE", screenId });
               }}
-              onToggle={(elementKey) => dispatch({ type: "TOGGLE_SELECTION", elementKey })}
+              onToggle={(elementKey, additive) => dispatch({ type: additive ? "TOGGLE_SELECTION" : "SELECT_ONLY", elementKey })}
+              onGeometry={anchors.onGeometry}
               onEscape={() => (view.selectedKeys.length > 0 ? dispatch({ type: "CLEAR_SELECTION" }) : onClose())}
               onElements={(_screenId, elements) => setLabels(Object.fromEntries(elements.map((e) => [e.key, e.label])))}
               loading={
@@ -282,16 +288,23 @@ function Session({
               }
             />
           </PrototypeWindow>
+          {commenting && (
+            <CommentBubble
+              anchor={anchors.anchor(view.selectedKeys)}
+              labels={view.selectedKeys.map((k) => labels[k] ?? k)}
+              full={requests.length >= MAX_FEEDBACK_REQUESTS}
+              onAdd={add}
+              onClose={() => dispatch({ type: "CLEAR_SELECTION" })}
+            />
+          )}
         </Box>
         {(annotating || requests.length > 0) && (
           <FeedbackPanel
-            selection={view.selectedKeys.map((k) => labels[k] ?? k)}
             annotating={annotating}
             requests={requests}
             stale={queue !== null && queue.hash !== hash}
             refused={refused}
             sending={sending}
-            onAdd={add}
             onRemove={remove}
             onSend={() => void send()}
           />
