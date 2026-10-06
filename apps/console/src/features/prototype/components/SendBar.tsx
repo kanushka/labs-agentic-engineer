@@ -17,10 +17,11 @@
  */
 
 import { forwardRef, useId, useState } from "react";
-import { Alert, Box, Button, ButtonBase, Divider, IconButton, Paper, Tooltip, Typography } from "@wso2/oxygen-ui";
+import { Alert, Box, Button, ButtonBase, CircularProgress, Divider, IconButton, Paper, Tooltip, Typography } from "@wso2/oxygen-ui";
 import { ChevronDown, ChevronUp, MessageSquarePlus, Send, Trash2 } from "@wso2/oxygen-ui-icons-react";
 import type { PrototypeManifest } from "@wso2/prototype-kit/host";
 import { MAX_FEEDBACK_REQUESTS, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
+import { commentCount } from "../model/feedback";
 
 export interface SendBarProps {
   manifest: PrototypeManifest;
@@ -30,7 +31,15 @@ export interface SendBarProps {
   /** Why the last Send did not go; the queue is kept. */
   refused: string | null;
   sending: boolean;
+  /** The agent is revising the prototype, working on this many sent comments; null when it is not. Send waits meanwhile. */
+  revising: number | null;
+  /** Why the last revision did not land (its comments are back in the queue); Retry sends the queue again. */
+  failed: string | null;
+  /** The comments (0-based) whose elements the revision showing no longer draws on this screen. */
+  orphans: readonly number[];
   onSend: () => void;
+  /** Keep the `index`th comment as a comment on its whole screen. */
+  onKeepOnScreen: (index: number) => void;
   onCommentOnScreen: () => void;
   /** Go to where the `index`th comment was made and open it. */
   onOpen: (index: number) => void;
@@ -47,10 +56,6 @@ function placeOf(manifest: PrototypeManifest, r: FeedbackRequest): string {
   return [nameOf(manifest.screens, r.screenId), nameOf(manifest.roles, r.roleId), nameOf(manifest.states, r.stateId), on].join(" · ");
 }
 
-function count(n: number): string {
-  return `${n} ${n === 1 ? "comment" : "comments"}`;
-}
-
 /**
  * The review's floating send bar (#885), in place of a side panel so the
  * prototype has the full width: the comment count, Comment on screen (a
@@ -60,11 +65,12 @@ function count(n: number): string {
  * whole-screen comment's bubble anchors to.
  */
 export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar(
-  { manifest, requests, stale, refused, sending, onSend, onCommentOnScreen, onOpen, onRemove },
+  { manifest, requests, stale, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
   ref,
 ) {
   const [expanded, setExpanded] = useState(false);
   const full = requests.length >= MAX_FEEDBACK_REQUESTS;
+  const blocked = requests.length === 0 || requests.length > MAX_FEEDBACK_REQUESTS || sending || revising !== null;
   const listId = useId();
   return (
     <Paper
@@ -123,8 +129,18 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
                     <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                       {placeOf(manifest, r)}
                     </Typography>
+                    {orphans.includes(i) && (
+                      <Typography variant="caption" color="warning.main" sx={{ display: "block" }}>
+                        Element no longer on this screen
+                      </Typography>
+                    )}
                   </Box>
                 </ButtonBase>
+                {orphans.includes(i) && (
+                  <Button size="small" onClick={() => onKeepOnScreen(i)} sx={{ textTransform: "none", flexShrink: 0, mt: 0.5 }}>
+                    Keep as screen comment
+                  </Button>
+                )}
                 <Tooltip title="Remove">
                   <IconButton size="small" aria-label={`Remove comment ${i + 1}`} onClick={() => onRemove(i)} sx={{ mt: 0.5 }}>
                     <Trash2 size={16} />
@@ -139,6 +155,25 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
       {stale && requests.length > 0 && (
         <Alert severity="warning" role="note" sx={{ borderRadius: 0 }}>
           Queued on an earlier version of the prototype.
+        </Alert>
+      )}
+      {orphans.length > 0 && (
+        <Alert severity="warning" role="note" sx={{ borderRadius: 0 }}>
+          {`${commentCount(orphans.length)} ${orphans.length === 1 ? "points" : "point"} at an element no longer on this screen.`}
+        </Alert>
+      )}
+      {failed && (
+        <Alert
+          severity="error"
+          role="alert"
+          sx={{ borderRadius: 0 }}
+          action={
+            <Button color="inherit" size="small" onClick={onSend} disabled={blocked}>
+              Retry
+            </Button>
+          }
+        >
+          {failed}
         </Alert>
       )}
       {full && (
@@ -161,8 +196,14 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
           onClick={() => setExpanded((e) => !e)}
           sx={{ textTransform: "none", fontWeight: 600 }}
         >
-          {count(requests.length)}
+          {commentCount(requests.length)}
         </Button>
+        {revising !== null && (
+          <Typography variant="body2" color="text.secondary" role="status" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <CircularProgress size={14} aria-hidden />
+            {revising > 0 ? `Agent is revising… (${commentCount(revising)})` : "Agent is revising…"}
+          </Typography>
+        )}
         <Box sx={{ flex: 1 }} />
         <Button size="small" startIcon={<MessageSquarePlus size={16} />} onClick={onCommentOnScreen} disabled={full} sx={{ textTransform: "none" }}>
           Comment on screen
@@ -172,7 +213,7 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
           variant="contained"
           startIcon={<Send size={16} />}
           onClick={onSend}
-          disabled={requests.length === 0 || sending}
+          disabled={blocked}
           sx={{ textTransform: "none" }}
         >
           Send to agent

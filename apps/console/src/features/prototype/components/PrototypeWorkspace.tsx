@@ -16,13 +16,13 @@
  * under the License.
  */
 
-import { useState } from "react";
 import { Box, Button, Chip, CircularProgress, Skeleton, Tooltip, Typography } from "@wso2/oxygen-ui";
 import { AppWindow } from "@wso2/oxygen-ui-icons-react";
 import { PHONE } from "../../shell/layout";
-import { EMPTY_FEEDBACK_QUEUE, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
+import { useChatPanel } from "../../shell/chatPanel";
 import { markReviewed } from "../model/reviewed";
 import type { AppPrototype, PrototypeStatus } from "../model/prototypes";
+import { usePrototypeReviews } from "../usePrototypeReviews";
 import { usePrototypes } from "../usePrototypes";
 import { usePrototypeTurns } from "../usePrototypeTurns";
 import { MakePrototypeButton } from "./MakePrototypeButton";
@@ -153,8 +153,9 @@ function Row({ prototype, ready, waiting, onReview, onMake, compact }: RowProps 
  * prototype's status, Review (the full-screen overlay) and Make or Update.
  * Before any prototype exists it says what one takes, with Make prototype
  * when the design has a web application. The open review is the route's
- * (`?review=<component>`); the comments queued and drafted in a review are kept here, so
- * closing and opening it again keeps them.
+ * (`?review=<component>`); each review's comments, the batch out with the
+ * agent and the revision it shows are kept here (`usePrototypeReviews`), so
+ * closing and opening it again, even mid-revision, keeps them.
  */
 export function PrototypeWorkspace({
   projectName,
@@ -167,7 +168,8 @@ export function PrototypeWorkspace({
 }) {
   const prototypes = usePrototypes(projectName);
   const turns = usePrototypeTurns(projectName);
-  const [queues, setQueues] = useState<Record<string, FeedbackQueue>>({});
+  const reviews = usePrototypeReviews(projectName, prototypes);
+  const chatPanel = useChatPanel();
 
   if (!prototypes) {
     return (
@@ -262,11 +264,21 @@ export function PrototypeWorkspace({
       {open && (
         <PrototypeReview
           prototype={open}
-          queue={queues[open.component] ?? EMPTY_FEEDBACK_QUEUE}
-          onQueue={(update) => setQueues((q) => ({ ...q, [open.component]: update(q[open.component] ?? EMPTY_FEEDBACK_QUEUE) }))}
+          session={reviews.session(open.component)}
+          onQueue={(update) => reviews.onQueue(open.component, update)}
           ready={turns.ready}
-          onSend={turns.sendFeedback}
+          onSend={async (feedback) => {
+            const delivered = await turns.sendFeedback(feedback);
+            if (delivered) reviews.onSent(open.component, feedback);
+            return delivered;
+          }}
           onSeen={(hash) => markReviewed(projectName, open.component, hash)}
+          onNoticeSeen={() => reviews.onNoticeSeen(open.component)}
+          onWhatChanged={() => {
+            reviews.onNoticeSeen(open.component);
+            onReview(null);
+            chatPanel.open();
+          }}
           onClose={() => onReview(null)}
         />
       )}

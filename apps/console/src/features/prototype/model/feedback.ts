@@ -30,7 +30,20 @@ export function feedbackBatch(component: string, queue: FeedbackQueue): Prototyp
   return submission && { prototypeHash: submission.prototypeHash, component, requests: submission.requests };
 }
 
+/**
+ * The queue with a sent batch the agent did not apply put back in front of
+ * what was written since, on the revision the batch was made on.
+ */
+export function restored(queue: FeedbackQueue, batch: PrototypeFeedback): FeedbackQueue {
+  return { hash: batch.prototypeHash, requests: [...batch.requests, ...queue.requests], drafts: queue.drafts };
+}
+
 /** The queue once its comments are sent: empty, keeping the drafts. */
 export function sent(queue: FeedbackQueue): FeedbackQueue {
   return { ...EMPTY_FEEDBACK_QUEUE, drafts: queue.drafts };
+}
+
+/** "1 comment", "2 comments": how the review counts comments. */
+export function commentCount(n: number): string {
+  return `${n} ${n === 1 ? "comment" : "comments"}`;
 }
