@@ -37,7 +37,9 @@ type ConversationMessage = components["schemas"]["ConversationMessage"];
 //  - A review's Send all (the same command with `prototypeFeedback`): answers
 //    each request by number, applied or declined. A few requests the sample
 //    knows how to apply (a tweak, an editFile on the source); anything else is
-//    declined, as the mock cannot write code.
+//    declined, as the mock cannot write code. "Remove …" takes the Reject
+//    button away (a comment held on it is orphaned), and "… fail …" fails the
+//    turn, writing nothing (the review gets its comments back).
 //
 // The files land in the local doc from the turn's stream, as every agent
 // write does in mock mode; a finished turn's files also seed the doc after a
@@ -362,7 +364,18 @@ const TWEAKS: Tweak[] = [
     to: '      <Heading id="text.total" level="section" text={`Total ${claim.total}`} />',
     applied: "The total is now a heading, so it stands out on the claim; its id is unchanged.",
   },
+  {
+    // Takes an element away, so a comment held on it is left pointing at nothing.
+    match: /\b(remove|delete|drop)\b/i,
+    from: `
+          <Button id="btn.reject" label="Reject" emphasis="danger" onPress={() => setDialog("reject")} />`,
+    to: "",
+    applied: "Reject is gone from the pending claim; only Approve is left.",
+  },
 ];
+
+/** A request that makes the revision's turn fail, so a review can be seen getting its comments back. */
+const FAIL = /\bfail\b/i;
 
 export interface PrototypeTurn {
   display: string;
@@ -370,6 +383,8 @@ export interface PrototypeTurn {
   reply: ConversationMessage[];
   /** The prototype's files as the turn leaves them, by room path; absent when it wrote nothing. */
   files?: Record<string, string>;
+  /** Why the turn failed; absent when it completed. */
+  failure?: string;
 }
 
 /**
@@ -436,6 +451,8 @@ function revise(req: {
   }
   const n = feedback.requests.length;
   s.say(`Revising the prototype of ${component} with your ${n === 1 ? "request" : `${n} requests`}.`);
+  const failing = feedback.requests.findIndex((r) => FAIL.test(r.text));
+  if (failing >= 0) return { display: req.display, ...s.pause(1500).fail(`The revision failed: request ${failing + 1} asked this mock to fail it.`) };
   let source = req.source;
   const answers = feedback.requests.map((request, i) => {
     const tweak = TWEAKS.find((t) => t.match.test(request.text));
