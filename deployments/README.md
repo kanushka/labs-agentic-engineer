@@ -217,6 +217,52 @@ credentials on a given cluster.
 For GitHub repo provisioning, connect a PAT (or GitHub App) at **Settings → Credentials → GitHub**.
 For AI generation, connect a model on the **AI agents** card under **Settings → Credentials** (Anthropic's API or any public https endpoint speaking the Anthropic or OpenAI-compatible format) — per-org, with no platform fallback.
 
+## After a host restart
+
+The k3d node containers restart themselves (Docker `unless-stopped`), so the
+cluster comes back when the container runtime does. Two things do not come
+back with it.
+
+**`host.k3d.internal` loses its address.** Every CoreDNS rewrite on the cluster
+answers with that name, and OpenChoreo's build chain addresses the local
+registry as `host.k3d.internal:10082`. k3d defines it at cluster CREATE, in the
+`coredns` ConfigMap's `NodeHosts` key — which `k3s-supervisor` owns and
+regenerates from node addresses on every node start, dropping k3d's line.
+`k3d cluster start` does not re-inject it; only a create does.
+
+Nothing reports this directly. Pods get NXDOMAIN for hostnames that resolve
+fine from the host, and it surfaces far away: `openchoreo-api` cannot fetch
+Thunder's JWKS, so every token is `INVALID_TOKEN` and callers see bare 401s;
+builds fail on an unreachable registry; `setup-environment-aigateway.sh` reads
+an empty list out of a 500 and reports `Environment 'development' is not
+registered in Agent Manager`.
+
+```bash
+bash deployments/scripts/restore-host-k3d-internal.sh check   # diagnose
+bash deployments/scripts/restore-host-k3d-internal.sh         # repair
+```
+
+It writes the name into `coredns-custom`, which no controller reconciles, so
+one run survives later restarts too. Re-running `make dev-env` does **not** fix
+this — nothing in that chain defines the name, and the cluster-create step it
+would come from is skipped on an existing cluster.
+
+**OpenBao forgets every platform secret.** It runs `bao server -dev`
+(in-memory) and its `postStart` re-seeds only OpenChoreo's own fixtures, so the
+`aep/*` paths `aectl platform install` writes are gone once that pod restarts.
+Re-running the install re-seeds them — but it generates a fresh
+`aep/postgres-password` while the Postgres PVC keeps the old one, and Postgres
+only honours `POSTGRES_PASSWORD` when it initialises an empty data directory.
+If `aep-api` then fails to reach its database, re-initialise it (this discards
+the AEP database):
+
+```bash
+# foreground, so postgres-0 is gone before the PVC: pvc-protection holds a
+# claim that a running pod still mounts, and the delete below would hang
+kubectl -n wso2-aep delete statefulset postgres --cascade=foreground
+kubectl -n wso2-aep delete pvc data-postgres-0
+```
+
 ## Tear down
 
 ```bash
