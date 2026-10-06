@@ -17,19 +17,30 @@
  */
 
 /**
- * The review's keys on the host page: C toggles Annotate (not while typing),
- * and Escape undoes the nearest thing (the bubble, then the selection). A key
- * while focus is inside the prototype's frame is the prototype's: the frame
- * reports an Escape it did not use itself (`PrototypeFrame.onEscape`).
+ * A review's keys on the host page, the same in every host: C toggles
+ * Annotate (not while typing), and Escape undoes the nearest thing (the
+ * bubble, then the selection) before anything else gets it. A key while focus
+ * is inside the prototype's frame is the prototype's: the frame reports an
+ * Escape it did not use itself (`PrototypeFrame.onEscape`). Headless.
  */
 
 import { useEffect, useRef } from "react";
 
 export interface ReviewKeys {
-  /** Escape: undo the nearest thing; false when there was nothing to undo. */
+  /** Escape: undo the nearest thing; false when there was nothing to undo (the host may then close the review). */
   onEscape: () => boolean;
   /** C: toggle Annotate. */
   onToggleAnnotate: () => void;
+}
+
+export interface ReviewKeysOptions {
+  /**
+   * Listen on the way down and stop a consumed Escape there, for a host whose
+   * review sits in something that closes on Escape itself (a dialog), so it
+   * never sees the Escape the review used. Otherwise a consumed Escape is only
+   * marked handled (`preventDefault`).
+   */
+  capture?: boolean;
 }
 
 /** Whether the key was typed into something that takes text (a bubble's input, a picker). */
@@ -37,7 +48,8 @@ function typing(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 }
 
-export function useReviewKeys(keys: ReviewKeys | null): void {
+/** The review's keys while `keys` is given (none: the host has no review to key, e.g. no Annotate). */
+export function useReviewKeys(keys: ReviewKeys | null, { capture = false }: ReviewKeysOptions = {}): void {
   const latest = useRef(keys);
   useEffect(() => {
     latest.current = keys;
@@ -47,13 +59,15 @@ export function useReviewKeys(keys: ReviewKeys | null): void {
       const keys = latest.current;
       if (!keys || e.target instanceof HTMLIFrameElement || e.defaultPrevented) return;
       if (e.key === "Escape") {
-        if (keys.onEscape()) e.preventDefault();
+        if (!keys.onEscape()) return;
+        if (capture) e.stopPropagation();
+        else e.preventDefault();
       } else if ((e.key === "c" || e.key === "C") && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e.target)) {
         e.preventDefault();
         keys.onToggleAnnotate();
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+    window.addEventListener("keydown", onKeyDown, { capture });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture });
+  }, [capture]);
 }

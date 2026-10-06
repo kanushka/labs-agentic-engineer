@@ -27,6 +27,7 @@ import {
   reduceReview,
   useCommentDraft,
   useFrameAnchors,
+  useReviewKeys,
   type PrototypeFrameHandle,
   type QueueUpdate,
   type ReviewEvent,
@@ -48,7 +49,6 @@ import { commentCount, feedbackBatch } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import type { ReviewSession, RevisionNotice } from "../model/revision";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
-import { useReviewKeys } from "../useReviewKeys";
 import { CommentBubble } from "./CommentBubble";
 import { QueuedCommentBubble } from "./QueuedCommentBubble";
 import { ReviewToolbar } from "./ReviewToolbar";
@@ -285,10 +285,14 @@ function Session({
     else return false;
     return true;
   };
-  useReviewKeys({
-    onEscape: escape,
-    onToggleAnnotate: () => dispatch({ type: view.mode === "annotate" ? "EXIT_ANNOTATE" : "ENTER_ANNOTATE" }),
-  });
+  // Captured, so an Escape the review used never reaches its dialog.
+  useReviewKeys(
+    {
+      onEscape: escape,
+      onToggleAnnotate: () => dispatch({ type: view.mode === "annotate" ? "EXIT_ANNOTATE" : "ENTER_ANNOTATE" }),
+    },
+    { capture: true },
+  );
 
   const add = (text: string) => {
     onQueue((q) => enqueue(q, hash, requestFor(view, text)));

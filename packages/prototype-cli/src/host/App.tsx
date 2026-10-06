@@ -32,6 +32,7 @@ import {
   reduceReview,
   useCommentDraft,
   useFrameAnchors,
+  useReviewKeys,
   type DataSnapshot,
   type PrototypeFrameHandle,
   type PrototypeManifest,
@@ -61,7 +62,6 @@ import { clearSnapshot, loadSnapshot, saveSnapshot } from "./persistence.js";
 import { HOST_CSS } from "./styles.js";
 import { QueuedCommentBubble } from "./QueuedCommentBubble.js";
 import { Toolbar } from "./Toolbar.js";
-import { useReviewKeys } from "./useReviewKeys.js";
 
 export function App({ config }: { config: HostConfig }) {
   const live = useLivePrototype(config);
