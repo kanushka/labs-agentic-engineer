@@ -1088,13 +1088,13 @@ describe("the revision landing in the open review", () => {
     const loads = post.mock.calls.filter((c) => (c[0] as { type: string }).type === "proto:load").length;
     ended(files, "failed");
 
-    expect(within(bar()).getByRole("alert")).toHaveTextContent(/turn failed.*Your comments are back/);
+    expect(within(bar()).getByRole("alert")).toHaveTextContent(/wasn't updated.*Your comments are back/);
     expect(within(commentList()).getAllByRole("listitem").map((e) => e.textContent)).toEqual([
       expect.stringContaining("Ask for a reason"),
       expect.stringContaining("Make it green"),
     ]);
     expect(post.mock.calls.filter((c) => (c[0] as { type: string }).type === "proto:load")).toHaveLength(loads);
-    expect(screen.queryByText("Updated", { exact: false })).toBeNull();
+    expect(screen.queryByText(/^Updated/)).toBeNull();
 
     fireEvent.click(within(bar()).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(send).toHaveBeenCalledTimes(2));

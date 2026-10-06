@@ -96,7 +96,7 @@ export function CommentBar({ manifest, requests, labels, earlier, onCommentOnScr
         </ol>
       )}
       {earlier.length > 0 && <p role="note">{`${count(earlier.length)} ${earlier.length === 1 ? "was" : "were"} written on an earlier version of the prototype.`}</p>}
-      {full && <p role="note">{`The queue is full (${MAX_FEEDBACK_REQUESTS} comments): save it or remove one to add another.`}</p>}
+      {full && <p role="note">{`The queue is full (${MAX_FEEDBACK_REQUESTS} comments): remove one to add another.`}</p>}
       {status && <p role="status">{status}</p>}
       <div className="ph-bar-row">
         <button type="button" className="ph-bar-count" aria-expanded={expanded} aria-controls={expanded ? listId : undefined} onClick={() => setExpanded((e) => !e)}>

@@ -43,7 +43,14 @@ for console turns, and a disagreement is settled here.
 | **Review** | open a prototype full screen | open, view |
 | **Preview** | the review mode where the prototype acts | run, play |
 | **Annotate** | the review mode where clicks select instead of act | comment, mark up |
-| **Request** | one change asked of the prototype: the selected elements and the text | comment, note, ticket |
+| **Comment** | one change asked of the prototype: the selected elements (or the whole screen) and the text. "Request" is only the contract's and the code's name for it, never said to the user | request, note, ticket |
+| **draft** (comment) | a comment started and closed without Add: kept where it was written, shown as a hollow pin, reopened with its text; never counted or sent | unsaved comment |
+| **Whole screen** | what a comment on no element is on, in its bubble and the list | page, full page |
 | **Send to agent** | send the queued comments to the agent in one turn (the send bar) | submit, Send all |
 | **Comment on screen** | a comment on the whole screen, not an element | page comment |
+| **Agent is revising…** | the send bar while the agent works on the sent comments, with how many: `Agent is revising… (N comments)` | Revising (a header chip), processing |
+| **Updated · N addressed** | the toast once the revision lands in the open review: `Updated · N comments addressed`, N being the comments sent | Done, Reloaded |
+| **What changed** | the toast's action: the chat, at the turn that revised the prototype | Details, View diff |
+| **Retry** | send again the comments a revision that did not land gave back | Resend |
+| **Written on an earlier version** | a queued comment written before the revision now showing landed | stale, outdated |
 | **Reset data** | restore the prototype's mock data | clear |

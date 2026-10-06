@@ -60,7 +60,6 @@ export interface ReviewSession {
 
 export const NEW_SESSION: ReviewSession = { queue: EMPTY_FEEDBACK_QUEUE, sent: null, notice: null, shown: null, revising: false };
 
-const TURN_FAILED = "The agent's turn failed, so the prototype wasn't revised.";
 
 /** The session once its batch went to the agent: the queue starts again (drafts kept), and the last notice is done. */
 export function sendStarted(s: ReviewSession, feedback: PrototypeFeedback): ReviewSession {
@@ -88,11 +87,17 @@ export function follow(s: ReviewSession, prototype: AppPrototype): ReviewSession
 
 /** The turn that revised the prototype is over: landed, or failed with the batch given back. */
 function settled(s: ReviewSession, prototype: AppPrototype): ReviewSession {
-  const failure = s.sent?.outcome === "failed" ? TURN_FAILED : prototype.status === "invalid" ? `The revision can't be shown: ${prototype.problem ?? "it is invalid"}` : null;
+  const failure =
+    s.sent?.outcome === "failed"
+      ? "The prototype wasn't updated"
+      : prototype.status === "invalid"
+        ? `The updated prototype can't be shown (${prototype.problem ?? "it is invalid"})`
+        : null;
   if (failure === null) {
     const queue = s.shown ? onRevision(s.queue, prototypeHash(s.shown.manifestText, s.shown.source)) : s.queue;
     return { ...s, queue, sent: null, notice: { kind: "updated", addressed: s.sent?.feedback.requests.length ?? 0 } };
   }
   const queue = s.sent ? restored(s.queue, s.sent.feedback) : s.queue;
-  return { ...s, queue, sent: null, notice: { kind: "failed", reason: `${failure} The previous revision is still showing.${s.sent ? " Your comments are back in the queue." : ""}` } };
+  const back = s.sent ? " Your comments are back in the queue: Retry sends them again." : "";
+  return { ...s, queue, sent: null, notice: { kind: "failed", reason: `${failure}, so you're still seeing the previous version.${back}` } };
 }

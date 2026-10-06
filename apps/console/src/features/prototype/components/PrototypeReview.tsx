@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, IconButton, Snackbar, Tooltip, Typography, useColorScheme } from "@wso2/oxygen-ui";
+import { Alert, Box, Button, CircularProgress, Dialog, IconButton, Snackbar, Tooltip, Typography, useColorScheme } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
 import {
   PrototypeFrame,
@@ -78,22 +78,10 @@ export interface PrototypeReviewProps {
   onClose: () => void;
 }
 
-const BUSY = "The agent is working on another turn, so nothing was sent. Your requests are kept: send them once it finishes.";
-const NOT_SENT = "Your requests weren't sent; the chat says why. They are kept: try again.";
+const BUSY = "The agent is working on another turn, so nothing was sent. Your comments are kept: send them once it finishes.";
+const NOT_SENT = "Your comments weren't sent; the chat says why. They are kept: try again.";
 
-function Header({
-  titleId,
-  title,
-  revising,
-  onClose,
-  children,
-}: {
-  titleId: string;
-  title: string;
-  revising: boolean;
-  onClose: () => void;
-  children?: ReactNode;
-}) {
+function Header({ titleId, title, onClose, children }: { titleId: string; title: string; onClose: () => void; children?: ReactNode }) {
   return (
     <Box
       component="header"
@@ -102,7 +90,6 @@ function Header({
       <Typography component="h2" id={titleId} sx={{ fontSize: "1rem", fontWeight: 600 }}>
         {title}
       </Typography>
-      {revising && <Chip size="small" color="info" label="Revising…" />}
       <Box sx={{ flex: 1, display: "flex", justifyContent: "flex-end", minWidth: 0 }}>{children}</Box>
       <Tooltip title="Close (Esc)">
         <IconButton aria-label="Close" onClick={onClose}>
@@ -219,7 +206,7 @@ export function PrototypeReview(props: PrototypeReviewProps) {
           <Session {...props} titleId={titleId} files={files} runtime={runtime.value} revising={revising} />
         ) : (
           <>
-            <Header titleId={titleId} title={`Prototype · ${name}`} revising={revising} onClose={onClose} />
+            <Header titleId={titleId} title={`Prototype · ${name}`} onClose={onClose} />
             {body}
           </>
         )}
@@ -358,7 +345,7 @@ function Session({
 
   return (
     <>
-      <Header titleId={titleId} title={`Prototype · ${manifest.name}`} revising={revising} onClose={onClose}>
+      <Header titleId={titleId} title={`Prototype · ${manifest.name}`} onClose={onClose}>
         <ReviewToolbar manifest={manifest} view={view} dispatch={dispatch} onReset={() => setResetToken((t) => t + 1)} />
       </Header>
       <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex", bgcolor: "background.default" }}>
