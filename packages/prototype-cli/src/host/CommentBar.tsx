@@ -25,12 +25,14 @@
  */
 
 import { useId, useState, type Ref } from "react";
-import { MAX_FEEDBACK_REQUESTS, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
+import { MAX_FEEDBACK_REQUESTS, targetLabel, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
 import type { PrototypeManifest } from "@wso2/prototype-kit/host";
 
 export interface CommentBarProps {
   manifest: PrototypeManifest;
   requests: readonly FeedbackRequest[];
+  /** Each visited screen's element labels, by key, which the list names a comment's elements by. */
+  labels: ScreenLabels;
   /** The queue was started on a revision that has since been replaced. */
   stale: boolean;
   onCommentOnScreen: () => void;
@@ -43,13 +45,16 @@ export interface CommentBarProps {
   ref?: Ref<HTMLElement> | undefined;
 }
 
+/** Element labels by key, per screen id. */
+type ScreenLabels = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
 function nameOf(list: readonly { id: string; name: string }[], id: string): string {
   return list.find((x) => x.id === id)?.name ?? id;
 }
 
-/** Where a comment was made, as the reviewer reads it: screen · role · state · its elements (or the whole screen). */
-function placeOf(manifest: PrototypeManifest, r: FeedbackRequest): string {
-  const on = r.elementIds.length > 0 ? r.elementIds.join(", ") : "Whole screen";
+/** Where a comment was made, as the reviewer reads it: screen · role · state · its elements' labels (or the whole screen). */
+function placeOf(manifest: PrototypeManifest, labels: ScreenLabels, r: FeedbackRequest): string {
+  const on = targetLabel(r, labels[r.screenId] ?? {});
   return [nameOf(manifest.screens, r.screenId), nameOf(manifest.roles, r.roleId), nameOf(manifest.states, r.stateId), on].join(" · ");
 }
 
@@ -57,7 +62,7 @@ export function count(n: number): string {
   return `${n} ${n === 1 ? "comment" : "comments"}`;
 }
 
-export function CommentBar({ manifest, requests, stale, onCommentOnScreen, onOpen, onRemove, onSave, ref }: CommentBarProps) {
+export function CommentBar({ manifest, requests, labels, stale, onCommentOnScreen, onOpen, onRemove, onSave, ref }: CommentBarProps) {
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const listId = useId();
@@ -79,7 +84,7 @@ export function CommentBar({ manifest, requests, stale, onCommentOnScreen, onOpe
                 </span>
                 <span>
                   <span className="ph-bar-text">{r.text}</span>
-                  <small>{placeOf(manifest, r)}</small>
+                  <small>{placeOf(manifest, labels, r)}</small>
                 </span>
               </button>
               <button type="button" className="ph-bar-remove" aria-label={`Remove comment ${i + 1}`} title="Remove" onClick={() => onRemove(i)}>

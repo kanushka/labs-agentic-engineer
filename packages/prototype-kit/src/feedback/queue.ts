@@ -70,6 +70,17 @@ export function pinsOnScreen(queue: readonly FeedbackRequest[], screenId: string
   return pins;
 }
 
+/**
+ * What a comment is on, as the reviewer reads it, the same in every host's
+ * bubble and list: its elements by their labels (`labels`, by element key, as
+ * the frame reported its screen; the id where none is known), or the whole
+ * screen.
+ */
+export function targetLabel(request: Pick<FeedbackRequest, "elementIds">, labels: Readonly<Record<string, string>>): string {
+  if (request.elementIds.length === 0) return "Whole screen";
+  return request.elementIds.map((id) => (Object.hasOwn(labels, id) ? labels[id] : id)).join(", ");
+}
+
 /** Whether `a` and `b` name the same elements, in any order. */
 function sameElements(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id) => b.includes(id));

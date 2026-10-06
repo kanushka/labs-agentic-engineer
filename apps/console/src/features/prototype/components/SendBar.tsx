@@ -20,12 +20,14 @@ import { forwardRef, useId, useState } from "react";
 import { Alert, Box, Button, ButtonBase, CircularProgress, Divider, IconButton, Paper, Tooltip, Typography } from "@wso2/oxygen-ui";
 import { ChevronDown, ChevronUp, MessageSquarePlus, Send, Trash2 } from "@wso2/oxygen-ui-icons-react";
 import type { PrototypeManifest } from "@wso2/prototype-kit/host";
-import { MAX_FEEDBACK_REQUESTS, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
+import { MAX_FEEDBACK_REQUESTS, targetLabel, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
 import { commentCount } from "../model/feedback";
 
 export interface SendBarProps {
   manifest: PrototypeManifest;
   requests: readonly FeedbackRequest[];
+  /** Each visited screen's element labels, by key, which the list names a comment's elements by. */
+  labels: ScreenLabels;
   /** The queue was started on a revision that has since been replaced. */
   stale: boolean;
   /** Why the last Send did not go; the queue is kept. */
@@ -46,13 +48,16 @@ export interface SendBarProps {
   onRemove: (index: number) => void;
 }
 
+/** Element labels by key, per screen id. */
+type ScreenLabels = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
 function nameOf(list: readonly { id: string; name: string }[], id: string): string {
   return list.find((x) => x.id === id)?.name ?? id;
 }
 
-/** Where a comment was made, as the reviewer reads it: screen · role · state · its elements (or the whole screen). */
-function placeOf(manifest: PrototypeManifest, r: FeedbackRequest): string {
-  const on = r.elementIds.length > 0 ? r.elementIds.join(", ") : "Whole screen";
+/** Where a comment was made, as the reviewer reads it: screen · role · state · its elements' labels (or the whole screen). */
+function placeOf(manifest: PrototypeManifest, labels: ScreenLabels, r: FeedbackRequest): string {
+  const on = targetLabel(r, labels[r.screenId] ?? {});
   return [nameOf(manifest.screens, r.screenId), nameOf(manifest.roles, r.roleId), nameOf(manifest.states, r.stateId), on].join(" · ");
 }
 
@@ -65,7 +70,7 @@ function placeOf(manifest: PrototypeManifest, r: FeedbackRequest): string {
  * whole-screen comment's bubble anchors to.
  */
 export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar(
-  { manifest, requests, stale, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
+  { manifest, requests, labels, stale, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
   ref,
 ) {
   const [expanded, setExpanded] = useState(false);
@@ -127,7 +132,7 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
                       {r.text}
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
-                      {placeOf(manifest, r)}
+                      {placeOf(manifest, labels, r)}
                     </Typography>
                     {orphans.includes(i) && (
                       <Typography variant="caption" color="warning.main" sx={{ display: "block" }}>

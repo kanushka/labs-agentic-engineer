@@ -634,7 +634,7 @@ describe("the send bar", () => {
     expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
   });
 
-  it("lists every comment across screens, roles and states; an entry goes there and opens its bubble", async () => {
+  it("lists every comment across screens, roles and states, by its elements' labels; an entry goes there and opens its bubble", async () => {
     const { dialog } = await openReview();
     fireEvent.change(within(dialog).getByLabelText("Flow"), { target: { value: "flow.approve" } });
     fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "state.empty" } });
@@ -650,7 +650,7 @@ describe("the send bar", () => {
 
     const entries = within(commentList()).getAllByRole("listitem");
     expect(entries.map((e) => e.textContent)).toEqual([
-      expect.stringMatching(/Ask for a reason.*Pending approvals · Manager · Nothing to show · btn\.reject/),
+      expect.stringMatching(/Ask for a reason.*Pending approvals · Manager · Nothing to show · Reject/),
       expect.stringMatching(/Too busy overall.*My claims · Employee · Default · Whole screen/),
     ]);
 

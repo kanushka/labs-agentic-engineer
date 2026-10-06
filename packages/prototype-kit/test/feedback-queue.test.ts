@@ -33,6 +33,7 @@ import {
   orphansOnScreen,
   pinsOnScreen,
   submissionOf,
+  targetLabel,
   type FeedbackQueue,
   type FeedbackRequest,
 } from "../src/feedback/index.js";
@@ -82,6 +83,17 @@ describe("queued comments", () => {
     const q = keepDraft(queued(on(["a"], "one")), on(["b"], "half"));
     expect(submissionOf(q)).toEqual({ prototypeHash: H1, requests: [on(["a"], "one")] });
     expect(submissionOf(keepDraft(EMPTY_FEEDBACK_QUEUE, on(["b"], "half")))).toBeNull();
+  });
+});
+
+describe("what a comment is on, as the reviewer reads it", () => {
+  it("names its elements by their labels, in selection order, or by id where no label is known", () => {
+    expect(targetLabel(on(["b", "a"], "x"), { a: "Approve", b: "Reject" })).toBe("Reject, Approve");
+    expect(targetLabel(on(["a", "gone"], "x"), { a: "Approve" })).toBe("Approve, gone");
+  });
+
+  it("names a comment on no element the whole screen", () => {
+    expect(targetLabel(on([], "x"), { a: "Approve" })).toBe("Whole screen");
   });
 });
 

@@ -44,6 +44,7 @@ import {
   orphansOnScreen,
   pinsOnScreen,
   requestFor,
+  targetLabel,
 } from "@wso2/prototype-kit/feedback";
 import { commentCount, feedbackBatch } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
@@ -248,7 +249,8 @@ function Session({
   );
 
   const { requests } = queue;
-  const [labels, setLabels] = useState<Record<string, string>>({});
+  // Each visited screen's element labels, as the frame last reported them, which comments are named by.
+  const [labels, setLabels] = useState<Readonly<Record<string, Readonly<Record<string, string>>>>>({});
   // The elements the frame last said its screen draws, which a revision's comments are checked against.
   const [rendered, setRendered] = useState<{ screenId: string; keys: string[] } | null>(null);
   const [resetToken, setResetToken] = useState(0);
@@ -324,7 +326,7 @@ function Session({
     const request = requests[index];
     if (request) dispatch({ type: "OPEN_COMMENT", index, request });
   };
-  const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[k] ?? k);
+  const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[view.screenId]?.[k] ?? k);
   const send = async () => {
     const feedback = feedbackBatch(prototype.component, queue);
     if (!feedback) return;
@@ -369,7 +371,7 @@ function Session({
               onGeometry={anchors.onGeometry}
               onEscape={() => escape() || onClose()}
               onElements={(screenId, elements) => {
-                setLabels(Object.fromEntries(elements.map((e) => [e.key, e.label])));
+                setLabels((all) => ({ ...all, [screenId]: Object.fromEntries(elements.map((e) => [e.key, e.label])) }));
                 setRendered({ screenId, keys: elements.map((e) => e.key) });
               }}
               loading={
@@ -404,7 +406,7 @@ function Session({
               anchor={opened.elementIds.length > 0 ? anchors.anchor(opened.elementIds) : bar}
               number={bubble.index + 1}
               request={opened}
-              on={opened.elementIds.length > 0 ? labelsOf(opened.elementIds).join(", ") : "Whole screen"}
+              on={targetLabel(opened, labels[opened.screenId] ?? {})}
               onEdit={(text) => onQueue((q) => editRequest(q, bubble.index, text))}
               onRemove={() => remove(bubble.index)}
               onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
@@ -416,6 +418,7 @@ function Session({
             ref={setBar}
             manifest={manifest}
             requests={requests}
+            labels={labels}
             stale={stale}
             refused={refused}
             sending={sending}

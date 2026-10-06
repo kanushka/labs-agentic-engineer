@@ -50,6 +50,7 @@ import {
   pinsOnScreen,
   requestFor,
   submissionOf,
+  targetLabel,
   type FeedbackQueue,
 } from "@wso2/prototype-kit/feedback";
 import { FEEDBACK_PATH } from "../feedback.js";
@@ -93,7 +94,8 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
 
   // Annotate (preview only): the screen's element labels, the comment queue with its drafts, and their pins.
   const annotate = config.mode === "preview";
-  const [labels, setLabels] = useState<Record<string, string>>({});
+  // Each visited screen's element labels, as the frame last reported them, which comments are named by.
+  const [labels, setLabels] = useState<Readonly<Record<string, Readonly<Record<string, string>>>>>({});
   const [queue, setQueue] = useState<FeedbackQueue>(EMPTY_FEEDBACK_QUEUE);
   const onQueue = useCallback((update: QueueUpdate) => setQueue(update), []);
   const { requests } = queue;
@@ -107,7 +109,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   const [bar, setBar] = useState<HTMLElement | null>(null);
   const full = requests.length >= MAX_FEEDBACK_REQUESTS;
   const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
-  const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[k] ?? k);
+  const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[view.screenId]?.[k] ?? k);
 
   /** Keyboard focus back into the prototype, on the element a bubble was on (or the pin that opened it). */
   const focusBack = (key: string | undefined, requests?: readonly number[]) => {
@@ -200,7 +202,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             onPin={openPin}
             onGeometry={anchors.onGeometry}
             onEscape={escape}
-            onElements={(_screenId, elements) => setLabels(Object.fromEntries(elements.map((e) => [e.key, e.label])))}
+            onElements={(screenId, elements) => setLabels((all) => ({ ...all, [screenId]: Object.fromEntries(elements.map((e) => [e.key, e.label])) }))}
             onData={onData}
           />
         </PrototypeWindow>
@@ -224,7 +226,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             anchor={opened.elementIds.length > 0 ? anchors.anchor(opened.elementIds) : bar}
             number={bubble.index + 1}
             request={opened}
-            on={opened.elementIds.length > 0 ? labelsOf(opened.elementIds).join(", ") : "Whole screen"}
+            on={targetLabel(opened, labels[opened.screenId] ?? {})}
             onEdit={(text) => onQueue((q) => editRequest(q, bubble.index, text))}
             onRemove={() => remove(bubble.index)}
             onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
@@ -235,6 +237,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             ref={setBar}
             manifest={manifest}
             requests={requests}
+            labels={labels}
             stale={queue.hash !== null && queue.hash !== revision.hash}
             onCommentOnScreen={() => dispatch({ type: "COMMENT_ON_SCREEN" })}
             onOpen={open}

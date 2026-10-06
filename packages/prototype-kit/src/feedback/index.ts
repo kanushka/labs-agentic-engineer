@@ -50,6 +50,7 @@ export {
   pinsOnScreen,
   requestFor,
   submissionOf,
+  targetLabel,
   type FeedbackQueue,
 } from "./queue.js";
 
