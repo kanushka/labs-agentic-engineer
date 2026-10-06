@@ -102,16 +102,23 @@ export function QuestionBlock({
   q,
   answer,
   disabled,
+  errorId,
   onSelect,
   onNote,
 }: {
   q: AskQuestionInput;
   answer: QuestionAnswer;
   disabled: boolean;
+  /**
+   * The id of the text saying this question still owes an answer, while it
+   * does: its controls are marked invalid and point at that text.
+   */
+  errorId?: string | undefined;
   onSelect: (label: string) => void;
   onNote: (text: string) => void;
 }) {
   const note = useRef<HTMLTextAreaElement | null>(null);
+  const invalid = errorId ? { "aria-invalid": true, "aria-errormessage": errorId } : {};
   const multi = q.multiSelect === true;
   const freeOnly = q.options.length === 0;
   return (
@@ -128,6 +135,7 @@ export function QuestionBlock({
         <Box
           role={multi ? "group" : "radiogroup"}
           aria-label={q.question}
+          {...invalid}
           sx={{ display: "flex", flexDirection: "column", gap: 0.625 }}
         >
           {q.options.map((opt) => (
@@ -155,7 +163,7 @@ export function QuestionBlock({
         onChange={(e) => onNote(e.target.value)}
         inputRef={note}
         placeholder={freeOnly ? "Your answer…" : "Or answer in your own words…"}
-        inputProps={{ "aria-label": freeOnly ? q.question : `Your own answer to: ${q.question}` }}
+        inputProps={{ "aria-label": freeOnly ? q.question : `Your own answer to: ${q.question}`, ...invalid }}
         sx={{
           fontSize: "0.8125rem",
           border: 1,

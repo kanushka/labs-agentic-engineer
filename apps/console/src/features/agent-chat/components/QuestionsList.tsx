@@ -24,7 +24,8 @@ import type { QuestionAnswer } from "@aep/agent-stream";
 import { EmptyState } from "../../../components/EmptyState";
 import { answerableQuestionId, openQuestionId, type QuestionItem } from "../chatLog";
 import { applyNote, applySelection, isQuestionAnswered, normalizeAnswers } from "../questionCards";
-import { questionDraft, saveQuestionDraft } from "../questionDrafts";
+import { clearQuestionDraft, questionDraft, saveQuestionDraft } from "../questionDrafts";
+import { visuallyHidden } from "../../../components/visuallyHidden";
 import { chatStore, useProjectChat } from "../useProjectChat";
 import { QuestionBlock } from "./QuestionBlock";
 
@@ -45,15 +46,36 @@ export function QuestionsList({ projectName }: { projectName: string }) {
     );
   }
 
+  if (chat.status === "error") {
+    return (
+      <Centered>
+        <Box role="alert" sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, textAlign: "center" }}>
+          <Typography variant="body2" color="text.secondary">
+            {chat.error}
+          </Typography>
+          <Button size="small" variant="outlined" onClick={() => chatStore.retry(projectName)}>
+            Try again
+          </Button>
+        </Box>
+      </Centered>
+    );
+  }
+
   const openId = openQuestionId(items);
-  const open = items.find((i): i is QuestionItem => i.kind === "question" && i.id === openId);
-  if (open) {
+  // While the answers are on their way the store already counts them as
+  // given, so the batch is no longer open: it stays on show, frozen, until the
+  // send settles (accepted: the card closes; refused: it is open again).
+  const questionItems = items.filter((i): i is QuestionItem => i.kind === "question");
+  const shown =
+    questionItems.find((i) => i.id === openId) ??
+    (turn.phase === "starting" ? [...questionItems].reverse().find((i) => i.answers !== undefined) : undefined);
+  if (shown) {
     return (
       <QuestionsForm
-        key={open.id}
+        key={shown.id}
         projectName={projectName}
-        item={open}
-        answerable={answerableQuestionId(items) === open.id}
+        item={shown}
+        answerable={answerableQuestionId(items) === shown.id}
         sending={turn.phase === "starting"}
       />
     );
@@ -82,12 +104,15 @@ function QuestionsForm({
   /** An answer is on its way: freeze the form. */
   sending: boolean;
 }) {
-  const [draft, setDraftState] = useState<QuestionAnswer[]>(() => questionDraft(projectName, item.id));
+  const [draft, setDraftState] = useState<QuestionAnswer[]>(() => questionDraft(projectName, item.toolCallId));
   // Set once Send was pressed with questions unanswered: they are outlined
   // until answered.
   const [flagged, setFlagged] = useState(false);
+  // What the last Send found unanswered, said once to assistive tech.
+  const [announced, setAnnounced] = useState("");
   const blocks = useRef<(HTMLLIElement | null)[]>([]);
   const navigate = useNavigate();
+  const errorIdFor = (i: number) => `${item.id}-not-answered-${i}`;
 
   const { questions } = item;
   const answers = normalizeAnswers(questions, draft);
@@ -97,20 +122,25 @@ function QuestionsForm({
 
   const setDraft = (next: QuestionAnswer[]) => {
     setDraftState(next);
-    saveQuestionDraft(projectName, item.id, next);
+    saveQuestionDraft(projectName, item.toolCallId, next);
   };
 
   const send = () => {
     const gap = answered.indexOf(false);
     if (gap >= 0) {
+      const missing = answered.filter((a) => !a).length;
       setFlagged(true);
+      setAnnounced(`${missing} ${missing === 1 ? "question" : "questions"} not answered`);
       blocks.current[gap]?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    // Sent: the card has done its job and closes back to the overview. A
-    // send that failed keeps it open, answers and all.
+    setAnnounced("");
+    // Sent: the card has done its job and closes back to the overview, and the
+    // draft goes. A send that failed keeps it open, answers and all.
     void chatStore.answer(projectName, item.id, answers).then((sent) => {
-      if (sent) void navigate({ to: "/projects/$projectName", params: { projectName } });
+      if (!sent) return;
+      clearQuestionDraft(projectName, item.toolCallId);
+      void navigate({ to: "/projects/$projectName", params: { projectName } });
     });
   };
 
@@ -140,7 +170,7 @@ function QuestionsForm({
                   ref={(el: HTMLLIElement | null) => {
                     blocks.current[i] = el;
                   }}
-                  aria-invalid={gap || undefined}
+                  data-unanswered={gap || undefined}
                   sx={{
                     display: "flex",
                     gap: 1.25,
@@ -164,11 +194,16 @@ function QuestionsForm({
                       q={q}
                       answer={answers[i]!}
                       disabled={sending}
+                      errorId={gap ? errorIdFor(i) : undefined}
                       onSelect={(label) => setDraft(applySelection(questions, answers, i, label))}
                       onNote={(text) => setDraft(applyNote(questions, answers, i, text))}
                     />
                     {gap && (
-                      <Typography variant="caption" sx={{ color: "warning.main", display: "block", mt: 0.75 }}>
+                      <Typography
+                        id={errorIdFor(i)}
+                        variant="caption"
+                        sx={{ color: "warning.main", display: "block", mt: 0.75 }}
+                      >
                         Not answered
                       </Typography>
                     )}
@@ -192,9 +227,12 @@ function QuestionsForm({
           bgcolor: "background.paper",
         }}
       >
-        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }} aria-live="polite">
+        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
           {count} of {questions.length} answered
         </Typography>
+        <Box role="status" sx={visuallyHidden}>
+          {announced}
+        </Box>
         <Button variant="contained" size="small" disabled={!answerable || sending} loading={sending} onClick={send}>
           {one ? "Send answer" : "Send answers"}
         </Button>

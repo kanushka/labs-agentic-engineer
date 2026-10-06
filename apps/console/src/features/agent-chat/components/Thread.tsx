@@ -19,6 +19,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Box, Button, CircularProgress, Typography } from "@wso2/oxygen-ui";
 import { CircleAlert, Sparkles } from "@wso2/oxygen-ui-icons-react";
+import { visuallyHidden } from "../../../components/visuallyHidden";
 import { usePrototypeNotes } from "../../prototype/usePrototypeNotes";
 import { usePrototypeRequestsText } from "../../prototype/usePrototypeRequestsText";
 import { useSpecModel } from "../../spec/useSpecWorkspace";
@@ -34,17 +35,6 @@ import { QuestionsPointer } from "./QuestionsPointer";
 // a compact line for each file it wrote, and its questions as cards. After an
 // interview has written its feature, the walk and the next feature follow;
 // after a prototype turn has written a valid prototype, Open prototype.
-
-// Read out, not shown: who said a line is otherwise told only by its side and
-// its icon.
-const visuallyHidden = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-} as const;
 
 function AgentMark() {
   return (

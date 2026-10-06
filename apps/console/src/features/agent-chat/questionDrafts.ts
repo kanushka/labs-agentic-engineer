@@ -18,19 +18,25 @@
 
 import type { QuestionAnswer } from "@aep/agent-stream";
 
-// The answers given on the Questions card and not yet sent, per question
-// item, for as long as the page lives: closing the card and opening it again
-// finds them where they were; a reload starts over (ADR-0002). Each user's
-// own: nothing here is shared with the room.
+// The answers given on the Questions card and not yet sent, per batch, for
+// as long as the page lives: closing the card and opening it again finds them
+// where they were; a reload starts over, and a send that went through clears
+// them (ADR-0002). Keyed by the batch's tool call, which names one ask across
+// conversations, not by its place in the log: a replaced conversation can put
+// another batch at the same place. Each user's own: nothing here is shared.
 
 const drafts = new Map<string, QuestionAnswer[]>();
 
-const key = (projectName: string, itemId: string) => `${projectName}\u0000${itemId}`;
+const key = (projectName: string, toolCallId: string) => `${projectName}\u0000${toolCallId}`;
 
-export function questionDraft(projectName: string, itemId: string): QuestionAnswer[] {
-  return drafts.get(key(projectName, itemId)) ?? [];
+export function questionDraft(projectName: string, toolCallId: string): QuestionAnswer[] {
+  return drafts.get(key(projectName, toolCallId)) ?? [];
 }
 
-export function saveQuestionDraft(projectName: string, itemId: string, answers: QuestionAnswer[]): void {
-  drafts.set(key(projectName, itemId), answers);
+export function saveQuestionDraft(projectName: string, toolCallId: string, answers: QuestionAnswer[]): void {
+  drafts.set(key(projectName, toolCallId), answers);
+}
+
+export function clearQuestionDraft(projectName: string, toolCallId: string): void {
+  drafts.delete(key(projectName, toolCallId));
 }

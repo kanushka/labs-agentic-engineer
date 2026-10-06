@@ -30,7 +30,8 @@ import type { ProjectChat } from "../chatStore";
 
 let chat: ProjectChat;
 const answer = vi.fn(async () => true);
-vi.mock("../useProjectChat", () => ({ useProjectChat: () => chat, chatStore: { answer } }));
+const retry = vi.fn();
+vi.mock("../useProjectChat", () => ({ useProjectChat: () => chat, chatStore: { answer, retry } }));
 const navigate = vi.fn();
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
@@ -49,10 +50,17 @@ const WHO: AskQuestionInput = { question: "Who approves a claim?", options: [{ l
 const NOTIFY: AskQuestionInput = { question: "How are people notified?", options: [{ label: "In-app only" }, { label: "Email" }] };
 
 let n = 0;
-function show(items: ChatItem[], phase: "idle" | "starting" | "running" = "idle") {
-  n += 1;
+function show(
+  items: ChatItem[],
+  phase: "idle" | "starting" | "running" = "idle",
+  project = { fresh: true },
+  status: Partial<Pick<ProjectChat, "status" | "error">> = {},
+) {
+  if (project.fresh) n += 1;
   chat = {
     status: "ready",
+    error: null,
+    ...status,
     items,
     turn: phase === "idle" ? { phase } : phase === "starting" ? { phase, instruction: "x" } : { phase, turnId: "t2" },
   } as ProjectChat;
@@ -124,10 +132,67 @@ describe("QuestionsList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
     expect(answer).not.toHaveBeenCalled();
     const [first, second] = screen.getAllByRole("listitem");
-    expect(first!.getAttribute("aria-invalid")).toBeNull();
-    expect(second!.getAttribute("aria-invalid")).toBe("true");
+    expect(first!.hasAttribute("data-unanswered")).toBe(false);
     expect(second!.textContent).toContain("Not answered");
     expect(second!.scrollIntoView).toHaveBeenCalled();
+    // The flagged question's controls say so, and point at why.
+    const group = screen.getByRole("radiogroup", { name: NOTIFY.question });
+    expect(group.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(group.getAttribute("aria-errormessage")!)?.textContent).toBe("Not answered");
+    expect(screen.getByRole("textbox", { name: `Your own answer to: ${NOTIFY.question}` }).getAttribute("aria-invalid")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("radiogroup", { name: WHO.question }).hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  it("says once what a Send found unanswered, not each pick as it counts", () => {
+    show([batch()]);
+    const status = screen.getByRole("status");
+    fireEvent.click(screen.getByRole("radio", { name: /Finance/ }));
+    expect(status.textContent).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    expect(status.textContent).toBe("1 question not answered");
+    expect(screen.getByText("1 of 2 answered").getAttribute("aria-live")).toBeNull();
+  });
+
+  it("stays on show, frozen, while the answers are on their way", () => {
+    show([batch({ answers: [{ selected: ["Finance"] }, { selected: ["Email"] }] })], "starting");
+    expect(screen.getByRole("heading", { name: "Questions for you" })).toBeTruthy();
+    expect(screen.queryByText(/No questions waiting/)).toBeNull();
+    expect((screen.getByRole("button", { name: "Send answers" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("radio", { name: /Finance/ }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("keeps a draft to its batch, not to a place in the log another batch can take", () => {
+    show([batch()]);
+    fireEvent.click(screen.getByRole("radio", { name: /Finance/ }));
+    cleanup();
+    // The same item id, after a replaced conversation, is another ask.
+    show([batch({ toolCallId: "c2" })], "idle", { fresh: false });
+    expect(screen.getByRole("radio", { name: /Finance/ }).getAttribute("aria-checked")).toBe("false");
+    cleanup();
+    // The same ask, read back from the history under another id, keeps it.
+    show([batch({ id: "h3" })], "idle", { fresh: false });
+    expect(screen.getByRole("radio", { name: /Finance/ }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("drops the draft once the answers went", async () => {
+    show([batch()]);
+    fireEvent.click(screen.getByRole("radio", { name: /Finance/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /In-app only/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
+    cleanup();
+    show([batch()], "idle", { fresh: false });
+    expect(screen.getByText("0 of 2 answered")).toBeTruthy();
+  });
+
+  it("says why it cannot show the questions when the conversation did not load, and retries", () => {
+    show([], "idle", { fresh: true }, { status: "error", error: "Couldn't read the conversation." });
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't read the conversation.");
+    expect(screen.queryByText(/No questions waiting/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledWith(`acme-${n}`);
   });
 
   it("can be answered while the batch arrives, and sent once it is complete", () => {
