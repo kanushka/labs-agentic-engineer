@@ -257,7 +257,9 @@ If `aep-api` then fails to reach its database, re-initialise it (this discards
 the AEP database):
 
 ```bash
-kubectl -n wso2-aep delete statefulset postgres --cascade=orphan
+# foreground, so postgres-0 is gone before the PVC: pvc-protection holds a
+# claim that a running pod still mounts, and the delete below would hang
+kubectl -n wso2-aep delete statefulset postgres --cascade=foreground
 kubectl -n wso2-aep delete pvc data-postgres-0
 ```
 

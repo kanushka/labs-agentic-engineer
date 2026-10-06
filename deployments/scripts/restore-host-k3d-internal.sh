@@ -94,8 +94,10 @@ if [ "$MODE" = "check" ]; then
     # it was created.
     if kubectl -n kube-system get cm coredns -o jsonpath='{.data.NodeHosts}' 2>/dev/null \
         | grep -q 'host\.k3d\.internal'; then
+        nodehosts_carries_name=1
         echo "   NodeHosts:        carries the name (k3d's own entry is intact)"
     else
+        nodehosts_carries_name=0
         echo "   NodeHosts:        dropped (expected after a node restart)"
     fi
     if [ "$current" = "$DESIRED" ]; then
@@ -103,6 +105,13 @@ if [ "$MODE" = "check" ]; then
         exit 0
     elif [ -n "$current" ]; then
         echo "   coredns-custom:   ⚠️  ${CM_KEY} present but stale (gateway moved?)"
+        exit 1
+    elif [ "$nodehosts_carries_name" = 1 ]; then
+        # Resolving today, on k3d's own entry — so the rewrites work and nothing
+        # is broken yet. Still reported as a finding: that entry goes at the
+        # first node restart, and this is the window in which to pre-empt it.
+        echo "   coredns-custom:   ❌ ${CM_KEY} absent — the name resolves from NodeHosts"
+        echo "                        today, and goes with it at the next node restart"
         exit 1
     else
         echo "   coredns-custom:   ❌ ${CM_KEY} absent — rewrites resolve to nothing"
