@@ -41,9 +41,10 @@ export function watchGeometry(
   report: (boxes: Record<string, FrameBox>) => void,
 ): { refresh: () => void; stop: () => void } {
   let last = "";
-  let pending = false;
+  // The animation frame a measure waits for; null when none is pending.
+  let pending: number | null = null;
   const measure = () => {
-    pending = false;
+    pending = null;
     const boxes: Record<string, FrameBox> = {};
     for (const key of new Set(keys())) {
       const box = boxOf(key);
@@ -55,9 +56,8 @@ export function watchGeometry(
     report(boxes);
   };
   const schedule = () => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(measure);
+    if (pending !== null) return;
+    pending = requestAnimationFrame(measure);
   };
   // Capture: a scroll inside any scroller of the prototype moves its elements as much as the page's.
   window.addEventListener("scroll", schedule, { capture: true, passive: true });
@@ -69,6 +69,8 @@ export function watchGeometry(
   return {
     refresh: schedule,
     stop: () => {
+      if (pending !== null) cancelAnimationFrame(pending);
+      pending = null;
       window.removeEventListener("scroll", schedule, { capture: true });
       window.removeEventListener("resize", schedule);
       resized.disconnect();

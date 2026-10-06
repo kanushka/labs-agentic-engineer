@@ -96,9 +96,10 @@ function drawnElements(): FrameElement[] {
 /** Reports the drawn elements whenever they change, at most once a frame. */
 function watchElements(screenId: () => string | undefined): { report: () => void; stop: () => void } {
   let last = "";
-  let pending = false;
+  // The animation frame a report waits for; null when none is pending.
+  let pending: number | null = null;
   const report = () => {
-    pending = false;
+    pending = null;
     const screen = screenId();
     if (screen === undefined) return;
     const elements = drawnElements();
@@ -108,12 +109,17 @@ function watchElements(screenId: () => string | undefined): { report: () => void
     post({ type: "proto:rendered", screenId: screen, elements });
   };
   const observer = new MutationObserver(() => {
-    if (pending) return;
-    pending = true;
-    requestAnimationFrame(report);
+    if (pending === null) pending = requestAnimationFrame(report);
   });
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-proto-key", "data-proto-label"] });
-  return { report, stop: () => observer.disconnect() };
+  return {
+    report,
+    stop: () => {
+      observer.disconnect();
+      if (pending !== null) cancelAnimationFrame(pending);
+      pending = null;
+    },
+  };
 }
 
 function Frame({ theme }: { theme: PrototypeTheme }) {
@@ -181,7 +187,8 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
 
   // A screen change the DOM does not show (the same elements) still reports.
   useEffect(() => {
-    requestAnimationFrame(() => watcher.current?.report());
+    const frame = requestAnimationFrame(() => watcher.current?.report());
+    return () => cancelAnimationFrame(frame);
   }, [view?.screenId, loaded]);
 
   // Another selection or other pins: measure what the host now anchors to.
