@@ -37,8 +37,10 @@ export interface KitView {
   screenId: string;
   /** Selected element ids, in selection order (Annotate). */
   selectedKeys: readonly string[];
-  /** Queued requests' numbers per element id on this screen (Annotate). */
+  /** Queued comments' numbers per element id on this screen, drawn as pins in both modes. */
   pins: Readonly<Record<string, readonly number[]>>;
+  /** The element ids on this screen that hold a draft comment, drawn as a hollow pin; none when absent. */
+  drafts?: readonly string[] | undefined;
 }
 
 export interface KitContextValue {
@@ -50,6 +52,8 @@ export interface KitContextValue {
   go: (screenId: string, params?: Record<string, string>) => void;
   /** Toggle an element's selection (Annotate); `additive` when the click held Shift (add to the selection rather than start a new one). */
   toggle: (elementKey: string, additive: boolean) => void;
+  /** A pin on `elementKey` was clicked (either mode): the queued comments' numbers it shows, none for the draft pin. */
+  openPin: (elementKey: string, requests: readonly number[]) => void;
   store: DataStore;
 }
 

@@ -17,8 +17,8 @@
  */
 
 /**
- * The kit's own styles: the Annotate layer (outline, label chip, pins) and the
- * scene's pointer rule. Themes restyle them through the `--proto-*` custom
+ * The kit's own styles: the Annotate layer (outline, label chip), the comment
+ * pins (a hollow one for a draft) and the scene's pointer rule. Themes restyle them through the `--proto-*` custom
  * properties. Inline, because the frame loads nothing.
  */
 
@@ -37,7 +37,8 @@ export const KIT_CSS = `
 .proto-corner-right{right:-6px}
 .proto-chip{font:600 11px/18px system-ui,sans-serif;padding:0 6px;border-radius:9px;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
 .proto-label{background:var(--proto-select,#2563eb);color:#fff}
-.proto-pin{background:var(--proto-pin,#f59e0b);color:#111;min-width:12px;text-align:center}
-[data-proto-root][data-proto-pins]{position:relative}
-[data-proto-root][data-proto-pins]::after{content:attr(data-proto-pins);position:absolute;top:2px;right:2px;font:600 11px/18px system-ui,sans-serif;padding:0 6px;border-radius:9px;background:var(--proto-pin,#f59e0b);color:#111;pointer-events:none;z-index:2}
+.proto-pin{appearance:none;margin:0;border:1.5px solid var(--proto-pin,#f59e0b);background:var(--proto-pin,#f59e0b);color:#111;min-width:12px;text-align:center;pointer-events:auto;cursor:pointer}
+.proto-pin:focus-visible{outline:2px solid var(--proto-select,#2563eb);outline-offset:1px}
+.proto-pin-draft{background:var(--proto-pin-draft-bg,Canvas);color:var(--proto-pin-draft-fg,CanvasText);border-style:dashed}
+.proto-root-pins{position:fixed;display:flex;gap:4px;z-index:3;pointer-events:none;transform:translateX(-100%)}
 `;

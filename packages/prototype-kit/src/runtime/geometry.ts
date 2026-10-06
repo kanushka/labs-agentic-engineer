@@ -17,11 +17,12 @@
  */
 
 /**
- * Where the elements the host anchors its own UI to are drawn, inside the
- * frame: the host cannot measure the sandboxed document, so the frame reports
- * the boxes (`proto:geometry`) of the elements the view names — the selected
- * and the pinned ones — and re-reports them whenever a scroll, a resize or a
- * redraw moves them, at most once a frame and only when they changed.
+ * Where elements are drawn, measured inside the frame's document, and kept
+ * current: whenever a scroll, a resize or a redraw moves them, at most once a
+ * frame and only when they changed. The frame reports the boxes of the
+ * elements the host anchors its own UI to (`proto:geometry`: the selected,
+ * pinned and drafted ones), since the host cannot measure the sandboxed
+ * document; the kit places the pins of elements it cannot wrap by them.
  */
 
 import type { FrameBox } from "../host/bridge.js";

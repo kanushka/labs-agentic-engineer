@@ -21,15 +21,17 @@
  * inside a sandboxed frame, never in the host's own page. The host tells the
  * frame what to run (`load`), what to draw (`view`) and when to start the
  * mock data over (`reset`); the frame answers with navigations, selection
- * toggles, the elements a screen draws, where the elements a host anchors to
+ * toggles, pin clicks, the elements a screen draws, where the elements a host anchors to
  * are (`onGeometry`, for `useFrameAnchors`), data snapshots, Escape and errors.
+ * Through its `ref` a host puts keyboard focus back on an element (or its
+ * pin) when its own UI by the element closes.
  * Every message's source and shape is checked. Until the app first draws,
  * a loading cover sits over the frame, so an early click is not silently
  * lost; a frame that neither draws nor reports an error within
  * `PROTOTYPE_START_TIMEOUT_MS` says it did not start. Plain React, no theme.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import type { DataSnapshot } from "../data.js";
 import type { PrototypeManifest } from "../manifest/types.js";
 import { parseFromFrameMessage, type FrameBox, type FrameColorScheme, type FrameElement, type FrameView, type ToFrameMessage } from "./bridge.js";
@@ -53,6 +55,8 @@ export interface PrototypeFrameProps {
   onNavigate: (screenId: string) => void;
   /** A click in Annotate on an element; `additive` when it held Shift (add to the selection rather than start a new one). */
   onToggle: (elementKey: string, additive: boolean) => void;
+  /** A pin was clicked, in either mode: its element and the queued comments' numbers it shows (`[]`: the element's draft pin). */
+  onPin?: ((elementKey: string, requests: number[]) => void) | undefined;
   onEscape: () => void;
   onElements: (screenId: string, elements: FrameElement[]) => void;
   onData?: ((data: DataSnapshot) => void) | undefined;
@@ -66,6 +70,16 @@ export interface PrototypeFrameProps {
   loading?: ReactNode;
   /** The host's resolved colour scheme, for the theme to draw the prototype in; the system's when absent. */
   colorScheme?: FrameColorScheme | undefined;
+  ref?: Ref<PrototypeFrameHandle> | undefined;
+}
+
+/** What a host can ask of the running frame. */
+export interface PrototypeFrameHandle {
+  /**
+   * Move keyboard focus into the frame, onto the element `key`: onto its pin
+   * for `requests` when given (`[]`: its draft pin), as `onPin` named it.
+   */
+  focusElement: (key: string, requests?: readonly number[]) => void;
 }
 
 /** How long the frame may take to draw its app (or report why not) before the host stops waiting. */
@@ -117,6 +131,10 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
           if (message.box) reportBoxes({ ...boxes.current, [message.elementKey]: message.box });
           p.onToggle(message.elementKey, message.additive === true);
           break;
+        case "proto:pin":
+          reportBoxes({ ...boxes.current, [message.key]: message.box });
+          p.onPin?.(message.key, message.requests);
+          break;
         case "proto:geometry":
           reportBoxes(message.boxes);
           break;
@@ -144,6 +162,17 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
     // The frame's origin is opaque, so no target origin can be named; what is sent is the prototype and the view, no secret.
     frame.current?.contentWindow?.postMessage(message, "*");
   };
+
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      focusElement: (key, requests) => {
+        frame.current?.focus();
+        post({ type: "proto:focus", key, ...(requests !== undefined ? { requests: [...requests] } : {}) });
+      },
+    }),
+    [],
+  );
 
   // (Re)load the app whenever the frame becomes ready (again) and whenever the prototype changes.
   const loadedVersion = useRef<string | null>(null);

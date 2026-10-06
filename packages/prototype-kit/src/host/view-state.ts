@@ -160,7 +160,7 @@ function requestOf(s: PrototypeViewState): PrototypeViewRequest {
   return { screen: s.screenId, role: s.roleId, state: s.stateId, flow: s.flowId ?? undefined, mode: s.mode };
 }
 
-/** The view as the frame draws it, with the request pins for the current screen. */
-export function frameViewOf(s: PrototypeViewState, pins: Record<string, number[]> = {}): FrameView {
-  return { mode: s.mode, roleId: s.roleId, stateId: s.stateId, screenId: s.screenId, selectedKeys: s.selectedKeys, pins };
+/** The view as the frame draws it, with the current screen's comment pins and the elements holding a draft. */
+export function frameViewOf(s: PrototypeViewState, pins: Record<string, number[]> = {}, drafts: string[] = []): FrameView {
+  return { mode: s.mode, roleId: s.roleId, stateId: s.stateId, screenId: s.screenId, selectedKeys: s.selectedKeys, pins, ...(drafts.length > 0 ? { drafts } : {}) };
 }

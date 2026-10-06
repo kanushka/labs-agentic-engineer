@@ -32,6 +32,7 @@ import type { PrototypeTheme, ThemeRegistry } from "../theme/contract.js";
 import { ThemeContext } from "../theme/context.js";
 import { KitContext, type KitContextValue, type KitView } from "./context.js";
 import { KIT_CSS } from "./kit-css.js";
+import { RootPins } from "./pins.js";
 import { createDataStore } from "./store.js";
 
 export interface KitRootProps {
@@ -45,6 +46,8 @@ export interface KitRootProps {
   onNavigate: (screenId: string) => void;
   /** A click selected or deselected an element (Annotate only); `additive` when it held Shift. */
   onToggle: (elementKey: string, additive: boolean) => void;
+  /** A pin was clicked (either mode): its element and the queued comments' numbers it shows, none for a draft pin. */
+  onPin?: ((elementKey: string, requests: number[]) => void) | undefined;
   /** The mock data changed. */
   onData?: ((snapshot: DataSnapshot) => void) | undefined;
   /** A screen failed to render, or the app asked for a screen that does not exist. */
@@ -59,7 +62,7 @@ function Passthrough({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function KitRoot({ app, manifest, theme, view, initialData, onNavigate, onToggle, onData, onError, colorScheme }: KitRootProps) {
+export function KitRoot({ app, manifest, theme, view, initialData, onNavigate, onToggle, onPin, onData, onError, colorScheme }: KitRootProps) {
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
   const [store] = useState(() => createDataStore(app.data, initialData, (snapshot) => onDataRef.current?.(snapshot)));
@@ -75,6 +78,7 @@ export function KitRoot({ app, manifest, theme, view, initialData, onNavigate, o
       toggle: (key, additive) => {
         if (view.mode === "annotate") onToggle(key, additive);
       },
+      openPin: (key, requests) => onPin?.(key, [...requests]),
       go: (screenId, next = {}) => {
         if (view.mode === "annotate") return;
         if (!manifest.screens.some((s) => s.id === screenId)) {
@@ -85,7 +89,7 @@ export function KitRoot({ app, manifest, theme, view, initialData, onNavigate, o
         onNavigate(screenId);
       },
     }),
-    [manifest, view, params, store, onNavigate, onToggle, onError],
+    [manifest, view, params, store, onNavigate, onToggle, onPin, onError],
   );
 
   const Screen = app.screens[view.screenId];
@@ -103,6 +107,7 @@ export function KitRoot({ app, manifest, theme, view, initialData, onNavigate, o
             ) : (
               <theme.registry.Alert tone="warning" title="Screen not drawn" text={`prototype.tsx has no screen ${JSON.stringify(view.screenId)} although prototype.json lists it.`} />
             )}
+            <RootPins />
           </div>
         </Provider>
       </KitContext.Provider>

@@ -20,7 +20,8 @@
  * The frame runtime's entry, bundled per theme by `buildThemeRuntimes`: the
  * script inside a host's sandboxed prototype frame. It waits for `load`, runs
  * the prototype, draws the view it is sent, and reports back what the screen
- * holds, what the reviewer pressed, the mock data and anything that failed.
+ * holds, what the reviewer pressed (an element, a pin), the mock data and
+ * anything that failed. Asked, it puts focus back on an element or its pin.
  */
 
 import { Component, useEffect, useRef, useState, type ReactNode } from "react";
@@ -34,11 +35,19 @@ import { moduleFactorySource } from "../runtime/module-source.js";
 import { runPrototypeModule, type ModuleFactory } from "../runtime/modules.js";
 import { transpileSource } from "../source/transpile.js";
 import type { PrototypeTheme } from "../theme/contract.js";
-import { boxOf, watchGeometry } from "./frame-geometry.js";
+import { boxOf, watchGeometry } from "../runtime/geometry.js";
 
 function post(message: FromFrameMessage) {
   // The parent is the host page; the frame's own origin is opaque, so no target origin can be named. Nothing sent is a secret.
   window.parent.postMessage(message, "*");
+}
+
+/** Focus the pin `proto:pin` named (`requests`; `[]`: the draft pin) on `key`, else the element itself when it takes focus (Annotate). */
+function focusElement(key: string, requests: readonly number[] | undefined) {
+  const of = CSS.escape(key);
+  const pin = requests && document.querySelector(`[data-proto-pin-for="${of}"][data-proto-pin="${requests.length > 0 ? String(requests[0]) : "draft"}"]`);
+  const target = pin || document.querySelector(`[data-proto-key="${of}"]`);
+  if (target instanceof HTMLElement) target.focus();
 }
 
 /** Whether the key is the prototype's own: a control inside it closed a picker or an overlay with it, so the host must not act on it. */
@@ -115,9 +124,9 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
   // Nothing has drawn until an app is loaded: a view sent before it must not report a draw (that clears the host's loading cover).
   screen.current = loaded ? view?.screenId : undefined;
   const watcher = useRef<ReturnType<typeof watchElements> | null>(null);
-  // The elements the host anchors its UI to: the selected and the pinned ones.
+  // The elements the host anchors its UI to: the selected, the pinned and the drafted ones.
   const anchored = useRef<readonly string[]>([]);
-  anchored.current = loaded && view ? [...view.selectedKeys, ...Object.keys(view.pins)] : [];
+  anchored.current = loaded && view ? [...view.selectedKeys, ...Object.keys(view.pins), ...(view.drafts ?? [])] : [];
   const geometry = useRef<ReturnType<typeof watchGeometry> | null>(null);
 
   useEffect(() => {
@@ -137,6 +146,10 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
       if (event.source !== window.parent) return;
       const message = parseToFrameMessage(event.data);
       if (!message) return;
+      if (message.type === "proto:focus") {
+        focusElement(message.key, message.requests);
+        return;
+      }
       if (message.type === "proto:reset") {
         setLoaded((l) => l && { ...l, initialData: undefined, generation: ++generation });
         return;
@@ -186,6 +199,10 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
         initialData={loaded.initialData}
         onNavigate={(screenId) => post({ type: "proto:navigate", screenId })}
         onToggle={(elementKey, additive) => post({ type: "proto:toggle", elementKey, box: boxOf(elementKey), additive })}
+        onPin={(key, requests) => {
+          const box = boxOf(key);
+          if (box) post({ type: "proto:pin", key, requests, box });
+        }}
         onData={(data) => post({ type: "proto:data", data })}
         onError={(message) => post({ type: "proto:error", message })}
         colorScheme={view.colorScheme}
