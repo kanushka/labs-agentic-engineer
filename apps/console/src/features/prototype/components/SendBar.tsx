@@ -1,0 +1,183 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { forwardRef, useId, useState } from "react";
+import { Alert, Box, Button, ButtonBase, Divider, IconButton, Paper, Tooltip, Typography } from "@wso2/oxygen-ui";
+import { ChevronDown, ChevronUp, MessageSquarePlus, Send, Trash2 } from "@wso2/oxygen-ui-icons-react";
+import type { PrototypeManifest } from "@wso2/prototype-kit/host";
+import { MAX_FEEDBACK_REQUESTS, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
+
+export interface SendBarProps {
+  manifest: PrototypeManifest;
+  requests: readonly FeedbackRequest[];
+  /** The queue was started on a revision that has since been replaced. */
+  stale: boolean;
+  /** Why the last Send did not go; the queue is kept. */
+  refused: string | null;
+  sending: boolean;
+  onSend: () => void;
+  onCommentOnScreen: () => void;
+  /** Go to where the `index`th comment was made and open it. */
+  onOpen: (index: number) => void;
+  onRemove: (index: number) => void;
+}
+
+function nameOf(list: readonly { id: string; name: string }[], id: string): string {
+  return list.find((x) => x.id === id)?.name ?? id;
+}
+
+/** Where a comment was made, as the reviewer reads it: screen · role · state · its elements (or the whole screen). */
+function placeOf(manifest: PrototypeManifest, r: FeedbackRequest): string {
+  const on = r.elementIds.length > 0 ? r.elementIds.join(", ") : "Whole screen";
+  return [nameOf(manifest.screens, r.screenId), nameOf(manifest.roles, r.roleId), nameOf(manifest.states, r.stateId), on].join(" · ");
+}
+
+function count(n: number): string {
+  return `${n} ${n === 1 ? "comment" : "comments"}`;
+}
+
+/**
+ * The review's floating send bar (#885), in place of a side panel so the
+ * prototype has the full width: the comment count, Comment on screen (a
+ * whole-screen comment, its bubble anchored here), Send to agent, and a list
+ * of every queued comment across screens, roles and states, whose entries go
+ * where the comment was made and open it. The ref is the bar itself, which a
+ * whole-screen comment's bubble anchors to.
+ */
+export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar(
+  { manifest, requests, stale, refused, sending, onSend, onCommentOnScreen, onOpen, onRemove },
+  ref,
+) {
+  const [expanded, setExpanded] = useState(false);
+  const full = requests.length >= MAX_FEEDBACK_REQUESTS;
+  const listId = useId();
+  return (
+    <Paper
+      ref={ref}
+      component="section"
+      aria-label="Comments"
+      sx={{
+        width: "min(560px, calc(100% - 32px))",
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: 2,
+        boxShadow: "var(--aep-shell-card-shadow)",
+        overflow: "hidden",
+      }}
+    >
+      {expanded && (
+        <>
+          <Box
+            component="ol"
+            id={listId}
+            aria-label="Queued comments"
+            sx={{ m: 0, p: 1, listStyle: "none", maxHeight: "40vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 0.5 }}
+          >
+            {requests.length === 0 && (
+              <Typography component="li" variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                No comments yet. Switch to Annotate and click an element, or comment on the whole screen.
+              </Typography>
+            )}
+            {requests.map((r, i) => (
+              <Box component="li" key={i} sx={{ display: "flex", alignItems: "flex-start", gap: 0.5 }}>
+                <ButtonBase
+                  onClick={() => onOpen(i)}
+                  sx={{ flex: 1, minWidth: 0, display: "flex", gap: 1, alignItems: "flex-start", justifyContent: "flex-start", textAlign: "left", borderRadius: 1.5, p: 1, "&:hover": { bgcolor: "action.hover" } }}
+                >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      flexShrink: 0,
+                      width: 22,
+                      height: 22,
+                      borderRadius: "50%",
+                      bgcolor: "primary.main",
+                      color: "primary.contrastText",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    {i + 1}
+                  </Box>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2" sx={{ overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                      {r.text}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                      {placeOf(manifest, r)}
+                    </Typography>
+                  </Box>
+                </ButtonBase>
+                <Tooltip title="Remove">
+                  <IconButton size="small" aria-label={`Remove comment ${i + 1}`} onClick={() => onRemove(i)} sx={{ mt: 0.5 }}>
+                    <Trash2 size={16} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            ))}
+          </Box>
+          <Divider />
+        </>
+      )}
+      {stale && requests.length > 0 && (
+        <Alert severity="warning" role="note" sx={{ borderRadius: 0 }}>
+          Queued on an earlier version of the prototype.
+        </Alert>
+      )}
+      {full && (
+        <Alert severity="info" role="note" sx={{ borderRadius: 0 }}>
+          {`The queue is full (${MAX_FEEDBACK_REQUESTS} comments): send it or remove one to add another.`}
+        </Alert>
+      )}
+      {refused && (
+        <Alert severity="warning" role="alert" sx={{ borderRadius: 0 }}>
+          {refused}
+        </Alert>
+      )}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.75 }}>
+        <Button
+          size="small"
+          color="inherit"
+          aria-expanded={expanded}
+          aria-controls={expanded ? listId : undefined}
+          endIcon={expanded ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          onClick={() => setExpanded((e) => !e)}
+          sx={{ textTransform: "none", fontWeight: 600 }}
+        >
+          {count(requests.length)}
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" startIcon={<MessageSquarePlus size={16} />} onClick={onCommentOnScreen} disabled={full} sx={{ textTransform: "none" }}>
+          Comment on screen
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          startIcon={<Send size={16} />}
+          onClick={onSend}
+          disabled={requests.length === 0 || sending}
+          sx={{ textTransform: "none" }}
+        >
+          Send to agent
+        </Button>
+      </Box>
+    </Paper>
+  );
+});

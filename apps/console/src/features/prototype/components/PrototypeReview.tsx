@@ -19,23 +19,18 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Alert, Box, Chip, CircularProgress, Dialog, IconButton, Tooltip, Typography, useColorScheme } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
-import {
-  PrototypeFrame,
-  PrototypeWindow,
-  frameViewOf,
-  initialPrototypeView,
-  reducePrototypeView,
-  useFrameAnchors,
-  type PrototypeViewEvent,
-} from "@wso2/prototype-kit/host";
+import { PrototypeFrame, PrototypeWindow, frameViewOf, useFrameAnchors } from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
 import { MAX_FEEDBACK_REQUESTS, pinsOnScreen, requestFor } from "@wso2/prototype-kit/feedback";
 import { dequeue, enqueue, feedbackBatch, type ReviewQueue } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
+import { initialReview, reduceReview, type ReviewEvent } from "../model/review";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
+import { useReviewKeys } from "../useReviewKeys";
 import { CommentBubble } from "./CommentBubble";
-import { FeedbackPanel } from "./FeedbackPanel";
+import { QueuedCommentBubble } from "./QueuedCommentBubble";
 import { ReviewToolbar } from "./ReviewToolbar";
+import { SendBar } from "./SendBar";
 
 export interface PrototypeReviewProps {
   prototype: AppPrototype;
@@ -117,6 +112,10 @@ const WINDOW_LOOK = {
   "--proto-window-address-fg": "var(--oxygen-palette-text-secondary)",
   fontSize: "0.8125rem",
 } as const;
+
+function screenName(manifest: PrototypeFiles["manifest"], screenId: string): string {
+  return manifest.screens.find((x) => x.id === screenId)?.name ?? screenId;
+}
 
 function Waiting({ children }: { children: ReactNode }) {
   return <Box sx={{ flex: 1, display: "grid", placeItems: "center", p: 4 }}>{children}</Box>;
@@ -202,16 +201,16 @@ function Session({
   useEffect(() => {
     onSeen(hash);
   }, [hash, onSeen]);
-  const [state, setState] = useState(() => ({ manifest, view: initialPrototypeView(manifest) }));
+  const [state, setState] = useState(() => ({ manifest, review: initialReview(manifest) }));
   // A revision that lands while the review is open repairs the view in the same render, as the kit CLI's host does.
   let current = state;
   if (state.manifest !== manifest) {
-    current = { manifest, view: reducePrototypeView(manifest, state.view, { type: "MANIFEST_REPLACED", manifest }) };
+    current = { manifest, review: reduceReview(manifest, state.review, { type: "MANIFEST_REPLACED", manifest }) };
     setState(current);
   }
-  const { view } = current;
+  const { view, bubble } = current.review;
   const dispatch = useCallback(
-    (event: PrototypeViewEvent) => setState((s) => ({ ...s, view: reducePrototypeView(s.manifest, s.view, event) })),
+    (event: ReviewEvent) => setState((s) => ({ ...s, review: reduceReview(s.manifest, s.review, event) })),
     [],
   );
 
@@ -222,17 +221,40 @@ function Session({
   const [sending, setSending] = useState(false);
   const pins = useMemo(() => pinsOnScreen(requests, view.screenId), [requests, view.screenId]);
   const frameView = useMemo(() => frameViewOf(view, pins), [view, pins]);
-  const annotating = view.mode === "annotate";
   const anchors = useFrameAnchors();
-  // An Annotate click opens the comment bubble on what it selected; closing the bubble lets the selection go.
-  const commenting = annotating && view.selectedKeys.length > 0;
+  // The send bar, which a whole-screen comment's bubble points at.
+  const [bar, setBar] = useState<HTMLDivElement | null>(null);
+  const full = requests.length >= MAX_FEEDBACK_REQUESTS;
+  const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
+
+  /** Escape, wherever it came from: the bubble, then the selection, then (false) the review. */
+  const escape = () => {
+    if (bubble) dispatch({ type: "CLOSE_BUBBLE" });
+    else if (view.selectedKeys.length > 0) dispatch({ type: "CLEAR_SELECTION" });
+    else return false;
+    return true;
+  };
+  useReviewKeys({
+    onEscape: escape,
+    onToggleAnnotate: () => dispatch({ type: view.mode === "annotate" ? "EXIT_ANNOTATE" : "ENTER_ANNOTATE" }),
+  });
 
   const add = (text: string) => {
     onQueue(enqueue(queue, hash, requestFor(view, text)));
     setRefused(null);
     dispatch({ type: "CLEAR_SELECTION" });
   };
-  const remove = (index: number) => queue && onQueue(dequeue(queue, index));
+  const remove = (index: number) => {
+    if (!queue) return;
+    // An open comment's number would shift under it.
+    if (bubble?.on === "comment") dispatch({ type: "CLOSE_BUBBLE" });
+    onQueue(dequeue(queue, index));
+  };
+  const open = (index: number) => {
+    const request = requests[index];
+    if (request) dispatch({ type: "OPEN_COMMENT", index, request });
+  };
+  const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[k] ?? k);
   const send = async () => {
     if (!queue || queue.requests.length === 0) return;
     if (!ready) {
@@ -256,8 +278,9 @@ function Session({
       <Header titleId={titleId} title={`Prototype · ${manifest.name}`} revising={revising} onClose={onClose}>
         <ReviewToolbar manifest={manifest} view={view} dispatch={dispatch} onReset={() => setResetToken((t) => t + 1)} />
       </Header>
-      <Box sx={{ flex: 1, minHeight: 0, display: "flex", bgcolor: "background.default" }}>
-        <Box sx={{ flex: 1, minWidth: 0, display: "flex", p: 2, ...WINDOW_LOOK }}>
+      <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex", bgcolor: "background.default" }}>
+        {/* The bottom gutter keeps the floating send bar off the prototype. */}
+        <Box sx={{ flex: 1, minWidth: 0, display: "flex", p: 2, pb: 10, ...WINDOW_LOOK }}>
           <PrototypeWindow title={manifest.name} manifest={manifest} view={view}>
             <PrototypeFrame
               title={manifest.name}
@@ -274,7 +297,7 @@ function Session({
               }}
               onToggle={(elementKey, additive) => dispatch({ type: additive ? "TOGGLE_SELECTION" : "SELECT_ONLY", elementKey })}
               onGeometry={anchors.onGeometry}
-              onEscape={() => (view.selectedKeys.length > 0 ? dispatch({ type: "CLEAR_SELECTION" }) : onClose())}
+              onEscape={() => escape() || onClose()}
               onElements={(_screenId, elements) => setLabels(Object.fromEntries(elements.map((e) => [e.key, e.label])))}
               loading={
                 <Box sx={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", bgcolor: "background.paper" }}>
@@ -288,27 +311,43 @@ function Session({
               }
             />
           </PrototypeWindow>
-          {commenting && (
+          {(bubble?.on === "selection" || bubble?.on === "screen") && (
             <CommentBubble
-              anchor={anchors.anchor(view.selectedKeys)}
-              labels={view.selectedKeys.map((k) => labels[k] ?? k)}
-              full={requests.length >= MAX_FEEDBACK_REQUESTS}
+              // A new bubble (another selection, or the screen) starts empty.
+              key={bubble.on}
+              anchor={bubble.on === "screen" ? bar : anchors.anchor(view.selectedKeys)}
+              labels={bubble.on === "screen" ? [`${screenName(manifest, view.screenId)} (whole screen)`] : labelsOf(view.selectedKeys)}
+              full={full}
               onAdd={add}
-              onClose={() => dispatch({ type: "CLEAR_SELECTION" })}
+              onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
+            />
+          )}
+          {bubble?.on === "comment" && opened && (
+            <QueuedCommentBubble
+              key={bubble.index}
+              anchor={opened.elementIds.length > 0 ? anchors.anchor(opened.elementIds) : bar}
+              number={bubble.index + 1}
+              request={opened}
+              on={opened.elementIds.length > 0 ? labelsOf(opened.elementIds).join(", ") : "Whole screen"}
+              onRemove={() => remove(bubble.index)}
+              onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
             />
           )}
         </Box>
-        {(annotating || requests.length > 0) && (
-          <FeedbackPanel
-            annotating={annotating}
+        <Box sx={{ position: "absolute", left: 0, right: 0, bottom: 16, display: "flex", justifyContent: "center", pointerEvents: "none", "& > *": { pointerEvents: "auto" } }}>
+          <SendBar
+            ref={setBar}
+            manifest={manifest}
             requests={requests}
             stale={queue !== null && queue.hash !== hash}
             refused={refused}
             sending={sending}
-            onRemove={remove}
             onSend={() => void send()}
+            onCommentOnScreen={() => dispatch({ type: "COMMENT_ON_SCREEN" })}
+            onOpen={open}
+            onRemove={remove}
           />
-        )}
+        </Box>
       </Box>
     </>
   );
