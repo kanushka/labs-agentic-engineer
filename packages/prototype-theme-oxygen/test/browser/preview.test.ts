@@ -334,6 +334,35 @@ describe("stats, sections and row actions under Oxygen", () => {
     expect(await s.app.getByRole("heading", { name: "Request from Sam Lee" }).count()).toBe(0);
     await s.page.getByRole("button", { name: "Preview" }).click();
   });
+
+  it("draws comment pins as buttons over a row, a draft's hollow, in both schemes, and focuses the pin the host names", async () => {
+    await s.page.getByRole("combobox", { name: "Role" }).selectOption({ label: "Manager" });
+    await s.app.getByRole("heading", { name: "Pending Requests" }).waitFor();
+    const screenId = await s.page.getByRole("combobox", { name: "Screen" }).inputValue();
+    const row = "row.team-queue.req-2002";
+    // As a host does: the view names the pins and drafts; then, as a bubble closes, the pin to focus.
+    const send = (message: object) =>
+      s.page.evaluate((message) => {
+        document.querySelector<HTMLIFrameElement>('iframe[title$="prototype app"]')!.contentWindow!.postMessage(message, "*");
+      }, message);
+    for (const colorScheme of ["light", "dark"]) {
+      await send({ type: "proto:view", view: { mode: "preview", roleId: "manager", stateId: "state.default", screenId, selectedKeys: [], pins: { [row]: [1] }, drafts: [row], colorScheme } });
+      const pin = s.app.getByRole("button", { name: "Comment 1" });
+      const draft = s.app.getByRole("button", { name: "Draft comment" });
+      await draft.waitFor();
+      const look = (l: typeof pin) => l.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, border: getComputedStyle(el).borderTopStyle }));
+      expect(await look(pin)).toMatchObject({ border: "solid" });
+      expect(await look(draft)).toMatchObject({ border: "dashed" });
+      expect((await look(draft)).bg).not.toBe((await look(pin)).bg);
+      const [pinBox, rowBox] = [await pin.boundingBox(), await s.app.locator(`[data-proto-key="${row}"]`).boundingBox()];
+      expect(pinBox!.y).toBeLessThan(rowBox!.y + rowBox!.height);
+      expect(pinBox!.x + pinBox!.width).toBeLessThanOrEqual(rowBox!.x + rowBox!.width);
+    }
+    await send({ type: "proto:focus", key: row, requests: [] });
+    await expect.poll(() => s.app.locator(":focus").getAttribute("aria-label")).toBe("Draft comment");
+    await send({ type: "proto:view", view: { mode: "preview", roleId: "manager", stateId: "state.default", screenId, selectedKeys: [], pins: {} } });
+    await s.app.getByRole("button", { name: "Comment 1" }).waitFor({ state: "hidden" });
+  });
 });
 
 describe("a row's overflow actions under Oxygen", () => {

@@ -85,4 +85,21 @@ describe("comment pins", () => {
     await driver.click(page, app.button("Comment 1"));
     expect(await driver.read(page, host.picker("Screen"), "value")).toBe("screen.contacts");
   });
+
+  it("draws a draft's pin hollow, and focuses the pin a host names when its bubble closes", async () => {
+    // As the host would send them (the frame takes a message whose source is its parent).
+    const fromHost = (message: object) =>
+      driver.evalInApp(page, `window.dispatchEvent(new MessageEvent("message", { data: ${JSON.stringify(message)}, source: window.parent })); new Promise((r) => setTimeout(r, 300))`);
+    const view = { mode: "preview", roleId: "editor", stateId: "state.default", screenId: "screen.contacts", selectedKeys: [], pins: { "btn.new": [1] }, drafts: ["btn.new", row] };
+    await fromHost({ type: "proto:view", view });
+    expect(await driver.count(page, app.button("Draft comment"))).toBe(2);
+    const style = (selector: string) => driver.evalInApp(page, `getComputedStyle(document.querySelector('${selector}')).borderTopStyle`);
+    expect(await style('[aria-label="Draft comment"]')).toBe("dashed");
+    expect(await style('[aria-label="Comment 1"]')).toBe("solid");
+
+    await fromHost({ type: "proto:focus", key: row, requests: [] });
+    expect(await driver.evalInApp(page, `document.activeElement.getAttribute("aria-label") + " " + document.activeElement.dataset.protoPinFor`)).toBe(`Draft comment ${row}`);
+    await fromHost({ type: "proto:focus", key: "btn.new", requests: [1] });
+    expect(await driver.evalInApp(page, `document.activeElement.getAttribute("aria-label")`)).toBe("Comment 1");
+  });
 });
