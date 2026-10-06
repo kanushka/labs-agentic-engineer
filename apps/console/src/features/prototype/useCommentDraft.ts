@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { draftAt, followSelection, keepDraft, requestFor, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
 import type { PrototypeViewState } from "@wso2/prototype-kit/host";
-import type { ReviewState } from "./model/review";
+import type { ReviewState } from "@wso2/prototype-kit/host";
 
 /** A change to the review's comment queue, applied to the latest queue (several can land in one event). */
 export type QueueUpdate = (queue: FeedbackQueue) => FeedbackQueue;

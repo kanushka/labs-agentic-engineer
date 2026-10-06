@@ -19,7 +19,16 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Box, Button, Chip, CircularProgress, Dialog, IconButton, Snackbar, Tooltip, Typography, useColorScheme } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
-import { PrototypeFrame, PrototypeWindow, frameViewOf, useFrameAnchors, type PrototypeFrameHandle } from "@wso2/prototype-kit/host";
+import {
+  PrototypeFrame,
+  PrototypeWindow,
+  frameViewOf,
+  initialReview,
+  reduceReview,
+  useFrameAnchors,
+  type PrototypeFrameHandle,
+  type ReviewEvent,
+} from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
 import {
   MAX_FEEDBACK_REQUESTS,
@@ -36,7 +45,6 @@ import {
 import { commentCount, feedbackBatch } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import type { ReviewSession, RevisionNotice } from "../model/revision";
-import { initialReview, reduceReview, type ReviewEvent } from "../model/review";
 import { useCommentDraft, type QueueUpdate } from "../useCommentDraft";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
 import { useReviewKeys } from "../useReviewKeys";
