@@ -57,6 +57,17 @@ vi.mock("../../agent-chat/useProjectChat", async (importOriginal) => ({
   },
 }));
 
+// The review store outlives the tab for the page's life; each test starts on a fresh one, on the stubbed chat.
+const reviews = vi.hoisted(() => ({ current: null as null | import("../model/reviewStore").ReviewStore }));
+vi.mock("../model/reviewStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../model/reviewStore")>()),
+  createReviewStore: () =>
+    new Proxy({} as import("../model/reviewStore").ReviewStore, {
+      get: (_, key) => reviews.current![key as keyof import("../model/reviewStore").ReviewStore],
+    }),
+}));
+const { createReviewStore } = await vi.importActual<typeof import("../model/reviewStore")>("../model/reviewStore");
+
 const openChat = vi.fn();
 vi.mock("../../shell/chatPanel", () => ({ useChatPanel: () => ({ open: openChat }) }));
 
@@ -175,6 +186,13 @@ beforeEach(() => {
   send.mockClear();
   send.mockResolvedValue(true);
   openChat.mockClear();
+  turnEnds.clear();
+  reviews.current = createReviewStore({
+    onTurnEnd: (fn) => {
+      turnEnds.add(fn);
+      return () => turnEnds.delete(fn);
+    },
+  });
 });
 
 afterEach(cleanup);
@@ -1106,6 +1124,50 @@ describe("the revision landing in the open review", () => {
     expect(bar()).toHaveTextContent("Agent is revising… (1 comment)");
     ended(revised());
     expect(screen.getByRole("alert")).toHaveTextContent("Updated · 1 comment addressed");
+  });
+});
+
+describe("leaving the Prototype tab mid-revision", () => {
+  /** The tab goes away (another tab of the project, or another page), and comes back later, with the review open. */
+  function leave() {
+    cleanup();
+  }
+  async function comeBack() {
+    render(<Harness initial={C} />);
+    return screen.findByRole("dialog");
+  }
+
+  async function sentAndLeft() {
+    const { dialog } = await openReview();
+    annotate(dialog);
+    clickElement("btn.reject");
+    addComment("Ask for a reason");
+    fireEvent.click(within(bar()).getByRole("button", { name: "Send to agent" }));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+    chat = { ...idle, turn: { phase: "running", turnId: "t2", instruction: "/prototype expense-web" } };
+    prototypes = appPrototypes([C], files, revisingIn("/prototype expense-web"));
+    rerender();
+    leave();
+  }
+
+  it("shows the batch still out with the agent when the tab comes back mid-turn", async () => {
+    await sentAndLeft();
+    await comeBack();
+    expect(bar()).toHaveTextContent("Agent is revising… (1 comment)");
+  });
+
+  it("gives a batch whose turn failed while the tab was away back, with the reason, when it comes back", async () => {
+    await sentAndLeft();
+    act(() => {
+      for (const fn of turnEnds) fn("acme-expenses", "failed");
+    });
+    chat = idle;
+    prototypes = appPrototypes([C], files, null);
+    await comeBack();
+
+    expect(within(bar()).getByRole("alert")).toHaveTextContent(/Your comments are back/);
+    expect(within(commentList()).getAllByRole("listitem").map((e) => e.textContent)).toEqual([expect.stringContaining("Ask for a reason")]);
+    expect(within(bar()).getByRole("button", { name: "Retry" })).toBeEnabled();
   });
 });
 

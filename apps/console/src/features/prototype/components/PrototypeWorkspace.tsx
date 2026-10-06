@@ -154,8 +154,9 @@ function Row({ prototype, ready, waiting, onReview, onMake, compact }: RowProps 
  * Before any prototype exists it says what one takes, with Make prototype
  * when the design has a web application. The open review is the route's
  * (`?review=<component>`); each review's comments, the batch out with the
- * agent and the revision it shows are kept here (`usePrototypeReviews`), so
- * closing and opening it again, even mid-revision, keeps them.
+ * agent and the revision it shows are kept in the project's review store
+ * (`usePrototypeReviews`), so closing the review or leaving the tab, even
+ * mid-revision, keeps them.
  */
 export function PrototypeWorkspace({
   projectName,

@@ -80,7 +80,9 @@ export function follow(s: ReviewSession, prototype: AppPrototype): ReviewSession
     return s.revising ? s : { ...s, revising, shown: s.shown ?? prototype.files };
   }
   const shown = prototype.status === "ready" ? prototype.files : prototype.status === "invalid" ? s.shown : null;
-  if (!s.revising) return shown === s.shown ? s : { ...s, shown };
+  // A turn that ended unseen (nothing followed the prototype while it ran) still settles once its outcome is known.
+  const unseenEnd = s.sent !== null && s.sent.outcome !== null;
+  if (!s.revising && !unseenEnd) return shown === s.shown ? s : { ...s, shown };
   return settled({ ...s, revising, shown }, prototype);
 }
 

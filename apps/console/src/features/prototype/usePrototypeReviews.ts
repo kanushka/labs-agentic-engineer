@@ -16,12 +16,16 @@
  * under the License.
  */
 
-import { useEffect, useState } from "react";
-import { chatStore } from "../agent-chat/useProjectChat";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { QueueUpdate } from "@wso2/prototype-kit/host";
+import { chatStore } from "../agent-chat/useProjectChat";
 import type { PrototypeFeedback } from "../agent-chat/turnScope";
 import type { AppPrototype } from "./model/prototypes";
-import { NEW_SESSION, follow, sendStarted, turnEnded, type ReviewSession } from "./model/revision";
+import { createReviewStore, followAll } from "./model/reviewStore";
+import { NEW_SESSION, sendStarted, type ReviewSession } from "./model/revision";
+
+/** The app's one review store, on the app's chat: each project's prototype reviews, outliving the Prototype tab. */
+const reviewStore = createReviewStore(chatStore);
 
 export interface PrototypeReviews {
   /** The review of `component`: its queue, the batch out with the agent, what to say, and the revision to show. */
@@ -34,33 +38,20 @@ export interface PrototypeReviews {
 }
 
 /**
- * Each prototype's review as it outlives the review overlay (model/revision.ts):
- * its comment queue, the batch out with the agent, and the revision to show,
- * following the prototypes and the project's turns as they end.
+ * The project's prototype reviews (the review store), following the
+ * prototypes as the caller has them: in the render that sees them, so a
+ * revision that lands is never drawn half-followed, and into the store once
+ * drawn.
  */
 export function usePrototypeReviews(projectName: string, prototypes: readonly AppPrototype[] | undefined): PrototypeReviews {
-  const [sessions, setSessions] = useState<Readonly<Record<string, ReviewSession>>>({});
+  const subscribe = useCallback((fn: () => void) => reviewStore.subscribe(projectName, fn), [projectName]);
+  const sessions = useSyncExternalStore(subscribe, () => reviewStore.get(projectName));
+  const followed = prototypes ? followAll(sessions, prototypes) : sessions;
+  useEffect(() => {
+    if (prototypes) reviewStore.follow(projectName, prototypes);
+  }, [projectName, prototypes]);
 
-  // Follow the prototypes in the render that sees them, so a revision that lands is never drawn half-followed.
-  let followed = sessions;
-  for (const p of prototypes ?? []) {
-    const before = followed[p.component] ?? NEW_SESSION;
-    const after = follow(before, p);
-    if (after !== before) followed = { ...followed, [p.component]: after };
-  }
-  if (followed !== sessions) setSessions(followed);
-
-  useEffect(
-    () =>
-      chatStore.onTurnEnd((project, outcome) => {
-        if (project !== projectName) return;
-        setSessions((all) => Object.fromEntries(Object.entries(all).map(([c, s]) => [c, turnEnded(s, outcome)])));
-      }),
-    [projectName],
-  );
-
-  const change = (component: string, fn: (s: ReviewSession) => ReviewSession) =>
-    setSessions((all) => ({ ...all, [component]: fn(all[component] ?? NEW_SESSION) }));
+  const change = (component: string, fn: (s: ReviewSession) => ReviewSession) => reviewStore.change(projectName, component, fn);
   return {
     session: (component) => followed[component] ?? NEW_SESSION,
     onQueue: (component, update) => change(component, (s) => ({ ...s, queue: update(s.queue) })),
