@@ -809,6 +809,30 @@ describe("pins and drafts", () => {
     expect(lastFocus(post)).toEqual({ type: "proto:focus", key: "btn.reject" });
   });
 
+  it("puts focus back on the element after a click away that left it nowhere, but not when the click took it", async () => {
+    const { dialog, post } = await annotating();
+    clickElement("btn.approve");
+    const focuses = () => post.mock.calls.filter((c) => (c[0] as { type: string }).type === "proto:focus").length;
+    const before = focuses();
+    // A click on the dialog's own text takes no focus: what had it (the bubble's input) is going away.
+    await clickAway(dialog);
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastFocus(post)).toEqual({ type: "proto:focus", key: "btn.approve" });
+
+    expect(focuses()).toBe(before + 1);
+    clickElement("btn.reject");
+    const reopened = focuses();
+    // A click on a control takes focus there; the bubble leaves it be.
+    const comment = within(bar()).getByRole("button", { name: "Comment on screen" });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    comment.focus();
+    fireEvent.mouseDown(within(dialog).getByText("Prototype · Acme Expenses"));
+    fireEvent.click(within(dialog).getByText("Prototype · Acme Expenses"));
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(focuses()).toBe(reopened);
+    expect(document.activeElement).toBe(comment);
+  });
+
   it("keeps typed text as a draft on a click away, with a hollow pin that reopens it", async () => {
     const { dialog, post } = await annotating();
     clickElement("btn.reject");

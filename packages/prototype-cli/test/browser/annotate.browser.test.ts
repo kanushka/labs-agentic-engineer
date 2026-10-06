@@ -195,6 +195,9 @@ describe("prototype preview — commenting in Annotate", () => {
     await driver.click(page, outside);
     await driver.waitFor(page, host.dialog("Comment on New contact"), "hidden");
     expect(await driver.count(page, app.button("Draft comment"))).toBe(1);
+    // The click (on a heading) took no focus: it goes back to the element the bubble was on.
+    const focused = `new Promise((resolve) => { const t = Date.now(); const check = () => { const k = document.activeElement?.closest("[data-proto-key]")?.getAttribute("data-proto-key"); k === "btn.new" || Date.now() - t > 2000 ? resolve(String(k)) : setTimeout(check, 20); }; check(); })`;
+    expect(await driver.evalInApp(page, focused)).toBe("btn.new");
   });
 
   it("comments on the whole screen from the bar, keeping its text as a draft when clicked away", async () => {

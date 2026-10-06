@@ -32,8 +32,8 @@ export interface CommentBubbleProps {
   text: string;
   onText: (text: string) => void;
   onAdd: (text: string) => void;
-  /** The reviewer clicked away (typed text on elements is kept as a draft). Escape is the review's (bubble, then selection, then review). */
-  onClose: () => void;
+  /** The reviewer clicked away (typed text is kept as a draft); `refocus` when the click left focus nowhere. Escape is the review's. */
+  onClose: (refocus: boolean) => void;
 }
 
 /**

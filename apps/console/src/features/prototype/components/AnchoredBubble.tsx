@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import { useMemo, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ClickAwayListener, Paper, Popper } from "@wso2/oxygen-ui";
-import type { HostRect } from "@wso2/prototype-kit/host";
+import { focusLeftBehind, type HostRect } from "@wso2/prototype-kit/host";
 
 /**
  * Where a bubble points: elements in the frame (the kit's frame anchors, in
@@ -54,10 +54,12 @@ export function AnchoredBubble({
   anchor: BubbleAnchor | null;
   /** The bubble's accessible name. */
   label: string;
-  onClickAway: () => void;
+  /** A click outside it; `refocus` when that click left keyboard focus nowhere (the host puts it back where the bubble pointed). */
+  onClickAway: (refocus: boolean) => void;
   onKeyDown?: (e: KeyboardEvent) => void;
   children: ReactNode;
 }) {
+  const paper = useRef<HTMLDivElement>(null);
   const anchorEl = useMemo(() => (anchor === null || anchor instanceof HTMLElement ? anchor : virtualElement(anchor)), [anchor]);
   return (
     <Popper
@@ -70,8 +72,9 @@ export function AnchoredBubble({
       modifiers={MODIFIERS}
       sx={{ zIndex: (t) => t.zIndex.modal + 1 }}
     >
-      <ClickAwayListener onClickAway={onClickAway}>
+      <ClickAwayListener onClickAway={() => onClickAway(paper.current !== null && focusLeftBehind(paper.current))}>
         <Paper
+          ref={paper}
           role="dialog"
           aria-label={label}
           onKeyDown={onKeyDown}

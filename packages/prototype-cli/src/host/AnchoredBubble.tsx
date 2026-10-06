@@ -20,12 +20,12 @@
  * The popover every comment bubble is drawn in, by its anchor: below it, or
  * above it when there is no room below, kept inside the window, over the
  * frame and never inside it. Nothing is drawn until the anchor is known; a
- * press anywhere outside it is a click away. (Presses inside the prototype's
+ * click anywhere outside it is a click away. (Clicks inside the prototype's
  * frame never reach the host page: a click there is the frame's to report.)
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { placeBubble, type HostRect } from "@wso2/prototype-kit/host";
+import { focusLeftBehind, placeBubble, type HostRect } from "@wso2/prototype-kit/host";
 
 /**
  * Where a bubble points: elements in the frame (the kit's frame anchors, in
@@ -50,7 +50,8 @@ export function AnchoredBubble({
   anchor: BubbleAnchor | null;
   /** The bubble's accessible name. */
   label: string;
-  onClickAway: () => void;
+  /** A click outside it; `refocus` when that click left keyboard focus nowhere (the host puts it back where the bubble pointed). */
+  onClickAway: (refocus: boolean) => void;
   onKeyDown?: (e: KeyboardEvent) => void;
   children: ReactNode;
 }) {
@@ -81,11 +82,13 @@ export function AnchoredBubble({
     latest.current = onClickAway;
   });
   useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      if (bubble.current && e.target instanceof Node && !bubble.current.contains(e.target)) latest.current();
+    // On click, once the click moved focus (or did not), so the host can tell whether to put it back.
+    const onClick = (e: MouseEvent) => {
+      const el = bubble.current;
+      if (el && e.target instanceof Node && !el.contains(e.target)) latest.current(focusLeftBehind(el));
     };
-    document.addEventListener("pointerdown", onPointerDown, { capture: true });
-    return () => document.removeEventListener("pointerdown", onPointerDown, { capture: true });
+    document.addEventListener("click", onClick, { capture: true });
+    return () => document.removeEventListener("click", onClick, { capture: true });
   }, []);
 
   if (!anchor) return null;

@@ -45,7 +45,8 @@ export function QueuedCommentBubble({
   on: string;
   onEdit: (text: string) => void;
   onRemove: () => void;
-  onClose: () => void;
+  /** A click away (not while editing); `refocus` when the click left focus nowhere. */
+  onClose: (refocus: boolean) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const save = () => {
@@ -60,7 +61,7 @@ export function QueuedCommentBubble({
     }
   };
   return (
-    <AnchoredBubble anchor={anchor} label={`Comment ${number}`} onClickAway={() => draft === null && onClose()} onKeyDown={onKeyDown}>
+    <AnchoredBubble anchor={anchor} label={`Comment ${number}`} onClickAway={(refocus) => draft === null && onClose(refocus)} onKeyDown={onKeyDown}>
       <p className="ph-bubble-on">{`${number} · ${on}`}</p>
       {draft === null ? <p className="ph-bubble-text">{request.text}</p> : <CommentField text={draft} onText={setDraft} />}
       <div className="ph-bubble-actions">

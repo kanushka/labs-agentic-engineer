@@ -117,13 +117,16 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   const focusBack = (key: string | undefined, requests?: readonly number[]) => {
     if (key !== undefined) frame.current?.focusElement(key, requests);
   };
+  /** Close the bubble; `refocus`: keyboard focus goes back to where it pointed (its element, or the pin that opened it). */
+  const closeBubble = (refocus: boolean) => {
+    if (refocus && bubble?.on === "selection") focusBack(view.selectedKeys[0]);
+    else if (refocus && bubble?.on === "comment" && bubble.pin) focusBack(bubble.pin.key, bubble.pin.requests);
+    dispatch({ type: "CLOSE_BUBBLE" });
+  };
   /** Escape, wherever it came from: the bubble, then the selection; false when there was neither. */
   const escape = () => {
-    if (bubble) {
-      if (bubble.on === "selection") focusBack(view.selectedKeys[0]);
-      else if (bubble.on === "comment" && bubble.pin) focusBack(bubble.pin.key, bubble.pin.requests);
-      dispatch({ type: "CLOSE_BUBBLE" });
-    } else if (view.selectedKeys.length > 0) dispatch({ type: "CLEAR_SELECTION" });
+    if (bubble) closeBubble(true);
+    else if (view.selectedKeys.length > 0) dispatch({ type: "CLEAR_SELECTION" });
     else return false;
     return true;
   };
@@ -219,7 +222,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             onText={draft.setText}
             onAdd={add}
             // Typed text is kept as a draft where it was written.
-            onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
+            onClose={closeBubble}
           />
         )}
         {annotate && bubble?.on === "comment" && opened && (
@@ -231,7 +234,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             on={targetLabel(opened, labels[opened.screenId] ?? {})}
             onEdit={(text) => onQueue((q) => editRequest(q, bubble.index, text))}
             onRemove={() => remove(bubble.index)}
-            onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
+            onClose={closeBubble}
           />
         )}
         {annotate && (
