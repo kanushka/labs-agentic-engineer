@@ -172,6 +172,15 @@ describe("contacts under Oxygen", () => {
     const empty = commentCursor(await cursorAt(s), "default");
     expect(empty).not.toBeNull();
     expect(empty).not.toMatch(ORANGE);
+    // The same graphic in the dark scheme (dark ink outlined in white reads on both).
+    const frame = s.page.frames().find((f) => f !== s.page.mainFrame())!;
+    await s.page.evaluate(() => {
+      const view = { mode: "annotate", roleId: "editor", stateId: "state.default", screenId: "screen.contacts", selectedKeys: [], pins: {}, colorScheme: "dark" };
+      document.querySelector<HTMLIFrameElement>('iframe[title$="prototype app"]')!.contentWindow!.postMessage({ type: "proto:view", view }, "*");
+    });
+    await expect.poll(() => frame.evaluate(() => document.documentElement.getAttribute("data-color-scheme"))).toBe("dark");
+    expect(commentCursor(await cursorAt(s, "btn.new"), "crosshair")).toMatch(ORANGE);
+    expect(commentCursor(await cursorAt(s), "default")).toBe(empty);
     await button.click();
     expect(await button.getAttribute("aria-pressed")).toBe("true");
     expect(await s.app.getByRole("heading", { name: "New contact" }).count()).toBe(0);

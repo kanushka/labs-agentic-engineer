@@ -44,9 +44,23 @@ export const PRIMARY_TINT = "rgba(var(--oxygen-palette-primary-mainChannel) / 0.
 
 /**
  * One of the mode tools: labelled, with its shortcut in the tooltip. The
- * active one is pressed: tinted primary for Comment, neutral for Preview.
+ * active one is pressed: `primary` tints it (Comment), `neutral` greys it (Preview).
  */
-function Tool({ label, shortcut, icon, pressed, tint, onClick }: { label: string; shortcut: string; icon: ReactNode; pressed: boolean; tint: boolean; onClick: () => void }) {
+function Tool({
+  label,
+  shortcut,
+  icon,
+  pressed,
+  tone,
+  onClick,
+}: {
+  label: string;
+  shortcut: string;
+  icon: ReactNode;
+  pressed: boolean;
+  tone: "neutral" | "primary";
+  onClick: () => void;
+}) {
   return (
     <Tooltip title={`${label} · ${shortcut}`} describeChild>
       <Button
@@ -63,7 +77,7 @@ function Tool({ label, shortcut, icon, pressed, tint, onClick }: { label: string
           borderRadius: 1.5,
           color: "text.secondary",
           "&:hover": { bgcolor: "action.hover", color: "text.primary" },
-          '&[aria-pressed="true"]': tint ? { bgcolor: PRIMARY_TINT, color: "primary.main" } : { bgcolor: "action.selected", color: "text.primary" },
+          '&[aria-pressed="true"]': tone === "primary" ? { bgcolor: PRIMARY_TINT, color: "primary.main" } : { bgcolor: "action.selected", color: "text.primary" },
         }}
       >
         {label}
@@ -128,13 +142,13 @@ export function ReviewToolbar({
       <Button size="small" variant="outlined" startIcon={<RotateCcw size={16} />} onClick={onReset}>
         Reset data
       </Button>
-<Box role="group" aria-label="Mode" sx={{ display: "inline-flex", gap: 0.25, p: 0.375, border: 1, borderColor: "divider", borderRadius: 2.5 }}>
+      <Box role="group" aria-label="Mode" sx={{ display: "inline-flex", gap: 0.25, p: 0.375, border: 1, borderColor: "divider", borderRadius: 2.5 }}>
         <Tool
           label="Preview"
           shortcut="V"
           icon={<MousePointer2 size={16} />}
           pressed={view.mode === "preview"}
-          tint={false}
+          tone="neutral"
           onClick={() => dispatch({ type: "EXIT_ANNOTATE" })}
         />
         <Tool
@@ -142,7 +156,7 @@ export function ReviewToolbar({
           shortcut="C"
           icon={<MessageCirclePlus size={16} />}
           pressed={view.mode === "annotate"}
-          tint
+          tone="primary"
           onClick={() => dispatch({ type: "ENTER_ANNOTATE" })}
         />
       </Box>

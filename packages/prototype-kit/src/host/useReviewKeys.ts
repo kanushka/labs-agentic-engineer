@@ -65,12 +65,16 @@ export function useReviewKeys(keys: ReviewKeys | null, { capture = false }: Revi
         if (!keys.onEscape()) return;
         if (capture) e.stopPropagation();
         else e.preventDefault();
-      } else if (!e.metaKey && !e.ctrlKey && !e.altKey && !typing(e.target)) {
-        const key = e.key.toLowerCase();
-        if (key === "c") keys.onToggleAnnotate();
-        else if (key === "v") keys.onPreview();
-        else return;
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+      const key = e.key.toLowerCase();
+      if (key === "c") {
         e.preventDefault();
+        keys.onToggleAnnotate();
+      } else if (key === "v") {
+        e.preventDefault();
+        keys.onPreview();
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture });
