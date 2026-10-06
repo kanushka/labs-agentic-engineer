@@ -117,7 +117,7 @@ function QuestionsForm({
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3.5, pt: 3, pb: 3 }}>
-        <Box sx={{ maxWidth: "72ch", display: "flex", flexDirection: "column", gap: 2.5 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
           <Box>
             <Typography component="h3" sx={{ fontWeight: 600, fontSize: "1rem" }}>
               Questions for you
