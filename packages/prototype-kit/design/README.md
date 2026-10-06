@@ -99,6 +99,19 @@ CLI, `@aep/agent-stream` and the console import it; the Go BFF and the OpenAPI
 contract mirror it, held by `test/fixtures/feedback-cases.json`, which the kit,
 agent-stream and Go all assert.
 
+The review's comment queue is headless here too (`queue.ts`), so the console
+and the CLI host keep it alike and only draw their own UI: `FeedbackQueue`
+(`hash` of the first queued comment's revision, `requests`, `drafts`) with
+`enqueue` (refused at the limit), `editRequest`, `dequeue` (the rest
+renumber), `submissionOf` (never the drafts). A draft is a comment started on
+elements and closed unfinished, kept per screen and element set (any order):
+`keepDraft` (empty text drops it), `draftAt`, `draftPinsOnScreen` (one hollow
+pin per draft, on its first element) and `draftOfPin` (the latest there).
+`followSelection` is the rule both hosts follow when the open comment's
+selection changes: Shift carries the text, anything else keeps it as a draft
+and opens the new selection with its own. Drafts are client-only; the
+feedback contract and `feedback-cases.json` (batch validity) are unchanged.
+
 ## Host reducer and bridge (`/host`)
 
 The reducer owns view state. `NAVIGATE` only moves to a screen reachable for the
@@ -119,6 +132,20 @@ instead of the cover. `FrameView.colorScheme` (optional `light | dark`,
 theme follows the system. `PrototypeWindow` (`/host`) is the shared browser-window chrome around the frame: title, dots and a read-only address (`prototype://<screenId>`, plus `?flow=&state=` when not default); hosts style it with `--proto-window-*` variables and `proto-window*` classes. The frame does not parse the manifest: the host passes a parsed
 `PrototypeManifest`, which keeps zod (about 450 KB minified) out of every
 frame runtime.
+
+Comment pins are the frame's, drawn in both modes: one button per queued
+comment on an element (named `Comment N`) and a hollow one for a draft
+(`FrameView.drafts`, optional; `Draft comment`). A box draws them in its
+corner; an element a theme spreads `selectableRootProps` on (a table row, a
+tab) cannot take children, so `RootPins` draws its pins over its top-right
+corner, kept there with the same watcher that reports `proto:geometry`. A
+pin's click is its own (no selection, press or navigation) and posts
+`proto:pin` (key, the numbers it shows or `[]` for the draft pin, the
+element's box); `PrototypeFrame.onPin` takes it. When a host's bubble closes,
+`PrototypeFrame`'s ref `focusElement(key, requests?)` sends `proto:focus`,
+and the frame focuses that pin, else the element. A host on the older
+protocol ignores the new fields and messages. `SELECT_ELEMENTS` selects
+several elements at once (reopening a draft), entering Annotate.
 
 ## Build helper
 

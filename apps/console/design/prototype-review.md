@@ -53,7 +53,18 @@ unused); the review ignores an Escape whose target is the frame.
 - **Preview** acts: navigation, forms, mock data. **Annotate** only selects;
   selected elements are pinned and a request is typed against them (max 4000
   characters, 50 requests per batch, the kit CLI's limits).
-- **Queue** (`model/feedback.ts`): per component, kept across close and reopen.
+- **Pins:** a queued comment's pin (the frame's, in both modes, keyboard
+  reachable) opens its bubble (`OPEN_PIN`) with Edit (in place) and Remove
+  (the rest renumber). Closing a bubble with Escape, Add or Remove puts focus
+  back on its element or pin (`PrototypeFrame.focusElement`).
+- **Drafts** (`useCommentDraft`, over the kit's `followSelection`): the text
+  of a bubble on elements is never lost. Escape, a click away, a plain click
+  on other elements or closing the review keeps it as a draft, shown as a
+  hollow pin; selecting the same elements or clicking the draft pin
+  (`SELECT_ELEMENTS`, from Preview too) reopens it. Drafts are not counted or
+  sent, and survive Send. A whole-screen comment's text is not kept as a
+  draft (a click away leaves that bubble open while it has text).
+- **Queue** (the kit's `FeedbackQueue`; `model/feedback.ts` makes the batch): per component, with its drafts, kept across close and reopen.
   It carries the hash of the revision of its first request. Requests,
   limits, pins and the hash are the kit's (`@wso2/prototype-kit/feedback`);
   the hash is plain JavaScript, so it works over plain HTTP.
