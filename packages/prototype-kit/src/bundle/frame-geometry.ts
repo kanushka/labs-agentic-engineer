@@ -1,0 +1,77 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/**
+ * Where the elements the host anchors its own UI to are drawn, inside the
+ * frame: the host cannot measure the sandboxed document, so the frame reports
+ * the boxes (`proto:geometry`) of the elements the view names — the selected
+ * and the pinned ones — and re-reports them whenever a scroll, a resize or a
+ * redraw moves them, at most once a frame and only when they changed.
+ */
+
+import type { FrameBox } from "../host/bridge.js";
+
+/** Where the element drawn for `key` is in the frame's viewport, or undefined when the screen does not draw it. */
+export function boxOf(key: string): FrameBox | undefined {
+  const el = document.querySelector(`[data-proto-key="${CSS.escape(key)}"]`);
+  if (!el) return undefined;
+  const r = el.getBoundingClientRect();
+  return { x: r.x, y: r.y, width: r.width, height: r.height };
+}
+
+/** Calls `report` with the boxes of `keys()` whenever they move; `refresh` re-measures now (e.g. the keys changed). */
+export function watchGeometry(
+  keys: () => readonly string[],
+  report: (boxes: Record<string, FrameBox>) => void,
+): { refresh: () => void; stop: () => void } {
+  let last = "";
+  let pending = false;
+  const measure = () => {
+    pending = false;
+    const boxes: Record<string, FrameBox> = {};
+    for (const key of new Set(keys())) {
+      const box = boxOf(key);
+      if (box) boxes[key] = box;
+    }
+    const signature = JSON.stringify(boxes);
+    if (signature === last) return;
+    last = signature;
+    report(boxes);
+  };
+  const schedule = () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(measure);
+  };
+  // Capture: a scroll inside any scroller of the prototype moves its elements as much as the page's.
+  window.addEventListener("scroll", schedule, { capture: true, passive: true });
+  window.addEventListener("resize", schedule);
+  const resized = new ResizeObserver(schedule);
+  resized.observe(document.documentElement);
+  const redrawn = new MutationObserver(schedule);
+  redrawn.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+  return {
+    refresh: schedule,
+    stop: () => {
+      window.removeEventListener("scroll", schedule, { capture: true });
+      window.removeEventListener("resize", schedule);
+      resized.disconnect();
+      redrawn.disconnect();
+    },
+  };
+}

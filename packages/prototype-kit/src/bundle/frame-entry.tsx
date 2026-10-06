@@ -34,6 +34,7 @@ import { moduleFactorySource } from "../runtime/module-source.js";
 import { runPrototypeModule, type ModuleFactory } from "../runtime/modules.js";
 import { transpileSource } from "../source/transpile.js";
 import type { PrototypeTheme } from "../theme/contract.js";
+import { boxOf, watchGeometry } from "./frame-geometry.js";
 
 function post(message: FromFrameMessage) {
   // The parent is the host page; the frame's own origin is opaque, so no target origin can be named. Nothing sent is a secret.
@@ -114,10 +115,21 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
   // Nothing has drawn until an app is loaded: a view sent before it must not report a draw (that clears the host's loading cover).
   screen.current = loaded ? view?.screenId : undefined;
   const watcher = useRef<ReturnType<typeof watchElements> | null>(null);
+  // The elements the host anchors its UI to: the selected and the pinned ones.
+  const anchored = useRef<readonly string[]>([]);
+  anchored.current = loaded && view ? [...view.selectedKeys, ...Object.keys(view.pins)] : [];
+  const geometry = useRef<ReturnType<typeof watchGeometry> | null>(null);
 
   useEffect(() => {
     watcher.current = watchElements(() => screen.current);
-    return () => watcher.current?.stop();
+    geometry.current = watchGeometry(
+      () => anchored.current,
+      (boxes) => post({ type: "proto:geometry", boxes }),
+    );
+    return () => {
+      watcher.current?.stop();
+      geometry.current?.stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -159,6 +171,9 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
     requestAnimationFrame(() => watcher.current?.report());
   }, [view?.screenId, loaded]);
 
+  // Another selection or other pins: measure what the host now anchors to.
+  useEffect(() => geometry.current?.refresh(), [view, loaded]);
+
   if (failure) return <p role="alert">{failure}</p>;
   if (!loaded || !view) return null;
   return (
@@ -170,7 +185,7 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
         view={view}
         initialData={loaded.initialData}
         onNavigate={(screenId) => post({ type: "proto:navigate", screenId })}
-        onToggle={(elementKey) => post({ type: "proto:toggle", elementKey })}
+        onToggle={(elementKey, additive) => post({ type: "proto:toggle", elementKey, box: boxOf(elementKey), additive })}
         onData={(data) => post({ type: "proto:data", data })}
         onError={(message) => post({ type: "proto:error", message })}
         colorScheme={view.colorScheme}

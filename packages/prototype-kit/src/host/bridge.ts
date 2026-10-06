@@ -110,7 +110,8 @@ function isBox(v: unknown): v is FrameBox {
   return isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(width) && isFiniteNumber(height) && width >= 0 && height >= 0;
 }
 
-const boxOf = (v: Json): FrameBox => ({ x: v["x"] as number, y: v["y"] as number, width: v["width"] as number, height: v["height"] as number });
+/** A checked box, copied without whatever else the frame put on it. */
+const boxOf = ({ x, y, width, height }: FrameBox): FrameBox => ({ x, y, width, height });
 
 function isView(v: unknown): v is FrameView {
   if (!isObject(v)) return false;
@@ -180,7 +181,7 @@ export function parseFromFrameMessage(data: unknown): FromFrameMessage | null {
     case "proto:geometry": {
       const boxes = data["boxes"];
       if (!isObject(boxes) || !Object.values(boxes).every(isBox)) return null;
-      return { type: "proto:geometry", boxes: Object.fromEntries(Object.entries(boxes).map(([key, b]) => [key, boxOf(b as Json)])) };
+      return { type: "proto:geometry", boxes: Object.fromEntries(Object.entries(boxes as Record<string, FrameBox>).map(([key, b]) => [key, boxOf(b)])) };
     }
     case "proto:error":
       return isString(data["message"]) ? { type: "proto:error", message: data["message"] } : null;

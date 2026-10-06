@@ -99,13 +99,13 @@ function selectHandlers(ctx: KitContextValue, key: string, claims: "own-target" 
       if (claims === "any-inside" && insideNestedRoot(e)) return;
       e.stopPropagation();
       e.preventDefault();
-      ctx.toggle(key);
+      ctx.toggle(key, e.shiftKey);
     },
     onKeyDown: (e: KeyboardEvent) => {
       if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
       e.preventDefault();
       e.stopPropagation();
-      ctx.toggle(key);
+      ctx.toggle(key, e.shiftKey);
     },
   };
 }

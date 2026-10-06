@@ -43,8 +43,8 @@ export interface KitRootProps {
   initialData?: DataSnapshot | undefined;
   /** A press asked for another screen (Preview only). */
   onNavigate: (screenId: string) => void;
-  /** A click selected or deselected an element (Annotate only). */
-  onToggle: (elementKey: string) => void;
+  /** A click selected or deselected an element (Annotate only); `additive` when it held Shift. */
+  onToggle: (elementKey: string, additive: boolean) => void;
   /** The mock data changed. */
   onData?: ((snapshot: DataSnapshot) => void) | undefined;
   /** A screen failed to render, or the app asked for a screen that does not exist. */
@@ -72,8 +72,8 @@ export function KitRoot({ app, manifest, theme, view, initialData, onNavigate, o
       view,
       params,
       store,
-      toggle: (key) => {
-        if (view.mode === "annotate") onToggle(key);
+      toggle: (key, additive) => {
+        if (view.mode === "annotate") onToggle(key, additive);
       },
       go: (screenId, next = {}) => {
         if (view.mode === "annotate") return;

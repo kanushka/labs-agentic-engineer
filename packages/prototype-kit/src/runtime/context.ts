@@ -48,8 +48,8 @@ export interface KitContextValue {
   params: Readonly<Record<string, string>>;
   /** Navigate in Preview; a no-op while annotating. */
   go: (screenId: string, params?: Record<string, string>) => void;
-  /** Toggle an element's selection (Annotate). */
-  toggle: (elementKey: string) => void;
+  /** Toggle an element's selection (Annotate); `additive` when the click held Shift (add to the selection rather than start a new one). */
+  toggle: (elementKey: string, additive: boolean) => void;
   store: DataStore;
 }
 
