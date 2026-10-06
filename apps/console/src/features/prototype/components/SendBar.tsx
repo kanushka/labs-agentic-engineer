@@ -87,7 +87,7 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
       component="section"
       aria-label="Comments"
       sx={{
-        width: "min(560px, calc(100% - 32px))",
+        width: "min(640px, calc(100% - 32px))",
         display: "flex",
         flexDirection: "column",
         borderRadius: 2,
@@ -200,7 +200,7 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
           {refused}
         </Alert>
       )}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.75 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.75, whiteSpace: "nowrap", "& .MuiButton-root": { flexShrink: 0 } }}>
         <Button
           size="small"
           color="inherit"
@@ -213,7 +213,7 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
           {commentCount(requests.length)}
         </Button>
         {commenting && (
-          <Typography variant="body2" color="text.secondary" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75, whiteSpace: "nowrap" }}>
+          <Typography variant="body2" color="text.secondary" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75, minWidth: 0, overflow: "hidden" }}>
             <Box
               component="i"
               aria-hidden
