@@ -1,15 +1,15 @@
 # Prototype review
 
-A clickable prototype of each designed web application, tried and annotated in
-the browser. The agent makes it (`/prototype`), the person reviews it, and
-Annotate feedback goes back to the chat as a typed batch. Why it is shaped this
+A clickable prototype of each designed web application, tried and commented on
+in the browser. The agent makes it (`/prototype`), the person reviews it, and
+the comments go back to the chat as a typed batch. Why it is shaped this
 way: [ADR-0001](decisions/ADR-0001-prototype-review-is-a-full-screen-overlay.md)
 (the overlay), [ADR-0002](decisions/ADR-0002-the-revision-lands-in-the-open-review.md)
 (the revision lands in the open review),
 [ADR-0003](decisions/ADR-0003-the-comment-bubble-is-drawn-by-the-host.md)
 (the bubble is the host's, over the frame).
 Code: `features/prototype/`. The spec is wso2/labs-agentic-engineer#885
-(tickets #886–#890); there is no PRD entry for it in this repo.
+(tickets #886–#890, #892, #893); there is no PRD entry for it in this repo.
 
 ## Where it shows
 
@@ -18,7 +18,7 @@ Code: `features/prototype/`. The spec is wso2/labs-agentic-engineer#885
   type is `web-application`) with status None, Ready, Invalid (the reason in a
   tooltip) or Revising, and one action: Review once a prototype renders, else
   Make prototype (Try again when invalid). No action while the first one is
-  being made. Revising an existing prototype goes through Annotate in review;
+  being made. Revising an existing prototype goes through commenting in review;
   remaking it from a changed design is the Design tab's Make prototype. The tab
   shows a dot while a prototype is unreviewed.
 - **Design actions:** Make prototype (`MakePrototypeButton`), hidden until the
@@ -38,19 +38,31 @@ render check; Go re-checks on save (see ADR-0042).
 
 ## Review
 
-`PrototypeReview`: toolbar (Screen, Flow, Role, State, Reset data,
-Preview/Annotate), the kit `PrototypeWindow` (browser chrome, read-only `prototype://<screen>` address bar; styled by the console with `--proto-window-*` Oxygen variables) around the `PrototypeFrame` at full width, and the floating
+`PrototypeReview`: toolbar (Screen, Flow, Role, State, Reset data, and the
+Preview · Comment tool pair in `ReviewToolbar`: labelled, with icons, their
+shortcuts `V` and `C` in tooltips; the active tool is tinted primary in
+Comment and neutral in Preview), the kit `PrototypeWindow` (browser chrome, read-only `prototype://<screen>` address bar; styled by the console with `--proto-window-*` Oxygen variables) around the `PrototypeFrame` at full width, and the floating
 `SendBar` below it. The view and the open comment bubble are one pure state,
 the kit's (`reduceReview` in `@wso2/prototype-kit/host`: the view reducer plus
 `CommentBubble` = on the selection, on the whole screen, or a queued comment
-opened from the bar's list). `C` toggles Annotate; Escape closes the bubble,
+opened from the bar's list). Comment is the user's word for the view's
+`annotate` mode. `V` returns to Preview, `C` toggles Comment (neither while
+typing); Escape closes the bubble,
 then clears the selection, then closes (the kit's `useReviewKeys`, captured so
 a used Escape never reaches the dialog). With focus in the prototype, only
 the frame's `proto:escape` counts (sent when the prototype left the key
 unused); the review ignores an Escape whose target is the frame.
 
+Comment mode shows itself three ways, only while it is on: a primary ring
+round the prototype window (its `--proto-window-border`/`-shadow`), a
+"Comment mode · Esc" tag in the window bar (`PrototypeWindow`'s `tag`), and
+the send bar's hint "Click anything to comment". Inside the frame the kit
+draws the comment cursor (an arrow with a bubble: solid with a "+" over an
+element that takes a comment, hollow over empty space), so it follows the
+pointer natively with no bridge message.
+
 - **Bubble** (`CommentBubble`, `QueuedCommentBubble` in `AnchoredBubble`): an
-  Annotate click opens it at the element (Shift-click adds elements), drawn by
+  click in Comment mode opens it at the element (Shift-click adds elements), drawn by
   the console over the frame from the boxes the frame reports
   (`useFrameAnchors`), never inside it (ADR-0003). Add or Cmd/Ctrl+Enter
   queues the comment. A click away closes it; focus stays where the click
@@ -66,9 +78,10 @@ unused); the review ignores an Escape whose target is the frame.
   comment. While a revision runs it says `Agent is revising… (N comments)`
   and Send waits (the bar is the one place that says so; the header has no
   chip); it marks comments written on an earlier version, flags those whose
-  element is gone and says why a revision failed, with Retry.
+  element is gone and says why a revision failed, with Retry. Its empty
+  list says how to start: "Press C or choose Comment, then click anything".
 
-- **Preview** acts: navigation, forms, mock data. **Annotate** only selects;
+- **Preview** acts: navigation, forms, mock data. **Comment** only selects;
   selected elements are pinned and a comment is typed against them (max 4000
   characters, 50 comments per batch, the kit CLI's limits; the contract calls
   a comment a request).
@@ -80,7 +93,7 @@ unused); the review ignores an Escape whose target is the frame.
   preview): the text of a bubble on elements is never lost. Escape, a click
   away, a plain click on other elements or closing the review keeps it as a
   draft, shown as a hollow pin; selecting the same elements or clicking the
-  draft pin reopens it. A draft pin clicked in Preview switches to Annotate
+  draft pin reopens it. A draft pin clicked in Preview switches to Comment
   (`SELECT_ELEMENTS`) and reopens it there. Drafts are not counted or sent,
   and survive Send. A whole-screen comment's text is kept the same way, as
   the screen's draft (no pin), which Comment on screen reopens with.

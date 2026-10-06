@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Alert, Box, Button, CircularProgress, Dialog, IconButton, Snackbar, Tooltip, Typography, useColorScheme } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
 import {
@@ -52,8 +52,9 @@ import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import type { ReviewSession, RevisionNotice } from "../model/revision";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
 import { CommentBubble } from "./CommentBubble";
+import { Key } from "./Key";
 import { QueuedCommentBubble } from "./QueuedCommentBubble";
-import { ReviewToolbar } from "./ReviewToolbar";
+import { PRIMARY_TINT, ReviewToolbar } from "./ReviewToolbar";
 import { SendBar } from "./SendBar";
 
 export interface PrototypeReviewProps {
@@ -150,6 +151,22 @@ function drawnFor(r: Rendered, hash: string, view: { screenId: string; roleId: s
   return r.hash === hash && r.screenId === view.screenId && r.roleId === view.roleId && r.stateId === view.stateId;
 }
 
+/** In Comment mode, the window's ring: a primary border with a soft halo. */
+const COMMENT_RING = {
+  "--proto-window-border": "var(--oxygen-palette-primary-main)",
+  "--proto-window-shadow": `0 0 0 3px ${PRIMARY_TINT}`,
+} as CSSProperties;
+
+/** In Comment mode, the window bar's tag: the mode, and the key that leaves it. */
+function CommentModeTag() {
+  return (
+    <Typography component="span" variant="caption" color="primary" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75, fontWeight: 600, whiteSpace: "nowrap" }}>
+      Comment mode
+      <Key>Esc</Key>
+    </Typography>
+  );
+}
+
 function Waiting({ children }: { children: ReactNode }) {
   return <Box sx={{ flex: 1, display: "grid", placeItems: "center", p: 4 }}>{children}</Box>;
 }
@@ -158,8 +175,8 @@ function Waiting({ children }: { children: ReactNode }) {
  * The full-screen prototype review (spec #860): an Oxygen dialog over the
  * whole console, closed with its X or Escape. It runs the prototype in the
  * kit's sandboxed `PrototypeFrame` on the Oxygen theme's frame runtime; the
- * kit's view reducer owns the pickers and Annotate, so Preview acts and
- * Annotate only selects. A prototype that cannot be shown says why instead of
+ * kit's view reducer owns the pickers and the mode, so Preview acts and
+ * Comment (the view's Annotate) only selects. A prototype that cannot be shown says why instead of
  * drawing a blank frame.
  */
 export function PrototypeReview(props: PrototypeReviewProps) {
@@ -275,6 +292,8 @@ function Session({
     [rendered, queue, hash, view],
   );
   const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
+  // Comment mode shows itself: a ring round the window, a tag in its bar, a hint in the send bar.
+  const commenting = view.mode === "annotate";
 
   /** Keyboard focus back into the prototype, on the element a bubble was on (or the pin that opened it). */
   const focusBack = (key: string | undefined, requests?: readonly number[]) => {
@@ -298,6 +317,7 @@ function Session({
     {
       onEscape: escape,
       onToggleAnnotate: () => dispatch({ type: view.mode === "annotate" ? "EXIT_ANNOTATE" : "ENTER_ANNOTATE" }),
+      onPreview: () => dispatch({ type: "EXIT_ANNOTATE" }),
     },
     { capture: true },
   );
@@ -318,7 +338,7 @@ function Session({
     }
     onQueue((q) => dequeue(q, index));
   };
-  /** A pin in the frame: a queued comment's opens it; a draft pin reopens the draft on its elements (in Annotate). */
+  /** A pin in the frame: a queued comment's opens it; a draft pin reopens the draft on its elements (in Comment mode). */
   const openPin = (key: string, numbers: number[]) => {
     if (numbers.length === 0) {
       const kept = draftOfPin(queue, view.screenId, key);
@@ -354,7 +374,13 @@ function Session({
       <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex", bgcolor: "background.default" }}>
         {/* The bottom gutter keeps the floating send bar off the prototype. */}
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", p: 2, pb: 10, ...WINDOW_LOOK }}>
-          <PrototypeWindow title={manifest.name} manifest={manifest} view={view}>
+          <PrototypeWindow
+            title={manifest.name}
+            manifest={manifest}
+            view={view}
+            style={commenting ? COMMENT_RING : undefined}
+            tag={commenting && <CommentModeTag />}
+          >
             <PrototypeFrame
               ref={frame}
               title={manifest.name}
@@ -426,6 +452,7 @@ function Session({
             requests={requests}
             labels={labels}
             earlier={earlier}
+            commenting={commenting}
             refused={refused}
             sending={sending}
             revising={revising ? (session.sent?.feedback.requests.length ?? 0) : null}

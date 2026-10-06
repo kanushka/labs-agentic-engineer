@@ -427,7 +427,7 @@ export function scriptPrototypeTurn(req: {
   s.say(`Making the prototype of ${component} from the design: 7 screens in the app shell, the Employee, Manager and Finance roles, and the submit and approve flows.`);
   if (manifest === undefined) s.add(`${req.turnKey}-manifest`, manifestPath(component), SAMPLE_MANIFEST);
   if (source === undefined) s.add(`${req.turnKey}-source`, sourcePath(component), SAMPLE_SOURCE);
-  s.pause(400).say("The prototype is ready. Open the Prototype tab and press Review to try it full screen; switch to Annotate to point at anything you'd change.");
+  s.pause(400).say("The prototype is ready. Open the Prototype tab and press Review to try it full screen; choose Comment to point at anything you'd change.");
   return {
     display,
     ...s.end(),

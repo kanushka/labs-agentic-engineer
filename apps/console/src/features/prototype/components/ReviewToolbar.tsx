@@ -17,8 +17,8 @@
  */
 
 import type { ChangeEvent, ReactNode } from "react";
-import { Box, Button, TextField, ToggleButton, ToggleButtonGroup } from "@wso2/oxygen-ui";
-import { RotateCcw } from "@wso2/oxygen-ui-icons-react";
+import { Box, Button, TextField, Tooltip } from "@wso2/oxygen-ui";
+import { MessageCirclePlus, MousePointer2, RotateCcw } from "@wso2/oxygen-ui-icons-react";
 import { screensForRole, type PrototypeManifest, type PrototypeViewEvent, type PrototypeViewState } from "@wso2/prototype-kit/host";
 
 const NO_FLOW = "";
@@ -39,9 +39,43 @@ function Picker({ label, value, onChange, children }: { label: string; value: st
   );
 }
 
+/** A tint of the primary colour, for the active Comment tool and the mode's ring. */
+export const PRIMARY_TINT = "rgba(var(--oxygen-palette-primary-mainChannel) / 0.16)";
+
+/**
+ * One of the mode tools: labelled, with its shortcut in the tooltip. The
+ * active one is pressed: tinted primary for Comment, neutral for Preview.
+ */
+function Tool({ label, shortcut, icon, pressed, tint, onClick }: { label: string; shortcut: string; icon: ReactNode; pressed: boolean; tint: boolean; onClick: () => void }) {
+  return (
+    <Tooltip title={`${label} · ${shortcut}`} describeChild>
+      <Button
+        size="small"
+        color="inherit"
+        aria-pressed={pressed}
+        startIcon={icon}
+        onClick={onClick}
+        sx={{
+          textTransform: "none",
+          fontWeight: 500,
+          px: 1.25,
+          py: 0.5,
+          borderRadius: 1.5,
+          color: "text.secondary",
+          "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+          '&[aria-pressed="true"]': tint ? { bgcolor: PRIMARY_TINT, color: "primary.main" } : { bgcolor: "action.selected", color: "text.primary" },
+        }}
+      >
+        {label}
+      </Button>
+    </Tooltip>
+  );
+}
+
 /**
  * The review's controls, as the kit CLI's host has them: screen, flow, role
- * and display-state pickers, Reset data, and the Preview · Annotate toggle.
+ * and display-state pickers, Reset data, and the Preview · Comment tool pair
+ * (Comment is the reviewer's word for the view's Annotate mode).
  * Every change goes through the kit's view reducer, which keeps the view
  * reachable for the role.
  */
@@ -94,20 +128,24 @@ export function ReviewToolbar({
       <Button size="small" variant="outlined" startIcon={<RotateCcw size={16} />} onClick={onReset}>
         Reset data
       </Button>
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        aria-label="Mode"
-        value={view.mode}
-        onChange={(_, mode: string | null) => {
-          if (mode === "annotate") dispatch({ type: "ENTER_ANNOTATE" });
-          else if (mode === "preview") dispatch({ type: "EXIT_ANNOTATE" });
-        }}
-        sx={{ "& .MuiToggleButton-root": { textTransform: "none", px: 1.5 } }}
-      >
-        <ToggleButton value="preview">Preview</ToggleButton>
-        <ToggleButton value="annotate">Annotate</ToggleButton>
-      </ToggleButtonGroup>
+<Box role="group" aria-label="Mode" sx={{ display: "inline-flex", gap: 0.25, p: 0.375, border: 1, borderColor: "divider", borderRadius: 2.5 }}>
+        <Tool
+          label="Preview"
+          shortcut="V"
+          icon={<MousePointer2 size={16} />}
+          pressed={view.mode === "preview"}
+          tint={false}
+          onClick={() => dispatch({ type: "EXIT_ANNOTATE" })}
+        />
+        <Tool
+          label="Comment"
+          shortcut="C"
+          icon={<MessageCirclePlus size={16} />}
+          pressed={view.mode === "annotate"}
+          tint
+          onClick={() => dispatch({ type: "ENTER_ANNOTATE" })}
+        />
+      </Box>
     </Box>
   );
 }

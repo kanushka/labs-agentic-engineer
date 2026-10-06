@@ -146,7 +146,7 @@ async function openReview() {
 }
 
 function annotate(dialog: HTMLElement) {
-  fireEvent.click(within(dialog).getByRole("button", { name: "Annotate" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Comment" }));
 }
 
 /** Where an element is drawn in the frame's viewport, as the frame reports it (jsdom lays nothing out). */
@@ -282,7 +282,7 @@ describe("the full-screen review", () => {
     fireEvent.keyDown(frame(), { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    // Annotate: the frame's Escape closes the comment bubble first, then clears the selection, then closes the review.
+    // Comment mode: the frame's Escape closes the comment bubble first, then clears the selection, then closes the review.
     annotate(dialog);
     clickElement("btn.new-claim");
     fromFrame({ type: "proto:escape" });
@@ -358,7 +358,7 @@ describe("the full-screen review", () => {
     expect(screen.queryByTitle("Acme Expenses prototype app")).toBeNull();
   });
 
-  it("acts in Preview and only selects in Annotate", async () => {
+  it("acts in Preview and only selects in Comment mode", async () => {
     const { dialog, post } = await openReview();
     const screenPicker = within(dialog).getByLabelText("Screen") as HTMLSelectElement;
 
@@ -368,7 +368,7 @@ describe("the full-screen review", () => {
     fromFrame({ type: "proto:toggle", elementKey: "btn.submit" });
     expect(lastView(post)).toMatchObject({ mode: "preview", screenId: "screen.new-claim", selectedKeys: [] });
 
-    // Annotate: a click selects (and the comment bubble says what), and a navigation is ignored.
+    // Comment mode: a click selects (and the comment bubble says what), and a navigation is ignored.
     annotate(dialog);
     fromFrame({ type: "proto:rendered", screenId: "screen.new-claim", elements: [{ key: "btn.submit", label: "Submit claim" }] });
     clickElement("btn.submit");
@@ -631,7 +631,7 @@ describe("the send bar", () => {
   it("comments on the whole screen from the bar, even from Preview, and leaves no pin", async () => {
     const { dialog, post } = await openReview();
     fireEvent.click(within(bar()).getByRole("button", { name: "Comment on screen" }));
-    expect(within(dialog).getByRole("button", { name: "Annotate" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByRole("button", { name: "Comment" })).toHaveAttribute("aria-pressed", "true");
     expect(bubble()).toHaveAccessibleName("Comment on My claims (whole screen)");
     expect(within(bubble()).getByLabelText("Comment")).toHaveFocus();
     addComment("Too busy overall");
@@ -688,9 +688,55 @@ describe("the send bar", () => {
     expect(screen.queryByRole("dialog", { name: "Comment 1" })).toBeNull();
   });
 
-  it("toggles Annotate with C, but not while typing", async () => {
+  it("switches between the Preview and Comment tools by button, V and C, and shows Comment mode only while in it", async () => {
+    const { dialog, post } = await openReview();
+    const preview = within(dialog).getByRole("button", { name: "Preview" });
+    const comment = within(dialog).getByRole("button", { name: "Comment" });
+    const signals = () => [within(dialog).queryByText("Comment mode"), within(bar()).queryByText("Click anything to comment")];
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(signals()).toEqual([null, null]);
+
+    fireEvent.mouseOver(comment);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(/Comment.*C/);
+    fireEvent.click(comment);
+    expect(comment).toHaveAttribute("aria-pressed", "true");
+    expect(preview).toHaveAttribute("aria-pressed", "false");
+    expect(lastView(post).mode).toBe("annotate");
+    for (const signal of signals()) expect(signal).toBeVisible();
+
+    fireEvent.keyDown(dialog, { key: "v" });
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(lastView(post).mode).toBe("preview");
+    expect(signals()).toEqual([null, null]);
+    // V stays in Preview; C toggles Comment.
+    fireEvent.keyDown(dialog, { key: "V" });
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(dialog, { key: "c" });
+    expect(comment).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(preview);
+    expect(preview).toHaveAttribute("aria-pressed", "true");
+    expect(signals()).toEqual([null, null]);
+  });
+
+  it("says how to start when there are no comments", async () => {
+    await openReview();
+    fireEvent.click(within(bar()).getByRole("button", { name: "0 comments" }));
+    expect(within(bar()).getByRole("list", { name: "Queued comments" })).toHaveTextContent(
+      "No comments yet. Press C or choose Comment, then click anything on the screen. Or comment on the whole screen.",
+    );
+  });
+
+  it("does not go to Preview with V while typing", async () => {
     const { dialog } = await openReview();
-    const mode = () => within(dialog).getByRole("button", { name: "Annotate" }).getAttribute("aria-pressed");
+    annotate(dialog);
+    clickElement("btn.new-claim");
+    fireEvent.keyDown(within(bubble()).getByLabelText("Comment"), { key: "v" });
+    expect(within(dialog).getByRole("button", { name: "Comment" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("toggles Comment mode with C, but not while typing", async () => {
+    const { dialog } = await openReview();
+    const mode = () => within(dialog).getByRole("button", { name: "Comment" }).getAttribute("aria-pressed");
     fireEvent.keyDown(dialog, { key: "c" });
     expect(mode()).toBe("true");
     clickElement("btn.new-claim");
@@ -849,7 +895,7 @@ describe("pins and drafts", () => {
     expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
   });
 
-  it("restores the draft when its element is clicked again, and reopens it from Preview in Annotate", async () => {
+  it("restores the draft when its element is clicked again, and reopens it from Preview in Comment mode", async () => {
     const { dialog } = await annotating();
     clickElement("btn.reject");
     type("Half a thought");
@@ -860,7 +906,7 @@ describe("pins and drafts", () => {
     escapeBubble();
     fireEvent.click(within(dialog).getByRole("button", { name: "Preview" }));
     clickPin("btn.reject", []);
-    expect(within(dialog).getByRole("button", { name: "Annotate" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByRole("button", { name: "Comment" })).toHaveAttribute("aria-pressed", "true");
     expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
   });
 

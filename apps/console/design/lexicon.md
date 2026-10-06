@@ -42,7 +42,7 @@ for console turns, and a disagreement is settled here.
 | **Make prototype** / **Update prototype** | the action; Update once one exists | generate, build |
 | **Review** | open a prototype full screen | open, view |
 | **Preview** | the review mode where the prototype acts | run, play |
-| **Annotate** | the review mode where clicks select instead of act | comment, mark up |
+| **Comment** (mode) | the review mode where a click starts a comment instead of acting. `annotate` is only the code's and the protocol's name for it, never said to the user | Annotate, mark up |
 | **Comment** | one change asked of the prototype: the selected elements (or the whole screen) and the text. "Request" is only the contract's and the code's name for it, never said to the user | request, note, ticket |
 | **draft** (comment) | a comment started and closed without Add: kept where it was written, shown as a hollow pin, reopened with its text; never counted or sent | unsaved comment |
 | **Whole screen** | what a comment on no element is on, in its bubble and the list | page, full page |

@@ -22,6 +22,7 @@ import { ChevronDown, ChevronUp, MessageSquarePlus, Send, Trash2 } from "@wso2/o
 import type { PrototypeManifest } from "@wso2/prototype-kit/host";
 import { MAX_FEEDBACK_REQUESTS, targetLabel, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
 import { commentCount } from "../model/feedback";
+import { Key } from "./Key";
 
 export interface SendBarProps {
   manifest: PrototypeManifest;
@@ -30,6 +31,8 @@ export interface SendBarProps {
   labels: ScreenLabels;
   /** The comments (0-based) written on an earlier revision than the one showing. */
   earlier: readonly number[];
+  /** In Comment mode: the bar says a click comments. */
+  commenting: boolean;
   /** Why the last Send did not go; the queue is kept. */
   refused: string | null;
   sending: boolean;
@@ -63,14 +66,15 @@ function placeOf(manifest: PrototypeManifest, labels: ScreenLabels, r: FeedbackR
 
 /**
  * The review's floating send bar (#885), in place of a side panel so the
- * prototype has the full width: the comment count, Comment on screen (a
+ * prototype has the full width: the comment count, in Comment mode a hint
+ * that a click comments, Comment on screen (a
  * whole-screen comment, its bubble anchored here), Send to agent, and a list
  * of every queued comment across screens, roles and states, whose entries go
  * where the comment was made and open it. The ref is the bar itself, which a
  * whole-screen comment's bubble anchors to.
  */
 export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar(
-  { manifest, requests, labels, earlier, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
+  { manifest, requests, labels, earlier, commenting, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
   ref,
 ) {
   const [expanded, setExpanded] = useState(false);
@@ -101,7 +105,7 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
           >
             {requests.length === 0 && (
               <Typography component="li" variant="body2" color="text.secondary" sx={{ p: 1 }}>
-                No comments yet. Switch to Annotate and click an element, or comment on the whole screen.
+                No comments yet. Press <Key>C</Key> or choose Comment, then click anything on the screen. Or comment on the whole screen.
               </Typography>
             )}
             {requests.map((r, i) => (
@@ -208,6 +212,24 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
         >
           {commentCount(requests.length)}
         </Button>
+        {commenting && (
+          <Typography variant="body2" color="text.secondary" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75, whiteSpace: "nowrap" }}>
+            <Box
+              component="i"
+              aria-hidden
+              sx={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                bgcolor: "primary.main",
+                "@keyframes pulse": { "50%": { opacity: 0.35 } },
+                animation: "pulse 1.6s ease-in-out infinite",
+                "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+              }}
+            />
+            Click anything to comment
+          </Typography>
+        )}
         {revising !== null && (
           <Typography variant="body2" color="text.secondary" role="status" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <CircularProgress size={14} aria-hidden />
