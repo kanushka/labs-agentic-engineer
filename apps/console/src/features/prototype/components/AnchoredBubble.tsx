@@ -33,6 +33,12 @@ function virtualElement({ top, left, width, height }: HostRect) {
   return { getBoundingClientRect: () => ({ ...rect, toJSON: () => rect }) };
 }
 
+// Popper's options, made once: MUI rebuilds its popper whenever these change
+// identity, and a rebuilt popper that flips (no room below) sets its placement
+// again, so options made per render would never settle.
+const POPPER_OPTIONS = { strategy: "fixed" } as const;
+const MODIFIERS = [{ name: "offset", options: { offset: [0, 8] } }];
+
 /**
  * The popover every comment bubble is drawn in, by its anchor (flipping
  * above it when there is no room below), over the frame and never inside it.
@@ -60,8 +66,8 @@ export function AnchoredBubble({
       placement="bottom-start"
       // Inside the review's dialog, so its focus trap keeps focus in the bubble.
       disablePortal
-      popperOptions={{ strategy: "fixed" }}
-      modifiers={[{ name: "offset", options: { offset: [0, 8] } }]}
+      popperOptions={POPPER_OPTIONS}
+      modifiers={MODIFIERS}
       sx={{ zIndex: (t) => t.zIndex.modal + 1 }}
     >
       <ClickAwayListener onClickAway={onClickAway}>
