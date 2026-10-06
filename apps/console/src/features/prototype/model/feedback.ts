@@ -32,10 +32,12 @@ export function feedbackBatch(component: string, queue: FeedbackQueue): Prototyp
 
 /**
  * The queue with a sent batch the agent did not apply put back in front of
- * what was written since, on the revision the batch was made on.
+ * what was written since, on the revision the batch was made on (still the
+ * one showing: nothing landed).
  */
 export function restored(queue: FeedbackQueue, batch: PrototypeFeedback): FeedbackQueue {
-  return { hash: batch.prototypeHash, requests: [...batch.requests, ...queue.requests], drafts: queue.drafts };
+  const given = batch.requests.map((r) => ({ ...r, revision: batch.prototypeHash }));
+  return { hash: batch.prototypeHash, requests: [...given, ...queue.requests], drafts: queue.drafts };
 }
 
 /** The queue once its comments are sent: empty, keeping the drafts. */

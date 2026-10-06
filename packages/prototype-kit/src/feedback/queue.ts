@@ -20,8 +20,11 @@
  * The Annotate queue a review keeps, headless, so every host (the console,
  * the kit CLI's preview) keeps it the same way and only draws its own UI:
  *
- *  - queued comments, numbered 1.. as their pins show them, on the revision
- *    the first was queued on; one can be edited or removed in place;
+ *  - queued comments, numbered 1.. as their pins show them, each on the
+ *    revision it was written on; one can be edited or removed in place. The
+ *    queue is on one revision, which the batch names: the one its first
+ *    comment was written on, moved on to each revision that lands while it
+ *    waits (`onRevision`), since the reviewer keeps writing against it;
  *  - drafts: a comment the reviewer started on some elements and closed
  *    without adding, kept per screen and set of elements (in whatever order
  *    they were selected) so selecting them again restores it. A draft is
@@ -38,10 +41,15 @@
 import type { PrototypeViewState } from "../host/view-state.js";
 import { MAX_FEEDBACK_REQUESTS, type FeedbackRequest, type FeedbackSubmission } from "./request.js";
 
+/** A queued comment: the request, and the revision it was written on. */
+export interface QueuedComment extends FeedbackRequest {
+  revision: string;
+}
+
 export interface FeedbackQueue {
-  /** The revision the first queued comment was made on; null while none is queued. */
+  /** The revision the batch is on (see above); null while none is queued. */
   hash: string | null;
-  requests: readonly FeedbackRequest[];
+  requests: readonly QueuedComment[];
   /** Started comments, each on its own screen and set of elements; never sent. */
   drafts: readonly FeedbackRequest[];
 }
@@ -97,7 +105,7 @@ export function enqueue(queue: FeedbackQueue, hash: string, request: FeedbackReq
   if (queue.requests.length >= MAX_FEEDBACK_REQUESTS) return queue;
   return {
     hash: queue.hash ?? hash,
-    requests: [...queue.requests, request],
+    requests: [...queue.requests, { ...request, revision: hash }],
     drafts: withoutDraftAt(queue.drafts, request.screenId, request.elementIds),
   };
 }
@@ -115,6 +123,20 @@ export function dequeue(queue: FeedbackQueue, index: number): FeedbackQueue {
   return { hash: requests.length === 0 ? null : queue.hash, requests, drafts: queue.drafts };
 }
 
+/**
+ * The queue once revision `hash` landed: the batch names it, as the reviewer
+ * now writes against it; each comment keeps the revision it was written on
+ * (`earlierComments`). The same queue when it is empty or already there.
+ */
+export function onRevision(queue: FeedbackQueue, hash: string): FeedbackQueue {
+  return queue.hash === null || queue.hash === hash ? queue : { ...queue, hash };
+}
+
+/** The 0-based numbers of the queued comments written on an earlier revision than `hash`, the one showing. */
+export function earlierComments(queue: FeedbackQueue, hash: string): number[] {
+  return queue.requests.flatMap((r, i) => (r.revision !== hash ? [i] : []));
+}
+
 /** The queue with its `index`th (0-based) comment kept on its whole screen, at its number: the elements it named are dropped. */
 export function keepOnScreen(queue: FeedbackQueue, index: number): FeedbackQueue {
   if (!queue.requests[index]) return queue;
@@ -122,15 +144,18 @@ export function keepOnScreen(queue: FeedbackQueue, index: number): FeedbackQueue
 }
 
 /**
- * The 0-based numbers of the queued comments made on this screen, role and
- * state that name an element the screen no longer draws (`rendered`, as the
- * frame reports it), e.g. once a revision took it away. Only those: as
- * another role or in another state the element may well be drawn.
+ * The 0-based numbers of the queued comments a revision orphaned: written on
+ * an earlier revision than `hash` (the one showing), on this screen, role and
+ * state, and naming an element the screen no longer draws (`rendered`, as the
+ * frame reports it for `hash`). Only those: as another role or in another
+ * state the element may well be drawn.
  */
-export function orphansOnScreen(requests: readonly FeedbackRequest[], view: PrototypeViewState, rendered: readonly string[]): number[] {
+export function orphansOnScreen(queue: FeedbackQueue, hash: string, view: PrototypeViewState, rendered: readonly string[]): number[] {
   const drawn = new Set(rendered);
-  return requests.flatMap((r, i) =>
-    r.screenId === view.screenId && r.roleId === view.roleId && r.stateId === view.stateId && r.elementIds.some((id) => !drawn.has(id)) ? [i] : [],
+  return queue.requests.flatMap((r, i) =>
+    r.revision !== hash && r.screenId === view.screenId && r.roleId === view.roleId && r.stateId === view.stateId && r.elementIds.some((id) => !drawn.has(id))
+      ? [i]
+      : [],
   );
 }
 
@@ -155,7 +180,20 @@ export function draftOfPin(queue: FeedbackQueue, screenId: string, key: string):
   return [...queue.drafts].reverse().find((d) => d.screenId === screenId && d.elementIds[0] === key);
 }
 
+/** A queued comment as the batch carries it: the request alone. */
+function asRequest(c: QueuedComment): FeedbackRequest {
+  return {
+    screenId: c.screenId,
+    ...(c.flowId !== undefined ? { flowId: c.flowId } : {}),
+    roleId: c.roleId,
+    stateId: c.stateId,
+    elementIds: [...c.elementIds],
+    text: c.text,
+  };
+}
+
 /** What a host sends: the queued comments on their revision (never the drafts); null while none is queued. */
 export function submissionOf(queue: FeedbackQueue): FeedbackSubmission | null {
-  return queue.hash === null || queue.requests.length === 0 ? null : { prototypeHash: queue.hash, requests: [...queue.requests] };
+  if (queue.hash === null || queue.requests.length === 0) return null;
+  return { prototypeHash: queue.hash, requests: queue.requests.map(asRequest) };
 }

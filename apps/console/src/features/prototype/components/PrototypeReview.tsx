@@ -38,6 +38,7 @@ import {
   dequeue,
   draftOfPin,
   draftPinsOnScreen,
+  earlierComments,
   editRequest,
   enqueue,
   keepOnScreen,
@@ -148,6 +149,20 @@ function screenName(manifest: PrototypeFiles["manifest"], screenId: string): str
   return manifest.screens.find((x) => x.id === screenId)?.name ?? screenId;
 }
 
+/** What the frame last reported drawing, and for which revision and view it was told then. */
+interface Rendered {
+  hash: string;
+  screenId: string;
+  roleId: string;
+  stateId: string;
+  keys: string[];
+}
+
+/** Whether the frame's report is of `hash` drawn as `view` shows it (screen, role, state). */
+function drawnFor(r: Rendered, hash: string, view: { screenId: string; roleId: string; stateId: string }): boolean {
+  return r.hash === hash && r.screenId === view.screenId && r.roleId === view.roleId && r.stateId === view.stateId;
+}
+
 function Waiting({ children }: { children: ReactNode }) {
   return <Box sx={{ flex: 1, display: "grid", placeItems: "center", p: 4 }}>{children}</Box>;
 }
@@ -251,8 +266,8 @@ function Session({
   const { requests } = queue;
   // Each visited screen's element labels, as the frame last reported them, which comments are named by.
   const [labels, setLabels] = useState<Readonly<Record<string, Readonly<Record<string, string>>>>>({});
-  // The elements the frame last said its screen draws, which a revision's comments are checked against.
-  const [rendered, setRendered] = useState<{ screenId: string; keys: string[] } | null>(null);
+  // The elements the frame last said it draws, and for what (revision, screen, role, state): what comments are checked against.
+  const [rendered, setRendered] = useState<Rendered | null>(null);
   const [resetToken, setResetToken] = useState(0);
   const [refused, setRefused] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -265,11 +280,12 @@ function Session({
   // The send bar, which a whole-screen comment's bubble points at.
   const [bar, setBar] = useState<HTMLDivElement | null>(null);
   const full = requests.length >= MAX_FEEDBACK_REQUESTS;
-  // Comments carried over from an earlier revision may point at elements it took away.
-  const stale = queue.hash !== null && queue.hash !== hash;
+  // Comments written on an earlier revision may point at elements it took away.
+  const earlier = useMemo(() => earlierComments(queue, hash), [queue, hash]);
+  // Checked only against what the frame drew for this very revision and view, never a report from before a swap or a switch.
   const orphans = useMemo(
-    () => (stale && rendered?.screenId === view.screenId ? orphansOnScreen(requests, view, rendered.keys) : []),
-    [stale, rendered, requests, view],
+    () => (rendered !== null && drawnFor(rendered, hash, view) ? orphansOnScreen(queue, hash, view, rendered.keys) : []),
+    [rendered, queue, hash, view],
   );
   const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
 
@@ -372,7 +388,7 @@ function Session({
               onEscape={() => escape() || onClose()}
               onElements={(screenId, elements) => {
                 setLabels((all) => ({ ...all, [screenId]: Object.fromEntries(elements.map((e) => [e.key, e.label])) }));
-                setRendered({ screenId, keys: elements.map((e) => e.key) });
+                setRendered({ hash, screenId, roleId: view.roleId, stateId: view.stateId, keys: elements.map((e) => e.key) });
               }}
               loading={
                 <Box sx={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", bgcolor: "background.paper" }}>
@@ -419,7 +435,7 @@ function Session({
             manifest={manifest}
             requests={requests}
             labels={labels}
-            stale={stale}
+            earlier={earlier}
             refused={refused}
             sending={sending}
             revising={revising ? (session.sent?.feedback.requests.length ?? 0) : null}

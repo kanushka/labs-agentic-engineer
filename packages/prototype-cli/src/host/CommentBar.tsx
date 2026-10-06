@@ -33,8 +33,8 @@ export interface CommentBarProps {
   requests: readonly FeedbackRequest[];
   /** Each visited screen's element labels, by key, which the list names a comment's elements by. */
   labels: ScreenLabels;
-  /** The queue was started on a revision that has since been replaced. */
-  stale: boolean;
+  /** The comments (0-based) written on an earlier revision than the one showing. */
+  earlier: readonly number[];
   onCommentOnScreen: () => void;
   /** Go to where the `index`th (0-based) comment was made and open it. */
   onOpen: (index: number) => void;
@@ -62,7 +62,7 @@ export function count(n: number): string {
   return `${n} ${n === 1 ? "comment" : "comments"}`;
 }
 
-export function CommentBar({ manifest, requests, labels, stale, onCommentOnScreen, onOpen, onRemove, onSave, ref }: CommentBarProps) {
+export function CommentBar({ manifest, requests, labels, earlier, onCommentOnScreen, onOpen, onRemove, onSave, ref }: CommentBarProps) {
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const listId = useId();
@@ -85,6 +85,7 @@ export function CommentBar({ manifest, requests, labels, stale, onCommentOnScree
                 <span>
                   <span className="ph-bar-text">{r.text}</span>
                   <small>{placeOf(manifest, labels, r)}</small>
+                  {earlier.includes(i) && <small>Written on an earlier version</small>}
                 </span>
               </button>
               <button type="button" className="ph-bar-remove" aria-label={`Remove comment ${i + 1}`} title="Remove" onClick={() => onRemove(i)}>
@@ -94,7 +95,7 @@ export function CommentBar({ manifest, requests, labels, stale, onCommentOnScree
           ))}
         </ol>
       )}
-      {stale && requests.length > 0 && <p role="note">Queued on an earlier version of the prototype.</p>}
+      {earlier.length > 0 && <p role="note">{`${count(earlier.length)} ${earlier.length === 1 ? "was" : "were"} written on an earlier version of the prototype.`}</p>}
       {full && <p role="note">{`The queue is full (${MAX_FEEDBACK_REQUESTS} comments): save it or remove one to add another.`}</p>}
       {status && <p role="status">{status}</p>}
       <div className="ph-bar-row">

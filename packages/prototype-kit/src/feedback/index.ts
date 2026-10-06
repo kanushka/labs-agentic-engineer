@@ -39,6 +39,7 @@ export { MAX_FEEDBACK_ID, MAX_FEEDBACK_REQUESTS, MAX_FEEDBACK_TEXT, PROTOTYPE_HA
 export {
   EMPTY_FEEDBACK_QUEUE,
   dequeue,
+  earlierComments,
   draftAt,
   draftOfPin,
   draftPinsOnScreen,
@@ -46,12 +47,14 @@ export {
   enqueue,
   keepDraft,
   keepOnScreen,
+  onRevision,
   orphansOnScreen,
   pinsOnScreen,
   requestFor,
   submissionOf,
   targetLabel,
   type FeedbackQueue,
+  type QueuedComment,
 } from "./queue.js";
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

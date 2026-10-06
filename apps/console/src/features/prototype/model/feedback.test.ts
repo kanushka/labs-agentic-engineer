@@ -64,7 +64,7 @@ describe("the batch Send makes", () => {
 
   it("is the queued comments, on their revision, as the component's feedback", () => {
     const queue = enqueue(EMPTY_FEEDBACK_QUEUE, hash, request("screen.claim", ["btn.approve"]));
-    expect(feedbackBatch("expense-web", queue)).toEqual({ prototypeHash: hash, component: "expense-web", requests: queue.requests });
+    expect(feedbackBatch("expense-web", queue)).toEqual({ prototypeHash: hash, component: "expense-web", requests: [request("screen.claim", ["btn.approve"])] });
   });
 
   it("leaves the drafts out, and is nothing while only drafts are kept", () => {

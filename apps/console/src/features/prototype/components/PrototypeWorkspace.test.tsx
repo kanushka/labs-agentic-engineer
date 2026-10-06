@@ -1021,6 +1021,48 @@ describe("the revision landing in the open review", () => {
     expect(bar()).toHaveTextContent("2 comments");
   });
 
+  it("sends comments held during the revision on the revision that landed", async () => {
+    await sent();
+    clickElement("btn.approve");
+    addComment("Make it green");
+    ended(revised());
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: [{ key: "btn.approve", label: "Approve" }] });
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Send to agent" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1]![2]).toMatchObject({
+      feedback: { prototypeHash: prototypeHash(SAMPLE_MANIFEST, REVISED_SOURCE), requests: [{ elementIds: ["btn.approve"], text: "Make it green" }] },
+    });
+  });
+
+  it("marks only the comments written on an earlier version", async () => {
+    await sent();
+    clickElement("btn.approve");
+    addComment("Make it green");
+    ended(revised());
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: [{ key: "btn.approve", label: "Approve" }] });
+    clickElement("btn.approve");
+    addComment("And bigger");
+
+    expect(bar()).toHaveTextContent("1 comment was written on an earlier version of the prototype.");
+    const entries = within(commentList()).getAllByRole("listitem");
+    expect(entries[0]).toHaveTextContent("Written on an earlier version");
+    expect(entries[1]).not.toHaveTextContent("Written on an earlier version");
+  });
+
+  it("flags no orphan until the frame reports what the landed revision draws", async () => {
+    await sent();
+    clickElement("btn.approve");
+    addComment("Make it green");
+    // The last the frame said of the old revision: no Approve.
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: [{ key: "btn.reject", label: "Reject" }] });
+    ended(revised());
+    expect(bar()).not.toHaveTextContent("no longer on this screen");
+
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: [{ key: "btn.reject", label: "Reject" }] });
+    expect(bar()).toHaveTextContent("1 comment points at an element no longer on this screen.");
+  });
+
   it("puts the sent comments back with the reason and Retry when the turn fails, and keeps the revision showing", async () => {
     const { post } = await sent(["Ask for a reason"]);
     clickElement("btn.approve");

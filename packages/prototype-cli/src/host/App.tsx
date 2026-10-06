@@ -43,6 +43,7 @@ import {
   EMPTY_FEEDBACK_QUEUE,
   MAX_FEEDBACK_REQUESTS,
   dequeue,
+  earlierComments,
   draftOfPin,
   draftPinsOnScreen,
   editRequest,
@@ -98,6 +99,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   const [labels, setLabels] = useState<Readonly<Record<string, Readonly<Record<string, string>>>>>({});
   const [queue, setQueue] = useState<FeedbackQueue>(EMPTY_FEEDBACK_QUEUE);
   const onQueue = useCallback((update: QueueUpdate) => setQueue(update), []);
+  const earlier = useMemo(() => earlierComments(queue, revision.hash), [queue, revision.hash]);
   const { requests } = queue;
   const pins = useMemo(() => pinsOnScreen(requests, view.screenId), [requests, view.screenId]);
   const drafts = useMemo(() => draftPinsOnScreen(queue, view.screenId), [queue, view.screenId]);
@@ -238,7 +240,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             manifest={manifest}
             requests={requests}
             labels={labels}
-            stale={queue.hash !== null && queue.hash !== revision.hash}
+            earlier={earlier}
             onCommentOnScreen={() => dispatch({ type: "COMMENT_ON_SCREEN" })}
             onOpen={open}
             onRemove={remove}

@@ -28,8 +28,8 @@ export interface SendBarProps {
   requests: readonly FeedbackRequest[];
   /** Each visited screen's element labels, by key, which the list names a comment's elements by. */
   labels: ScreenLabels;
-  /** The queue was started on a revision that has since been replaced. */
-  stale: boolean;
+  /** The comments (0-based) written on an earlier revision than the one showing. */
+  earlier: readonly number[];
   /** Why the last Send did not go; the queue is kept. */
   refused: string | null;
   sending: boolean;
@@ -70,7 +70,7 @@ function placeOf(manifest: PrototypeManifest, labels: ScreenLabels, r: FeedbackR
  * whole-screen comment's bubble anchors to.
  */
 export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar(
-  { manifest, requests, labels, stale, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
+  { manifest, requests, labels, earlier, refused, sending, revising, failed, orphans, onSend, onKeepOnScreen, onCommentOnScreen, onOpen, onRemove },
   ref,
 ) {
   const [expanded, setExpanded] = useState(false);
@@ -134,6 +134,11 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
                     <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                       {placeOf(manifest, labels, r)}
                     </Typography>
+                    {earlier.includes(i) && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                        Written on an earlier version
+                      </Typography>
+                    )}
                     {orphans.includes(i) && (
                       <Typography variant="caption" color="warning.main" sx={{ display: "block" }}>
                         Element no longer on this screen
@@ -157,9 +162,9 @@ export const SendBar = forwardRef<HTMLDivElement, SendBarProps>(function SendBar
           <Divider />
         </>
       )}
-      {stale && requests.length > 0 && (
+      {earlier.length > 0 && (
         <Alert severity="warning" role="note" sx={{ borderRadius: 0 }}>
-          Queued on an earlier version of the prototype.
+          {`${commentCount(earlier.length)} ${earlier.length === 1 ? "was" : "were"} written on an earlier version of the prototype.`}
         </Alert>
       )}
       {orphans.length > 0 && (

@@ -23,6 +23,7 @@ import {
   EMPTY_FEEDBACK_QUEUE,
   MAX_FEEDBACK_REQUESTS,
   dequeue,
+  earlierComments,
   draftAt,
   draftOfPin,
   draftPinsOnScreen,
@@ -30,6 +31,7 @@ import {
   enqueue,
   keepDraft,
   keepOnScreen,
+  onRevision,
   orphansOnScreen,
   pinsOnScreen,
   submissionOf,
@@ -48,11 +50,29 @@ function queued(...requests: FeedbackRequest[]): FeedbackQueue {
   return requests.reduce((q, r) => enqueue(q, H1, r), EMPTY_FEEDBACK_QUEUE);
 }
 
+/** A comment as the queue holds it: written on `revision`. */
+const written = (revision: string, request: FeedbackRequest) => ({ ...request, revision });
+
 describe("queued comments", () => {
   it("keeps the revision the first comment was made on", () => {
     const q = enqueue(enqueue(EMPTY_FEEDBACK_QUEUE, H1, on(["a"], "one")), H2, on(["b"], "two"));
     expect(q.hash).toBe(H1);
-    expect(q.requests.map((r) => r.text)).toEqual(["one", "two"]);
+    expect(q.requests).toEqual([written(H1, on(["a"], "one")), written(H2, on(["b"], "two"))]);
+  });
+
+  it("moves onto a revision that landed: the batch names it, and each comment keeps the revision it was written on", () => {
+    const q = onRevision(queued(on(["a"], "held")), H2);
+    expect(q.hash).toBe(H2);
+    expect(q.requests).toEqual([written(H1, on(["a"], "held"))]);
+    expect(submissionOf(enqueue(q, H2, on(["b"], "new")))).toEqual({ prototypeHash: H2, requests: [on(["a"], "held"), on(["b"], "new")] });
+    expect(onRevision(EMPTY_FEEDBACK_QUEUE, H2)).toBe(EMPTY_FEEDBACK_QUEUE);
+    expect(onRevision(q, H2)).toBe(q);
+  });
+
+  it("marks only the comments written on an earlier revision than the one showing", () => {
+    const q = enqueue(onRevision(queued(on(["a"], "held"), on(["b"], "held too")), H2), H2, on(["c"], "new"));
+    expect(earlierComments(q, H2)).toEqual([0, 1]);
+    expect(earlierComments(q, H1)).toEqual([2]);
   });
 
   it("refuses a comment once the queue holds the most a submission takes", () => {
@@ -62,7 +82,7 @@ describe("queued comments", () => {
 
   it("edits a comment in place, keeping its number and elements", () => {
     const q = editRequest(queued(on(["a"], "one"), on(["b"], "two")), 1, "two, better");
-    expect(q.requests).toEqual([on(["a"], "one"), on(["b"], "two, better")]);
+    expect(q.requests).toEqual([written(H1, on(["a"], "one")), written(H1, on(["b"], "two, better"))]);
     expect(pinsOnScreen(q.requests, "queue")).toEqual({ a: [1], b: [2] });
   });
 
@@ -145,20 +165,24 @@ describe("comments whose elements a revision took away", () => {
     selectedKeys: [],
   });
 
-  it("flags the comments on this screen, role and state naming an element the screen no longer draws", () => {
+  it("flags the earlier revision's comments on this screen, role and state naming an element the screen no longer draws", () => {
     const q = queued(on(["a"], "kept"), on(["gone"], "orphan"), on(["a", "gone"], "half gone"), on([], "whole screen"), on(["gone"], "elsewhere", "other"));
-    expect(orphansOnScreen(q.requests, view("queue"), ["a", "b"])).toEqual([1, 2]);
+    expect(orphansOnScreen(q, H2, view("queue"), ["a", "b"])).toEqual([1, 2]);
   });
 
   it("leaves alone comments made as another role or in another state, where the element may well be drawn", () => {
     const q = queued(on(["gone"], "as approver"));
-    expect(orphansOnScreen(q.requests, view("queue", "employee"), ["a"])).toEqual([]);
-    expect(orphansOnScreen(q.requests, view("queue", "approver", "empty"), ["a"])).toEqual([]);
+    expect(orphansOnScreen(q, H2, view("queue", "employee"), ["a"])).toEqual([]);
+    expect(orphansOnScreen(q, H2, view("queue", "approver", "empty"), ["a"])).toEqual([]);
+  });
+
+  it("leaves alone comments written on the revision showing", () => {
+    expect(orphansOnScreen(queued(on(["gone"], "just written")), H1, view("queue"), ["a"])).toEqual([]);
   });
 
   it("keeps a comment as a comment on its whole screen, at its number", () => {
     const q = keepOnScreen(queued(on(["a"], "one"), on(["gone"], "two")), 1);
-    expect(q.requests).toEqual([on(["a"], "one"), on([], "two")]);
+    expect(q.requests).toEqual([written(H1, on(["a"], "one")), written(H1, on([], "two"))]);
     expect(pinsOnScreen(q.requests, "queue")).toEqual({ a: [1] });
     expect(keepOnScreen(q, 5)).toBe(q);
   });

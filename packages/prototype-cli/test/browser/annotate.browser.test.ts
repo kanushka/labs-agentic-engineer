@@ -260,7 +260,7 @@ describe("prototype preview — commenting in Annotate", () => {
 });
 
 describe("prototype preview — Annotate across a revision", () => {
-  it("keeps the queue, says it was made on an earlier version, and saves the original hash", async () => {
+  it("keeps the queue, marks the comment written on the earlier version, and saves the original hash", async () => {
     const { p, pg } = await open("contacts", "Acme contacts");
     try {
       const originalHash = await driver.revisionHash(p.id);
@@ -271,9 +271,15 @@ describe("prototype preview — Annotate across a revision", () => {
       const source = (await driver.readFile(p.id, "prototype.tsx"))!;
       await driver.writeFile(p.id, "prototype.tsx", source.replace("`${company} contacts`", "`${company} people`"));
       await driver.waitFor(pg, app.heading("Acme people"));
-      await driver.waitFor(pg, host.text("Queued on an earlier version of the prototype."));
+      await driver.waitFor(pg, host.text("1 comment was written on an earlier version of the prototype."));
+      // A comment written on the revision showing is not marked.
+      await driver.click(pg, host.button("Comment on screen"));
+      await driver.fill(pg, host.field("Comment"), "Say people, not contacts");
+      await driver.click(pg, host.button("Add"));
+      await driver.waitFor(pg, host.text("2 comments"));
+      await driver.waitFor(pg, host.text("1 comment was written on an earlier version of the prototype."));
       await driver.click(pg, host.button("Save feedback"));
-      await driver.waitFor(pg, host.text("Saved 1 comment to .prototype/feedback.json"));
+      await driver.waitFor(pg, host.text("Saved 2 comments to .prototype/feedback.json"));
       const saved = JSON.parse((await driver.readFile(p.id, ".prototype/feedback.json"))!) as { prototypeHash: string };
       expect(saved.prototypeHash).toBe(originalHash);
       expect(await driver.revisionHash(p.id)).not.toBe(originalHash);

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { EMPTY_FEEDBACK_QUEUE, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
+import { EMPTY_FEEDBACK_QUEUE, onRevision, prototypeHash, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
 import type { TurnOutcome } from "../../agent-chat/chatStore";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
 import { restored, sent } from "./feedback";
@@ -31,7 +31,9 @@ import type { AppPrototype, PrototypeFiles } from "./prototypes";
 //   revising  the review keeps showing the revision it had, never the files
 //             the agent is still writing;
 //   landed    the turn ended and the prototype is ready: the review swaps the
-//             new revision in and says how many comments it addressed;
+//             new revision in and says how many comments it addressed; the
+//             comments held meanwhile go on to it (the next batch names it),
+//             each still marked with the revision it was written on;
 //   failed    the turn failed, or what it left is invalid: the last good
 //             revision keeps showing and the batch goes back in front of the
 //             queue, with the reason.
@@ -85,7 +87,10 @@ export function follow(s: ReviewSession, prototype: AppPrototype): ReviewSession
 /** The turn that revised the prototype is over: landed, or failed with the batch given back. */
 function settled(s: ReviewSession, prototype: AppPrototype): ReviewSession {
   const failure = s.sent?.outcome === "failed" ? TURN_FAILED : prototype.status === "invalid" ? `The revision can't be shown: ${prototype.problem ?? "it is invalid"}` : null;
-  if (failure === null) return { ...s, sent: null, notice: { kind: "updated", addressed: s.sent?.feedback.requests.length ?? 0 } };
+  if (failure === null) {
+    const queue = s.shown ? onRevision(s.queue, prototypeHash(s.shown.manifestText, s.shown.source)) : s.queue;
+    return { ...s, queue, sent: null, notice: { kind: "updated", addressed: s.sent?.feedback.requests.length ?? 0 } };
+  }
   const queue = s.sent ? restored(s.queue, s.sent.feedback) : s.queue;
   return { ...s, queue, sent: null, notice: { kind: "failed", reason: `${failure} The previous revision is still showing.${s.sent ? " Your comments are back in the queue." : ""}` } };
 }
