@@ -17,9 +17,10 @@
  */
 
 /**
- * A review's keys on the host page, the same in every host: C toggles
- * Annotate (not while typing), and Escape undoes the nearest thing (the
- * bubble, then the selection) before anything else gets it. A key while focus
+ * A review's keys on the host page, the same in every host: V returns to
+ * Preview and C toggles Annotate (Comment mode), neither while typing, and
+ * Escape undoes the nearest thing (the bubble, then the selection) before
+ * anything else gets it. A key while focus
  * is inside the prototype's frame is the prototype's: the frame reports an
  * Escape it did not use itself (`PrototypeFrame.onEscape`). Headless.
  */
@@ -31,6 +32,8 @@ export interface ReviewKeys {
   onEscape: () => boolean;
   /** C: toggle Annotate. */
   onToggleAnnotate: () => void;
+  /** V: back to Preview. */
+  onPreview: () => void;
 }
 
 export interface ReviewKeysOptions {
@@ -62,9 +65,12 @@ export function useReviewKeys(keys: ReviewKeys | null, { capture = false }: Revi
         if (!keys.onEscape()) return;
         if (capture) e.stopPropagation();
         else e.preventDefault();
-      } else if ((e.key === "c" || e.key === "C") && !e.metaKey && !e.ctrlKey && !e.altKey && !typing(e.target)) {
+      } else if (!e.metaKey && !e.ctrlKey && !e.altKey && !typing(e.target)) {
+        const key = e.key.toLowerCase();
+        if (key === "c") keys.onToggleAnnotate();
+        else if (key === "v") keys.onPreview();
+        else return;
         e.preventDefault();
-        keys.onToggleAnnotate();
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture });

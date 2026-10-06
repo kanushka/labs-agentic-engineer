@@ -13,7 +13,12 @@ A kit component resolves its `id` (throws without one), wraps the theme's output
 in a `SelectableBox` (or hands the theme `SelectableRootProps` for rows, tabs,
 steps, navigation entries and crumbs), applies press semantics (`onPress`, then
 `to`, Preview only) and renders `registry[Name]` with resolved props. Annotate
-therefore behaves the same under every theme. `KitComponentProps` lists every
+therefore behaves the same under every theme, and so does its cursor, the
+kit's CSS (`kit-css.ts`): a 32×32 SVG arrow with a bubble (dark ink outlined
+in white, one graphic for light and dark; hotspot at the arrow's tip), the
+solid orange "+" bubble on what takes a comment (`crosshair` fallback) and
+the hollow one on empty space (`html:has(.proto-scene[data-proto-mode=annotate])`,
+since the scene itself lets the pointer through; `default` fallback). `KitComponentProps` lists every
 component's theme props; `ThemeRegistry` maps over it.
 
 `<AppShell>` is a screen's root inside the product's chrome: product name,
@@ -172,7 +177,8 @@ alike and only draw:
   was written (elements, or the whole screen) whenever the bubble closes or
   a plain click moves it; Shift carries it; a bubble opening where a draft
   is kept starts from it; the review unmounting keeps it too.
-- `useReviewKeys`: C toggles Annotate (not while typing), Escape undoes the
+- `useReviewKeys`: V returns to Preview and C toggles Annotate (neither while
+  typing), Escape undoes the
   bubble, then the selection. `capture` listens on the way down and stops a
   used Escape, for a host whose review sits in something that closes on
   Escape (the console's dialog); otherwise a used Escape is only marked
