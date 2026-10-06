@@ -51,7 +51,11 @@ for console turns, and a disagreement is settled here.
 
 | Say | Means | Not |
 |---|---|---|
-| **Answers** | the last page of a batch of questions: every question with the answer given, where the batch is sent | Review (a prototype term), Summary, Submit |
-| **Send answers** / **Send answer** | send a batch's answers, or one question's, to the agent as the next message | submit |
-| **Not answered** | a question in the batch still owed an answer | skipped, missing |
-| **Still asking…** | the batch is still arriving; it can be read, not yet answered | loading |
+| **Questions** | the card where every question the agent is waiting on is answered, in one list | form, quiz, Review (a prototype term) |
+| **Questions for you** | the card's heading over that list | Quick questions |
+| **The agent has N questions · Answer them →** / **The agent has a question · Answer it →** | the chat's pointer to the Questions card while questions are open | Open questions, Respond |
+| **The agent is asking questions…** / **Still asking…** | the batch is still arriving; what has arrived can already be answered | loading |
+| **Send answers** / **Send answer** | send every answer, or the one, to the agent as the next message | submit, Continue |
+| **N of M answered** | how far the user is through the list | progress, completed |
+| **Not answered** | a question still owed an answer, flagged when Send was pressed with gaps | skipped, missing |
+| **No questions waiting** | the Questions card when the agent is not waiting on anyone | empty |

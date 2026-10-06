@@ -22,6 +22,7 @@ import { ConversationRotatedError, TurnInProgressError, type TurnStatus } from "
 import {
   answerableQuestionId,
   appendAgentText,
+  askedScope,
   dropQuestion,
   dropTurnOutput,
   historyItems,
@@ -33,7 +34,7 @@ import {
 } from "./chatLog";
 import { foldTurn, type TurnSink, type TurnStreamApi } from "./foldTurn";
 import { serializeQuestionAnswer } from "./questionCards";
-import { turnBody, type TurnBody, type TurnScope } from "./turnScope";
+import { scopeOfBody, turnBody, type TurnBody, type TurnScope } from "./turnScope";
 
 // The chat store: one conversation per project, one turn at a time.
 //
@@ -347,6 +348,7 @@ export function createChatStore(options: ChatStoreOptions) {
     const instruction = text.trim();
     if (!instruction || e.state.status !== "ready" || e.state.turn.phase !== "idle") return false;
     const rowId = localId("u");
+    const body = turnBody(instruction, scope);
     update(projectName, (s) => ({
       turn: { phase: "starting", instruction },
       items: [
@@ -356,6 +358,7 @@ export function createChatStore(options: ChatStoreOptions) {
           id: rowId,
           text: instruction,
           state: "sending",
+          scope: scopeOfBody(body),
           ...(scope.kind === "prototype" && scope.feedback ? { prototypeFeedback: scope.feedback } : {}),
         },
       ],
@@ -363,7 +366,7 @@ export function createChatStore(options: ChatStoreOptions) {
     let turnId: string;
     try {
       await beforeTurn?.(projectName).catch(() => undefined);
-      turnId = await startInCurrentThread(projectName, rowId, turnBody(instruction, scope));
+      turnId = await startInCurrentThread(projectName, rowId, body);
     } catch (err) {
       update(projectName, (s) => ({
         turn: { phase: "idle" },
@@ -427,13 +430,16 @@ export function createChatStore(options: ChatStoreOptions) {
     },
 
     /**
-     * Answer the question card that is waiting: the card keeps the answers and
-     * turns read-only, and they go to the agent as the next turn, scoped as
-     * any message is. A send that fails leaves the card answerable again.
+     * Answer the questions the conversation waits on: the item keeps the
+     * answers and reads as answered, and they go to the agent as the next
+     * turn, in the scope of the turn that asked them (`askedScope`), wherever
+     * the user answered from. A send that fails leaves them answerable again.
      */
-    async answer(projectName: string, itemId: string, answers: QuestionAnswer[], scope: TurnScope): Promise<boolean> {
-      const card = entry(projectName).state.items.find((i) => i.id === itemId);
-      if (card?.kind !== "question" || answerableQuestionId(entry(projectName).state.items) !== itemId) return false;
+    async answer(projectName: string, itemId: string, answers: QuestionAnswer[]): Promise<boolean> {
+      const { items } = entry(projectName).state;
+      const card = items.find((i) => i.id === itemId);
+      if (card?.kind !== "question" || answerableQuestionId(items) !== itemId) return false;
+      const scope = askedScope(items, itemId);
       setItems(projectName, (items) => setAnswers(items, itemId, answers));
       const sent = await send(projectName, serializeQuestionAnswer(card.questions, answers), scope);
       if (!sent) setItems(projectName, (items) => setAnswers(items, itemId, null));

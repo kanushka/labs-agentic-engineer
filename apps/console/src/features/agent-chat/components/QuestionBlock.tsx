@@ -24,20 +24,16 @@ import { isFreeTextOption } from "../questionCards";
 
 // One of the agent's questions: its options, and a free answer in the user's
 // own words. Widgets after the old console's SpecQuestionForm (QuestionBlock,
-// OptionCard), cut down to the chat's width. A single question's card shows
-// one; a batch's card (QuestionPager) shows one per page.
+// OptionCard). The Questions card lists one per question the agent asked.
 
 function OptionButton({
   opt,
-  hint,
   multi,
   on,
   disabled,
   onSelect,
 }: {
   opt: AskQuestionOption;
-  /** The key that picks it, shown where the card listens for one. */
-  hint: string | undefined;
   multi: boolean;
   on: boolean;
   disabled: boolean;
@@ -66,16 +62,6 @@ function OptionButton({
       }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, width: "100%" }}>
-        {hint && (
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            aria-hidden
-            sx={{ fontVariantNumeric: "tabular-nums", minWidth: "1ch", flexShrink: 0 }}
-          >
-            {hint}
-          </Typography>
-        )}
         <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
           {opt.label}
         </Typography>
@@ -87,7 +73,7 @@ function OptionButton({
         {on && <Check size={14} aria-hidden />}
       </Box>
       {opt.description && (
-        <Typography variant="caption" color="text.secondary" sx={{ pl: hint ? "calc(1ch + 6px)" : 0 }}>
+        <Typography variant="caption" color="text.secondary">
           {opt.description}
         </Typography>
       )}
@@ -99,15 +85,12 @@ export function QuestionBlock({
   q,
   answer,
   disabled,
-  keyHints = false,
   onSelect,
   onNote,
 }: {
   q: AskQuestionInput;
   answer: QuestionAnswer;
   disabled: boolean;
-  /** Number the options by the key that picks each (the batch card listens for 1–9). */
-  keyHints?: boolean;
   onSelect: (label: string) => void;
   onNote: (text: string) => void;
 }) {
@@ -130,11 +113,10 @@ export function QuestionBlock({
           aria-label={q.question}
           sx={{ display: "flex", flexDirection: "column", gap: 0.625 }}
         >
-          {q.options.map((opt, i) => (
+          {q.options.map((opt) => (
             <OptionButton
               key={opt.label}
               opt={opt}
-              hint={keyHints && i < 9 ? String(i + 1) : undefined}
               multi={multi}
               on={answer.selected.includes(opt.label)}
               disabled={disabled}
