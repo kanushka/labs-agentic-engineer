@@ -86,3 +86,47 @@ describe("parseToFrameMessage — the view's colour scheme", () => {
     expect(parsed({ colorScheme: scheme })).toBeNull();
   });
 });
+
+describe("parseFromFrameMessage — where elements are (frame viewport coordinates)", () => {
+  const box = { x: 12, y: 40.5, width: 120, height: 32 };
+
+  it("reads a toggle from a frame on the older protocol: the key alone", () => {
+    expect(parseFromFrameMessage({ type: "proto:toggle", elementKey: "btn.new" })).toEqual({ type: "proto:toggle", elementKey: "btn.new" });
+  });
+
+  it("carries the toggled element's box, and whether the click held Shift to add to the selection", () => {
+    expect(parseFromFrameMessage({ type: "proto:toggle", elementKey: "btn.new", box, additive: true })).toEqual({
+      type: "proto:toggle",
+      elementKey: "btn.new",
+      box,
+      additive: true,
+    });
+  });
+
+  it("carries the boxes of the selected and pinned elements", () => {
+    const boxes = { "btn.new": box, "heading.contacts": { x: 0, y: 0, width: 0, height: 0 } };
+    expect(parseFromFrameMessage({ type: "proto:geometry", boxes })).toEqual({ type: "proto:geometry", boxes });
+  });
+
+  it.each([
+    ["not an object", "12,40"],
+    ["missing a side", { x: 1, y: 2, width: 3 }],
+    ["a string coordinate", { ...box, x: "12" }],
+    ["a non-finite coordinate", { ...box, y: Number.POSITIVE_INFINITY }],
+    ["NaN", { ...box, width: Number.NaN }],
+    ["a negative size", { ...box, height: -1 }],
+  ])("ignores a toggle whose box is %s", (_name, bad) => {
+    expect(parseFromFrameMessage({ type: "proto:toggle", elementKey: "btn.new", box: bad })).toBeNull();
+  });
+
+  it("ignores a toggle whose additive flag is not a boolean", () => {
+    expect(parseFromFrameMessage({ type: "proto:toggle", elementKey: "btn.new", additive: "yes" })).toBeNull();
+  });
+
+  it.each([
+    ["not an object", [box]],
+    ["holding a malformed box", { "btn.new": box, "btn.old": { ...box, x: Number.NaN } }],
+  ])("ignores geometry whose boxes are %s", (_name, boxes) => {
+    expect(parseFromFrameMessage({ type: "proto:geometry", boxes })).toBeNull();
+  });
+});

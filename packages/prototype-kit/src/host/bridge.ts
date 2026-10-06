@@ -62,6 +62,18 @@ export interface FrameElement {
   label: string;
 }
 
+/**
+ * Where an element is drawn, in CSS pixels of the frame's own viewport (its
+ * `getBoundingClientRect()`). The host adds where the frame element sits in
+ * its page to place its own UI by the element (see `useFrameAnchors`).
+ */
+export interface FrameBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** What the frame sends the host. */
 export type FromFrameMessage =
   /** The runtime is up and waits for `load`. */
@@ -70,8 +82,14 @@ export type FromFrameMessage =
   | { type: "proto:rendered"; screenId: string; elements: FrameElement[] }
   /** A press in Preview asked for another screen. */
   | { type: "proto:navigate"; screenId: string }
-  /** A click in Annotate selected or deselected an element. */
-  | { type: "proto:toggle"; elementKey: string }
+  /**
+   * A click in Annotate selected or deselected an element: where it is, and
+   * whether the click held Shift (add to the selection rather than start a
+   * new one). A frame on the older protocol sends the key alone.
+   */
+  | { type: "proto:toggle"; elementKey: string; box?: FrameBox | undefined; additive?: boolean | undefined }
+  /** Where the selected and pinned elements are now, re-sent after every scroll, resize and redraw that moves them. */
+  | { type: "proto:geometry"; boxes: Record<string, FrameBox> }
   /** Escape was pressed inside the frame. */
   | { type: "proto:escape" }
   /** The prototype failed to load or a screen failed to render. */
@@ -84,6 +102,15 @@ type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 const isString = (v: unknown): v is string => typeof v === "string";
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString);
+const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+function isBox(v: unknown): v is FrameBox {
+  if (!isObject(v)) return false;
+  const { x, y, width, height } = v;
+  return isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(width) && isFiniteNumber(height) && width >= 0 && height >= 0;
+}
+
+const boxOf = (v: Json): FrameBox => ({ x: v["x"] as number, y: v["y"] as number, width: v["width"] as number, height: v["height"] as number });
 
 function isView(v: unknown): v is FrameView {
   if (!isObject(v)) return false;
@@ -139,8 +166,22 @@ export function parseFromFrameMessage(data: unknown): FromFrameMessage | null {
     }
     case "proto:navigate":
       return isString(data["screenId"]) ? { type: "proto:navigate", screenId: data["screenId"] } : null;
-    case "proto:toggle":
-      return isString(data["elementKey"]) ? { type: "proto:toggle", elementKey: data["elementKey"] } : null;
+    case "proto:toggle": {
+      const { elementKey, box, additive } = data;
+      if (!isString(elementKey)) return null;
+      if ((box !== undefined && !isBox(box)) || (additive !== undefined && typeof additive !== "boolean")) return null;
+      return {
+        type: "proto:toggle",
+        elementKey,
+        ...(box !== undefined ? { box: boxOf(box) } : {}),
+        ...(additive !== undefined ? { additive } : {}),
+      };
+    }
+    case "proto:geometry": {
+      const boxes = data["boxes"];
+      if (!isObject(boxes) || !Object.values(boxes).every(isBox)) return null;
+      return { type: "proto:geometry", boxes: Object.fromEntries(Object.entries(boxes).map(([key, b]) => [key, boxOf(b as Json)])) };
+    }
     case "proto:error":
       return isString(data["message"]) ? { type: "proto:error", message: data["message"] } : null;
     case "proto:data":
