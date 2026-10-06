@@ -46,6 +46,8 @@ export {
   enqueue,
   followSelection,
   keepDraft,
+  keepOnScreen,
+  orphansOnScreen,
   pinsOnScreen,
   requestFor,
   submissionOf,

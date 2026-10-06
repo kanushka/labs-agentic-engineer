@@ -26,6 +26,8 @@
  *    without adding, kept per screen and set of elements (in whatever order
  *    they were selected) so selecting them again restores it. A draft is
  *    neither counted against the limit nor sent;
+ *  - comments a revision orphaned: their elements are no longer drawn;
+ *    one can be kept on its whole screen instead;
  *  - how the open comment follows the selection (`followSelection`), so
  *    typed text is never lost.
  *
@@ -99,6 +101,25 @@ export function editRequest(queue: FeedbackQueue, index: number, text: string): 
 export function dequeue(queue: FeedbackQueue, index: number): FeedbackQueue {
   const requests = queue.requests.filter((_, i) => i !== index);
   return { hash: requests.length === 0 ? null : queue.hash, requests, drafts: queue.drafts };
+}
+
+/** The queue with its `index`th (0-based) comment kept on its whole screen, at its number: the elements it named are dropped. */
+export function keepOnScreen(queue: FeedbackQueue, index: number): FeedbackQueue {
+  if (!queue.requests[index]) return queue;
+  return { ...queue, requests: queue.requests.map((r, i) => (i === index ? { ...r, elementIds: [] } : r)) };
+}
+
+/**
+ * The 0-based numbers of the queued comments made on this screen, role and
+ * state that name an element the screen no longer draws (`rendered`, as the
+ * frame reports it), e.g. once a revision took it away. Only those: as
+ * another role or in another state the element may well be drawn.
+ */
+export function orphansOnScreen(requests: readonly FeedbackRequest[], view: PrototypeViewState, rendered: readonly string[]): number[] {
+  const drawn = new Set(rendered);
+  return requests.flatMap((r, i) =>
+    r.screenId === view.screenId && r.roleId === view.roleId && r.stateId === view.stateId && r.elementIds.some((id) => !drawn.has(id)) ? [i] : [],
+  );
 }
 
 /** Keep `draft` as the draft on its screen and elements (replacing any there); empty text drops it. */

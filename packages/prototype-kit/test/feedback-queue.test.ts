@@ -30,6 +30,8 @@ import {
   enqueue,
   followSelection,
   keepDraft,
+  keepOnScreen,
+  orphansOnScreen,
   pinsOnScreen,
   submissionOf,
   type FeedbackQueue,
@@ -170,5 +172,34 @@ describe("the open comment following the selection", () => {
   it("keeps the draft on the screen it was written on", () => {
     const moved = followSelection(EMPTY_FEEDBACK_QUEUE, view(["a"]), "About a", view([], "detail"), false);
     expect(draftPinsOnScreen(moved.queue, "queue")).toEqual(["a"]);
+  });
+});
+
+describe("comments whose elements a revision took away", () => {
+  const view = (screenId: string, roleId = "approver", stateId = "default"): PrototypeViewState => ({
+    mode: "annotate",
+    screenId,
+    flowId: null,
+    roleId,
+    stateId,
+    selectedKeys: [],
+  });
+
+  it("flags the comments on this screen, role and state naming an element the screen no longer draws", () => {
+    const q = queued(on(["a"], "kept"), on(["gone"], "orphan"), on(["a", "gone"], "half gone"), on([], "whole screen"), on(["gone"], "elsewhere", "other"));
+    expect(orphansOnScreen(q.requests, view("queue"), ["a", "b"])).toEqual([1, 2]);
+  });
+
+  it("leaves alone comments made as another role or in another state, where the element may well be drawn", () => {
+    const q = queued(on(["gone"], "as approver"));
+    expect(orphansOnScreen(q.requests, view("queue", "employee"), ["a"])).toEqual([]);
+    expect(orphansOnScreen(q.requests, view("queue", "approver", "empty"), ["a"])).toEqual([]);
+  });
+
+  it("keeps a comment as a comment on its whole screen, at its number", () => {
+    const q = keepOnScreen(queued(on(["a"], "one"), on(["gone"], "two")), 1);
+    expect(q.requests).toEqual([on(["a"], "one"), on([], "two")]);
+    expect(pinsOnScreen(q.requests, "queue")).toEqual({ a: [1] });
+    expect(keepOnScreen(q, 5)).toBe(q);
   });
 });
