@@ -84,6 +84,8 @@ const rootSelector = (key: string) => `[data-proto-root][data-proto-key="${CSS.e
  * cannot put children in them (a table row takes only cells), so it draws
  * their pins over their top-right corner and keeps them there as the screen
  * scrolls, resizes or redraws.
+ *
+ * @knipkeep drawn by `KitRoot`, which only the theme runtime bundles reach (their entries are not knip's)
  */
 export function RootPins() {
   const ctx = useKit();
