@@ -330,7 +330,7 @@ describe("stats, sections and row actions under Oxygen", () => {
     await reject.click();
     expect(await reject.getAttribute("aria-pressed")).toBe("true");
     expect(await s.app.locator('[data-proto-key="row.team-queue.req-2002"]').getAttribute("aria-pressed")).toBe("false");
-    await s.page.getByText("Selected: Reject").waitFor();
+    await s.page.getByRole("dialog", { name: "Comment on Reject" }).waitFor();
     expect(await s.app.getByRole("heading", { name: "Request from Sam Lee" }).count()).toBe(0);
     await s.page.getByRole("button", { name: "Preview" }).click();
   });

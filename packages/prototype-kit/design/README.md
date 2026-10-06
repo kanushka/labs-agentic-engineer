@@ -150,6 +150,16 @@ and the frame focuses that pin, else the element. A host on the older
 protocol ignores the new fields and messages. `SELECT_ELEMENTS` selects
 several elements at once (reopening a draft), entering Annotate.
 
+`reduceReview` (`review-state.ts`) wraps the view reducer with the comment
+bubble a host draws, so hosts open and close it alike: a click in Annotate
+opens it on the selection (Shift keeps it open as the selection grows);
+`COMMENT_ON_SCREEN` opens it on the whole screen (entering Annotate);
+`OPEN_COMMENT` goes to where a queued comment was made and opens it;
+`OPEN_PIN` opens a pin's comment in place (either mode); `CLOSE_BUBBLE`
+keeps the selection; clearing the selection, or moving off the screen,
+closes it. What happens to typed text is the queue's (`followSelection`,
+`keepDraft`).
+
 ## Build helper
 
 `buildThemeRuntimes({ theme, resolveDir, outDir, define? })` bundles a theme with the

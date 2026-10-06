@@ -80,7 +80,7 @@ describe("prototype preview — stats, sections and row actions", () => {
     await driver.frameMode(page, "annotate");
 
     await driver.click(page, app.element("row.team-queue.req-2001.approve"));
-    await driver.waitFor(page, host.text("Selected: Approve"));
+    await driver.waitFor(page, host.dialog("Comment on Approve"));
     expect(await driver.read(page, app.element("row.team-queue.req-2001.approve"), "pressed")).toBe("true");
     expect(await driver.read(page, app.element("row.team-queue.req-2001"), "pressed")).toBe("false");
     expect(await driver.count(page, app.text("Alex Doe"))).toBe(1);

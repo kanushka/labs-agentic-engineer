@@ -34,7 +34,7 @@ const NO_FLOW = "";
 export function Toolbar({ manifest, view, dispatch, onReset, annotate }: ToolbarProps) {
   return (
     <header className="ph-toolbar">
-      <strong className="ph-name">{manifest.name}</strong>
+      <h1 className="ph-name">{manifest.name}</h1>
       <label>
         Screen
         <select value={view.screenId} onChange={(e) => dispatch({ type: "NAVIGATE", screenId: e.target.value })}>
