@@ -31,6 +31,8 @@ import type { ProjectChat } from "../chatStore";
 let chat: ProjectChat;
 const answer = vi.fn(async () => true);
 vi.mock("../useProjectChat", () => ({ useProjectChat: () => chat, chatStore: { answer } }));
+const navigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigate }));
 
 // jsdom lays nothing out, so it has no scrollIntoView.
 Element.prototype.scrollIntoView = vi.fn();
@@ -40,6 +42,7 @@ const { QuestionsList } = await import("./QuestionsList");
 afterEach(() => {
   cleanup();
   answer.mockClear();
+  navigate.mockReset();
 });
 
 const WHO: AskQuestionInput = { question: "Who approves a claim?", options: [{ label: "The manager" }, { label: "Finance" }] };
@@ -83,16 +86,27 @@ describe("QuestionsList", () => {
     expect(screen.getByText("0 of 2 answered")).toBeTruthy();
   });
 
-  it("sends every answer as one message once all are answered", () => {
+  it("sends every answer as one message once all are answered, then closes back to the overview", async () => {
     show([batch()]);
     fireEvent.click(screen.getByRole("radio", { name: /Finance/ }));
     fireEvent.click(screen.getByRole("radio", { name: /In-app only/ }));
     expect(screen.getByText("2 of 2 answered")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
-    expect(answer).toHaveBeenCalledWith(expect.stringMatching(/^acme-/), "t1:q:c1", [
-      { selected: ["Finance"] },
-      { selected: ["In-app only"] },
-    ]);
+    expect(answer).toHaveBeenCalledWith(`acme-${n}`, "t1:q:c1", [{ selected: ["Finance"] }, { selected: ["In-app only"] }]);
+    await vi.waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith({ to: "/projects/$projectName", params: { projectName: `acme-${n}` } }),
+    );
+  });
+
+  it("stays open, answers and all, when the answers could not be sent", async () => {
+    answer.mockResolvedValueOnce(false);
+    show([batch()]);
+    fireEvent.click(screen.getByRole("radio", { name: /Finance/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /In-app only/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Send answers" }));
+    await vi.waitFor(() => expect(answer).toHaveBeenCalled());
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.getByText("2 of 2 answered")).toBeTruthy();
   });
 
   it("flags what is unanswered instead of sending, and scrolls to it", () => {
@@ -127,12 +141,12 @@ describe("QuestionsList", () => {
     expect(screen.getByRole("radio", { name: /Finance/ }).getAttribute("aria-checked")).toBe("true");
   });
 
-  it("says nothing is waiting, or that the answers went, when no question is open", () => {
+  it("says nothing is waiting when no question is open", () => {
     show([]);
     expect(screen.getByText(/No questions waiting/)).toBeTruthy();
     cleanup();
     show([batch({ answers: [{ selected: ["Finance"] }, { selected: ["Email"] }] })], "running");
-    expect(screen.getByText(/Answers sent\. The agent is working on them\./)).toBeTruthy();
+    expect(screen.getByText(/No questions waiting/)).toBeTruthy();
   });
 
   it("closes once a later message superseded the questions", () => {

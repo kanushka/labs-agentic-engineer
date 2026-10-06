@@ -58,4 +58,4 @@ for console turns, and a disagreement is settled here.
 | **Send answers** / **Send answer** | send every answer, or the one, to the agent as the next message | submit, Continue |
 | **N of M answered** | how far the user is through the list | progress, completed |
 | **Not answered** | a question still owed an answer, flagged when Send was pressed with gaps | skipped, missing |
-| **No questions waiting** | the Questions card when the agent is not waiting on anyone | empty |
+| **No questions waiting** | the Questions card opened by hand when the agent is not waiting on anyone | empty |

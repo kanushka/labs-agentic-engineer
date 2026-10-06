@@ -22,10 +22,15 @@ answered and finds Send only after scrolling past all of it.
    sends them as ONE message (`Answers:` for a batch, `Answer to "…"` for one),
    so the wire, the agent and the serializers in `@aep/agent-stream` do not
    change.
-2. **The chat only points to it.** While questions are open the chat shows a
-   pointer ("The agent has N questions · Answer them →"); once answered or
-   superseded, their texts, as before. **The click is what opens the card:**
-   nothing opens it on its own.
+2. **The chat points to it, and the card opens itself only where it is
+   wanted.** While questions are open the chat shows a pointer ("The agent
+   has N questions · Answer them →"); once answered or superseded, their
+   texts, as before. The card opens by itself as the first question of a
+   batch lands when the asking turn is **this browser's own** (sent from here,
+   or the kickoff of a project created here) and the user is on the project's
+   **overview or one of its cards** (`opensQuestionsCard`); once per batch,
+   so a card the user closed stays closed. Elsewhere the pointer's click opens
+   it. **A send that went through closes the card** back to the overview.
 3. **The answer goes back in the scope the question was asked in**: that of
    the message that started the asking turn (`askedScope`), not the scope of
    the page the user answers from, so a feature's interview carries on in that
@@ -43,8 +48,11 @@ answered and finds Send only after scrolling past all of it.
 - **The Spec card's body as the place** (the classic console's
   `SpecQuestionForm`): the agent also asks from design and prototype turns, and
   a design question must not hide the spec.
-- **Opening the card when questions arrive:** the classic console did, and
-  dropped it because it pulled new users off the page they had just landed on.
+- **Opening the card for every question, from any page:** the classic
+  console did, and dropped it because it pulled users off the page they were
+  on. Here it opens only over the overview, and never for a teammate's turn
+  or for questions read back from the history (a reload would reopen a card
+  the user closed).
 - **"Use recommended answers"** and pre-selecting the recommended option: the
   agent's guesses read back as the user's decisions.
 - **Sending a partial batch:** it changes what the agent receives; a free

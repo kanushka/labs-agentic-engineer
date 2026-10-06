@@ -387,6 +387,49 @@ describe("answering a question card", () => {
   });
 });
 
+describe("announcing the questions a turn asks (the Questions card opens on them)", () => {
+  const ask: StreamPart = {
+    type: "tool-call",
+    toolCallId: "q1",
+    toolName: "ask_question",
+    input: { question: "Who reads the reports?", options: [{ label: "Finance only" }, { label: "Everyone" }] },
+  };
+
+  it("announces a question a turn sent from here asked, once", async () => {
+    const t = setup();
+    const asked = vi.fn();
+    t.store.onQuestionsAsked(asked);
+    await t.store.open(PROJECT);
+    t.streams.set("t1", sse([ask, ask, { type: "turn-committed" }]));
+    await t.store.send(PROJECT, "Interview Spending reports.", F4);
+    await vi.waitFor(() => expect(t.chat().turn).toEqual({ phase: "idle" }));
+    expect(asked).toHaveBeenCalledTimes(1);
+    expect(asked).toHaveBeenCalledWith(PROJECT, "t1:q:q1");
+  });
+
+  it("announces nothing for a turn found running that this browser did not start", async () => {
+    const t = setup({ active: running("t7", "Interview Spending reports.") });
+    const asked = vi.fn();
+    t.store.onQuestionsAsked(asked);
+    t.streams.set("t7", sse([ask, { type: "turn-committed" }]));
+    await t.store.open(PROJECT);
+    await vi.waitFor(() => expect(t.ended).toHaveBeenCalled());
+    expect(t.chat().items.some((i) => i.kind === "question")).toBe(true);
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("announces the kickoff's questions once this browser claimed it (it created the project)", async () => {
+    const t = setup({ active: running("t7", "/start") });
+    const asked = vi.fn();
+    t.store.onQuestionsAsked(asked);
+    t.store.claimKickoff(PROJECT);
+    t.streams.set("t7", sse([ask, { type: "turn-committed" }]));
+    await t.store.open(PROJECT);
+    await vi.waitFor(() => expect(t.ended).toHaveBeenCalled());
+    expect(asked).toHaveBeenCalledWith(PROJECT, "t7:q:q1");
+  });
+});
+
 describe("the held kickoff", () => {
   it("is sent once the conversation turns out empty", async () => {
     const { store, started } = setup();

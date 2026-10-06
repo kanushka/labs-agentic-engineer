@@ -17,6 +17,7 @@
  */
 
 import type { QuestionAnswer, StreamPart } from "@aep/agent-stream";
+import { START_COMMAND } from "@aep/contracts/commands";
 import type { ConversationMessage } from "./api/conversation";
 import { ConversationRotatedError, TurnInProgressError, type TurnStatus } from "./api/turns";
 import {
@@ -123,6 +124,17 @@ interface Entry {
   watchers: number;
   pollTimer: ReturnType<typeof setTimeout> | null;
   polls: number;
+  /**
+   * The turns this browser started: the messages it sent, and the kickoff of
+   * a project it just created (`claimKickoff`). Only their questions are
+   * announced (`onQuestionsAsked`): a teammate's turn never takes over
+   * this user's screen.
+   */
+  ownTurns: Set<string>;
+  /** This browser created the project, so the kickoff, once seen, is its own. */
+  kickoffClaimed: boolean;
+  /** Question items already announced: a replay of the turn announces none again. */
+  announced: Set<string>;
 }
 
 export function createChatStore(options: ChatStoreOptions) {
@@ -130,6 +142,7 @@ export function createChatStore(options: ChatStoreOptions) {
   const pollDelay = options.pollDelay ?? foreignTurnPollDelay;
   const entries = new Map<string, Entry>();
   const turnEndListeners = new Set<(projectName: string, outcome: TurnOutcome) => void>();
+  const askedListeners = new Set<(projectName: string, itemId: string) => void>();
   let localIds = 0;
   const localId = (prefix: string) => `${prefix}${++localIds}`;
 
@@ -146,6 +159,9 @@ export function createChatStore(options: ChatStoreOptions) {
         watchers: 0,
         pollTimer: null,
         polls: 0,
+        ownTurns: new Set(),
+        kickoffClaimed: false,
+        announced: new Set(),
       };
       entries.set(projectName, e);
     }
@@ -161,12 +177,41 @@ export function createChatStore(options: ChatStoreOptions) {
   const setItems = (projectName: string, change: (items: ChatItem[]) => ChatItem[]) =>
     update(projectName, (s) => ({ items: change(s.items) }));
 
+  /** Tell the listeners about each question an own turn asked, the first time it is seen. */
+  function announceQuestions(projectName: string, turnId: string): void {
+    const e = entry(projectName);
+    if (!e.ownTurns.has(turnId)) return;
+    for (const item of e.state.items) {
+      if (item.kind !== "question" || item.turnId !== turnId || item.answers || e.announced.has(item.id)) continue;
+      e.announced.add(item.id);
+      for (const fn of askedListeners) fn(projectName, item.id);
+    }
+  }
+
+  /** Count a turn as this browser's own, announcing any question it already asked. */
+  function own(projectName: string, turnId: string): void {
+    entry(projectName).ownTurns.add(turnId);
+    announceQuestions(projectName, turnId);
+  }
+
+  /** The kickoff running now, when this browser claimed it: it becomes an own turn. */
+  function takeClaimedKickoff(projectName: string): void {
+    const e = entry(projectName);
+    const { turn } = e.state;
+    if (!e.kickoffClaimed || turn.phase !== "running" || !turn.instruction?.startsWith(START_COMMAND)) return;
+    e.kickoffClaimed = false;
+    own(projectName, turn.turnId);
+  }
+
   function sinkFor(projectName: string, turnId: string, onEnded: (outcome: TurnOutcome) => void): TurnSink {
     const e = entry(projectName);
     return {
       text: (delta) => setItems(projectName, (items) => appendAgentText(items, turnId, delta)),
       activity: (activity) => setItems(projectName, (items) => upsertActivity(items, turnId, activity)),
-      question: (question) => setItems(projectName, (items) => upsertQuestion(items, turnId, question)),
+      question: (question) => {
+        setItems(projectName, (items) => upsertQuestion(items, turnId, question));
+        announceQuestions(projectName, turnId);
+      },
       withdrawQuestion: (toolCallId) => setItems(projectName, (items) => dropQuestion(items, turnId, toolCallId)),
       wrote: (part) => {
         const key = `${turnId}:${part.toolCallId ?? ""}`;
@@ -206,6 +251,7 @@ export function createChatStore(options: ChatStoreOptions) {
         turn: { phase: "running", turnId, ...(turn.instruction ? { instruction: turn.instruction } : {}) },
       };
     });
+    takeClaimedKickoff(projectName);
     let outcome: TurnOutcome | null = null;
     try {
       await foldTurn({
@@ -383,6 +429,7 @@ export function createChatStore(options: ChatStoreOptions) {
     setItems(projectName, (items) =>
       items.map((i) => (i.id === rowId && i.kind === "user" ? { ...i, state: "sent" as const, turnId } : i)),
     );
+    own(projectName, turnId);
     void attach(projectName, { turnId, instruction });
     return true;
   }
@@ -455,6 +502,25 @@ export function createChatStore(options: ChatStoreOptions) {
     seed(projectName: string, instruction: string): void {
       entry(projectName).seed = instruction;
       void open(projectName).then(() => trySeed(projectName));
+    },
+
+    /**
+     * This browser just created the project: the platform's kickoff, running
+     * now or once it is seen, is this browser's own turn, so its questions are
+     * announced as if the user had sent it.
+     */
+    claimKickoff(projectName: string): void {
+      entry(projectName).kickoffClaimed = true;
+      takeClaimedKickoff(projectName);
+    },
+
+    /**
+     * Be told when a turn this browser started asks questions, once per
+     * question item, as the first of them lands; returns the unsubscribe.
+     */
+    onQuestionsAsked(fn: (projectName: string, itemId: string) => void): () => void {
+      askedListeners.add(fn);
+      return () => askedListeners.delete(fn);
     },
 
     /** Be told when any project's turn ends; returns the unsubscribe. */

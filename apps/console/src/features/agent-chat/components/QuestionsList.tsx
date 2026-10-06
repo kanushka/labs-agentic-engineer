@@ -17,6 +17,7 @@
  */
 
 import { useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Box, Button, CircularProgress, Typography } from "@wso2/oxygen-ui";
 import { CircleQuestionMark } from "@wso2/oxygen-ui-icons-react";
 import type { QuestionAnswer } from "@aep/agent-stream";
@@ -58,16 +59,11 @@ export function QuestionsList({ projectName }: { projectName: string }) {
     );
   }
 
-  // Answered from here, and the agent is on it: say so until the turn ends.
-  const last = [...items].reverse().find((i): i is QuestionItem => i.kind === "question");
-  const working = turn.phase !== "idle" && last?.answers !== undefined;
   return (
     <Centered>
       <EmptyState
         icon={<CircleQuestionMark size={28} />}
-        description={
-          working ? "Answers sent. The agent is working on them." : "No questions waiting. When the agent asks, they show here."
-        }
+        description="No questions waiting. When the agent asks, they show here."
       />
     </Centered>
   );
@@ -91,6 +87,7 @@ function QuestionsForm({
   // until answered.
   const [flagged, setFlagged] = useState(false);
   const blocks = useRef<(HTMLLIElement | null)[]>([]);
+  const navigate = useNavigate();
 
   const { questions } = item;
   const answers = normalizeAnswers(questions, draft);
@@ -110,7 +107,11 @@ function QuestionsForm({
       blocks.current[gap]?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    void chatStore.answer(projectName, item.id, answers);
+    // Sent: the card has done its job and closes back to the overview. A
+    // send that failed keeps it open, answers and all.
+    void chatStore.answer(projectName, item.id, answers).then((sent) => {
+      if (sent) void navigate({ to: "/projects/$projectName", params: { projectName } });
+    });
   };
 
   return (
