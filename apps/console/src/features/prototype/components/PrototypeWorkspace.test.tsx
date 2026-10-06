@@ -58,12 +58,13 @@ vi.mock("../../agent-chat/useProjectChat", async (importOriginal) => ({
 }));
 
 // The review store outlives the tab for the page's life; each test starts on a fresh one, on the stubbed chat.
-const reviews = vi.hoisted(() => ({ current: null as null | import("../model/reviewStore").ReviewStore }));
+type ReviewStore = ReturnType<typeof import("../model/reviewStore").createReviewStore>;
+const reviews = vi.hoisted(() => ({ current: null as null | ReviewStore }));
 vi.mock("../model/reviewStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../model/reviewStore")>()),
   createReviewStore: () =>
-    new Proxy({} as import("../model/reviewStore").ReviewStore, {
-      get: (_, key) => reviews.current![key as keyof import("../model/reviewStore").ReviewStore],
+    new Proxy({} as ReviewStore, {
+      get: (_, key) => reviews.current![key as keyof ReviewStore],
     }),
 }));
 const { createReviewStore } = await vi.importActual<typeof import("../model/reviewStore")>("../model/reviewStore");

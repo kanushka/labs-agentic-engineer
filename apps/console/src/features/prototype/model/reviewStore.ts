@@ -97,5 +97,3 @@ export function createReviewStore(chat: TurnEnds) {
     },
   };
 }
-
-export type ReviewStore = ReturnType<typeof createReviewStore>;
