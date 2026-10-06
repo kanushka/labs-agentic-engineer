@@ -16,98 +16,64 @@
  * under the License.
  */
 
-import { useMemo, useState, type KeyboardEvent } from "react";
-import { Alert, Box, Button, ClickAwayListener, Paper, Popper, TextField, Typography } from "@wso2/oxygen-ui";
-import type { HostRect } from "@wso2/prototype-kit/host";
-import { MAX_FEEDBACK_REQUESTS, MAX_FEEDBACK_TEXT } from "@wso2/prototype-kit/feedback";
+import { useState, type KeyboardEvent } from "react";
+import { Box, Button, TextField, Typography } from "@wso2/oxygen-ui";
+import { MAX_FEEDBACK_TEXT } from "@wso2/prototype-kit/feedback";
+import { AnchoredBubble, type BubbleAnchor } from "./AnchoredBubble";
 
 export interface CommentBubbleProps {
-  /** Where the commented elements are in the console's viewport (the kit's frame anchors); nothing is drawn until the frame says. */
-  anchor: HostRect | null;
-  /** The commented elements' labels, in selection order. */
+  /** Where the commented elements are (the kit's frame anchors), or the send bar for the whole screen; nothing is drawn until known. */
+  anchor: BubbleAnchor | null;
+  /** What the comment is on: the elements' labels in selection order, or the screen. */
   labels: readonly string[];
-  /** The queue holds the contract's most requests: another cannot be added. */
+  /** The queue holds the contract's most requests: another cannot be added (the send bar says so). */
   full: boolean;
   onAdd: (text: string) => void;
-  /** The reviewer dismissed the bubble (Escape, or a click away from an empty one). */
+  /** The reviewer clicked away from an empty bubble. Escape is the review's (bubble, then selection, then review). */
   onClose: () => void;
-}
-
-/** The anchor as the element Popper places by: a virtual one, since the element itself is inside the sandboxed frame. */
-function virtualElement({ top, left, width, height }: HostRect) {
-  const rect = { top, left, width, height, x: left, y: top, right: left + width, bottom: top + height };
-  return { getBoundingClientRect: () => ({ ...rect, toJSON: () => rect }) };
 }
 
 /**
  * The comment bubble an Annotate click opens next to the element (#885):
  * drawn by the console over the frame, never inside it, so typed text stays
- * out of the untrusted prototype. It names the elements it points at; Add or
- * Cmd/Ctrl+Enter queues the comment. The contract's limits hold here: the
- * comment's length (counted near the limit), and the queue's.
+ * out of the untrusted prototype. It names what it points at; Add or
+ * Cmd/Ctrl+Enter queues the comment. The comment's length limit holds here
+ * (counted near the limit); a full queue disables Add.
  */
 export function CommentBubble({ anchor, labels, full, onAdd, onClose }: CommentBubbleProps) {
   const [text, setText] = useState("");
-  const anchorEl = useMemo(() => (anchor ? virtualElement(anchor) : null), [anchor]);
   const empty = text.trim() === "";
   const add = () => {
     if (full || empty) return;
     onAdd(text.trim());
   };
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      // The bubble is the nearest thing Escape undoes; the review stays open.
-      e.stopPropagation();
-      onClose();
-    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       add();
     }
   };
   const name = labels.join(", ");
   return (
-    <Popper
-      open={anchorEl !== null}
-      anchorEl={anchorEl}
-      placement="bottom-start"
-      // Inside the review's dialog, so its focus trap keeps focus in the bubble.
-      disablePortal
-      popperOptions={{ strategy: "fixed" }}
-      modifiers={[{ name: "offset", options: { offset: [0, 8] } }]}
-      sx={{ zIndex: (t) => t.zIndex.modal + 1 }}
-    >
-      <ClickAwayListener onClickAway={() => empty && onClose()}>
-        <Paper
-          role="dialog"
-          aria-label={`Comment on ${name}`}
-          onKeyDown={onKeyDown}
-          sx={{ width: 320, p: 1.5, display: "flex", flexDirection: "column", gap: 1, boxShadow: "var(--aep-shell-card-shadow)" }}
-        >
-          <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
-            {name}
-          </Typography>
-          <TextField
-            label="Comment"
-            multiline
-            minRows={2}
-            autoFocus
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            slotProps={{ htmlInput: { maxLength: MAX_FEEDBACK_TEXT } }}
-            helperText={text.length > MAX_FEEDBACK_TEXT - 200 ? `${text.length} / ${MAX_FEEDBACK_TEXT}` : undefined}
-          />
-          {full && (
-            <Alert severity="info" role="note">
-              {`The queue is full (${MAX_FEEDBACK_REQUESTS} comments): send it or remove one to add another.`}
-            </Alert>
-          )}
-          <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button variant="contained" size="small" onClick={add} disabled={full || empty}>
-              Add
-            </Button>
-          </Box>
-        </Paper>
-      </ClickAwayListener>
-    </Popper>
+    <AnchoredBubble anchor={anchor} label={`Comment on ${name}`} onClickAway={() => empty && onClose()} onKeyDown={onKeyDown}>
+      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+        {name}
+      </Typography>
+      <TextField
+        label="Comment"
+        multiline
+        minRows={2}
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        slotProps={{ htmlInput: { maxLength: MAX_FEEDBACK_TEXT } }}
+        helperText={text.length > MAX_FEEDBACK_TEXT - 200 ? `${text.length} / ${MAX_FEEDBACK_TEXT}` : undefined}
+      />
+      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button variant="contained" size="small" onClick={add} disabled={full || empty}>
+          Add
+        </Button>
+      </Box>
+    </AnchoredBubble>
   );
 }

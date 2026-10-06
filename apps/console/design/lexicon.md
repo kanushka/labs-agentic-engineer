@@ -44,5 +44,6 @@ for console turns, and a disagreement is settled here.
 | **Preview** | the review mode where the prototype acts | run, play |
 | **Annotate** | the review mode where clicks select instead of act | comment, mark up |
 | **Request** | one change asked of the prototype: the selected elements and the text | comment, note, ticket |
-| **Send all (N)** | send the queued requests to the agent in one turn | submit |
+| **Send to agent** | send the queued comments to the agent in one turn (the send bar) | submit, Send all |
+| **Comment on screen** | a comment on the whole screen, not an element | page comment |
 | **Reset data** | restore the prototype's mock data | clear |

@@ -139,6 +139,18 @@ function bubble() {
   return screen.getByRole("dialog", { name: /^Comment on/ });
 }
 
+/** The floating send bar at the bottom of the review. */
+function bar() {
+  return screen.getByRole("region", { name: "Comments" });
+}
+
+/** The bar's list of every queued comment, expanded. */
+function commentList() {
+  const toggle = within(bar()).getByRole("button", { name: /^\d+ comments?$/ });
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  return within(bar()).getByRole("list", { name: "Queued comments" });
+}
+
 function addComment(text: string) {
   fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: text } });
   fireEvent.click(within(bubble()).getByRole("button", { name: "Add" }));
@@ -234,18 +246,22 @@ describe("the full-screen review", () => {
   });
 
   it("leaves Escape pressed in the prototype to the frame: closes only on the frame's proto:escape", async () => {
-    const { dialog } = await openReview();
+    const { dialog, post } = await openReview();
     // A key the console's document gets with the frame element as its target was aimed at the prototype (focus is
     // in it), so it is the prototype's, not the dialog's: only the frame says when Escape went unused.
     fireEvent.keyDown(frame(), { key: "Escape" });
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    // Annotate: the frame's Escape closes the comment bubble (and its selection) first, then the review.
+    // Annotate: the frame's Escape closes the comment bubble first, then clears the selection, then closes the review.
     annotate(dialog);
     clickElement("btn.new-claim");
     fromFrame({ type: "proto:escape" });
     expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastView(post).selectedKeys).toEqual(["btn.new-claim"]);
+    fromFrame({ type: "proto:escape" });
+    expect(lastView(post).selectedKeys).toEqual([]);
+    expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
     fromFrame({ type: "proto:escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -350,11 +366,13 @@ describe("the full-screen review", () => {
     clickElement("btn.new-claim");
     addComment("Too much white space");
     expect(lastView(post)).toMatchObject({ selectedKeys: [], pins: { "btn.new-claim": [1, 2] } });
-    const queue = within(dialog).getByRole("list", { name: "Queued requests" });
+    expect(bar()).toHaveTextContent("2 comments");
+    const queue = commentList();
     expect(within(queue).getAllByRole("listitem")).toHaveLength(2);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Remove request 1" }));
+    fireEvent.click(within(queue).getByRole("button", { name: "Remove comment 1" }));
     expect(within(queue).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(dialog).getByRole("button", { name: "Send all (1)" })).toBeEnabled();
+    expect(bar()).toHaveTextContent("1 comment");
+    expect(within(bar()).getByRole("button", { name: "Send to agent" })).toBeEnabled();
   });
 
   it("sends every request as one typed /prototype turn, closes, and opens the chat", async () => {
@@ -372,7 +390,8 @@ describe("the full-screen review", () => {
     fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "state.empty" } });
     clickElement("empty.pending");
     addComment("Say who to ask when nothing waits");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Send all (2)" }));
+    expect(bar()).toHaveTextContent("2 comments");
+    fireEvent.click(within(bar()).getByRole("button", { name: "Send to agent" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(openChat).toHaveBeenCalled();
@@ -392,7 +411,8 @@ describe("the full-screen review", () => {
 
     // Sent: opening it again starts a new queue.
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    expect(within(await screen.findByRole("dialog")).queryByRole("list", { name: "Queued requests" })).toBeNull();
+    await screen.findByRole("dialog");
+    expect(bar()).toHaveTextContent("0 comments");
   });
 
   it("records the revision it showed as reviewed in this browser", async () => {
@@ -401,17 +421,17 @@ describe("the full-screen review", () => {
     await waitFor(() => expect(unreviewed("acme-expenses", { [C]: hash })).toEqual([]));
   });
 
-  it("refuses Send all while a turn is running, says why, and keeps the queue", async () => {
+  it("refuses Send while a turn is running, says why, and keeps the queue", async () => {
     chat = busy;
     const { dialog } = await openReview();
     annotate(dialog);
     clickElement("btn.new-claim");
     addComment("Too much white space");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Send all (1)" }));
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(/working on another turn.*kept/);
+    fireEvent.click(within(bar()).getByRole("button", { name: "Send to agent" }));
+    expect(within(bar()).getByRole("alert")).toHaveTextContent(/working on another turn.*kept/);
     expect(send).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(within(within(dialog).getByRole("list", { name: "Queued requests" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(commentList()).getAllByRole("listitem")).toHaveLength(1);
   });
 
   it("keeps the queue when the chat does not take the turn, and across closing and opening again", async () => {
@@ -420,13 +440,13 @@ describe("the full-screen review", () => {
     annotate(dialog);
     clickElement("btn.new-claim");
     addComment("Too much white space");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Send all (1)" }));
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/weren't sent/);
+    fireEvent.click(within(bar()).getByRole("button", { name: "Send to agent" }));
+    expect(await within(bar()).findByRole("alert")).toHaveTextContent(/weren't sent/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    const again = await screen.findByRole("dialog");
-    expect(within(again).getByRole("button", { name: "Send all (1)" })).toBeInTheDocument();
+    await screen.findByRole("dialog");
+    expect(bar()).toHaveTextContent("1 comment");
   });
 });
 
@@ -500,14 +520,13 @@ describe("commenting in place", () => {
   });
 
   it("queues the comment with Add, closes the bubble and leaves its numbered pin", async () => {
-    const { dialog, post } = await annotating();
+    const { post } = await annotating();
     clickElement("btn.reject");
     expect(within(bubble()).getByRole("button", { name: "Add" })).toBeDisabled();
     addComment("Ask for a reason");
     expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
     expect(lastView(post)).toMatchObject({ selectedKeys: [], pins: { "btn.reject": [1] } });
-    const queue = within(dialog).getByRole("list", { name: "Queued requests" });
-    expect(within(queue).getByRole("listitem")).toHaveTextContent("Ask for a reason");
+    expect(within(commentList()).getByRole("listitem")).toHaveTextContent("Ask for a reason");
   });
 
   it.each([
@@ -523,13 +542,25 @@ describe("commenting in place", () => {
     expect(lastView(post).pins).toEqual({ "btn.approve": [1] });
   });
 
-  it("closes an empty bubble with Escape, leaving the review open", async () => {
-    const { post } = await annotating();
+  it("closes the bubble with Escape, then clears the selection, then closes the review", async () => {
+    const { dialog, post } = await annotating();
     clickElement("btn.reject");
     fireEvent.keyDown(within(bubble()).getByLabelText("Comment"), { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
-    expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
+    expect(lastView(post).selectedKeys).toEqual(["btn.reject"]);
+    fireEvent.keyDown(dialog, { key: "Escape" });
     expect(lastView(post).selectedKeys).toEqual([]);
+    expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("reopens the bubble on a selection kept after it closed, when an element is Shift-clicked", async () => {
+    await annotating();
+    clickElement("btn.reject");
+    fireEvent.keyDown(within(bubble()).getByLabelText("Comment"), { key: "Escape" });
+    clickElement("btn.approve", { shift: true });
+    expect(bubble()).toHaveAccessibleName("Comment on Reject, Approve");
   });
 
   it("closes an empty bubble on a click away from it, but not one holding text", async () => {
@@ -569,6 +600,95 @@ describe("commenting in place", () => {
     clickElement("btn.approve");
     fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "One more" } });
     expect(within(bubble()).getByRole("button", { name: "Add" })).toBeDisabled();
-    expect(within(bubble()).getByRole("note")).toHaveTextContent(`The queue is full (${MAX_FEEDBACK_REQUESTS} comments)`);
+    expect(within(bar()).getByRole("note")).toHaveTextContent(`The queue is full (${MAX_FEEDBACK_REQUESTS} comments)`);
+    expect(within(bar()).getByRole("button", { name: "Comment on screen" })).toBeDisabled();
+  });
+});
+
+describe("the send bar", () => {
+  it("replaces the side panel: the prototype takes the full width, and the bar counts and sends", async () => {
+    const { dialog } = await openReview();
+    annotate(dialog);
+    expect(within(dialog).queryByRole("complementary")).toBeNull();
+    expect(bar()).toHaveTextContent("0 comments");
+    expect(within(bar()).getByRole("button", { name: "Send to agent" })).toBeDisabled();
+    clickElement("btn.new-claim");
+    addComment("Call it Submit a claim");
+    expect(bar()).toHaveTextContent("1 comment");
+    expect(within(bar()).getByRole("button", { name: "Send to agent" })).toBeEnabled();
+  });
+
+  it("comments on the whole screen from the bar, even from Preview, and leaves no pin", async () => {
+    const { dialog, post } = await openReview();
+    fireEvent.click(within(bar()).getByRole("button", { name: "Comment on screen" }));
+    expect(within(dialog).getByRole("button", { name: "Annotate" })).toHaveAttribute("aria-pressed", "true");
+    expect(bubble()).toHaveAccessibleName("Comment on My claims (whole screen)");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveFocus();
+    addComment("Too busy overall");
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastView(post).pins).toEqual({});
+    expect(within(commentList()).getByRole("listitem")).toHaveTextContent(/Too busy overall.*Whole screen/);
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Send to agent" }));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0]![2]).toMatchObject({
+      feedback: { requests: [{ screenId: "screen.my-claims", roleId: "employee", stateId: "state.default", elementIds: [], text: "Too busy overall" }] },
+    });
+  });
+
+  it("opens nothing on a click on empty canvas", async () => {
+    const { dialog } = await openReview();
+    annotate(dialog);
+    fromFrame({ type: "proto:toggle", elementKey: "" });
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+  });
+
+  it("lists every comment across screens, roles and states; an entry goes there and opens its bubble", async () => {
+    const { dialog } = await openReview();
+    fireEvent.change(within(dialog).getByLabelText("Flow"), { target: { value: "flow.approve" } });
+    fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "state.empty" } });
+    annotate(dialog);
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: [{ key: "btn.reject", label: "Reject" }] });
+    clickElement("btn.reject");
+    addComment("Ask for a reason");
+    fireEvent.change(within(dialog).getByLabelText("Flow"), { target: { value: "" } });
+    fireEvent.change(within(dialog).getByLabelText("Role"), { target: { value: "employee" } });
+    fireEvent.change(within(dialog).getByLabelText("State"), { target: { value: "state.default" } });
+    fireEvent.click(within(bar()).getByRole("button", { name: "Comment on screen" }));
+    addComment("Too busy overall");
+
+    const entries = within(commentList()).getAllByRole("listitem");
+    expect(entries.map((e) => e.textContent)).toEqual([
+      expect.stringMatching(/Ask for a reason.*Pending approvals · Manager · Nothing to show · btn\.reject/),
+      expect.stringMatching(/Too busy overall.*My claims · Employee · Default · Whole screen/),
+    ]);
+
+    fireEvent.click(within(entries[0]!).getByRole("button", { name: /Ask for a reason/ }));
+    expect((within(dialog).getByLabelText("Screen") as HTMLSelectElement).value).toBe("screen.pending");
+    expect((within(dialog).getByLabelText("Role") as HTMLSelectElement).value).toBe("manager");
+    expect((within(dialog).getByLabelText("State") as HTMLSelectElement).value).toBe("state.empty");
+    fromFrame({ type: "proto:geometry", boxes: { "btn.reject": BOX } });
+    const opened = screen.getByRole("dialog", { name: "Comment 1" });
+    expect(opened).toHaveTextContent("Ask for a reason");
+
+    // A whole-screen comment opens at the bar.
+    fireEvent.click(within(commentList()).getByRole("button", { name: /Too busy overall/ }));
+    expect((within(dialog).getByLabelText("Screen") as HTMLSelectElement).value).toBe("screen.my-claims");
+    expect(screen.getByRole("dialog", { name: "Comment 2" })).toHaveTextContent("Too busy overall");
+    expect(screen.queryByRole("dialog", { name: "Comment 1" })).toBeNull();
+  });
+
+  it("toggles Annotate with C, but not while typing", async () => {
+    const { dialog } = await openReview();
+    const mode = () => within(dialog).getByRole("button", { name: "Annotate" }).getAttribute("aria-pressed");
+    fireEvent.keyDown(dialog, { key: "c" });
+    expect(mode()).toBe("true");
+    clickElement("btn.new-claim");
+    fireEvent.keyDown(within(bubble()).getByLabelText("Comment"), { key: "c" });
+    expect(mode()).toBe("true");
+    fireEvent.keyDown(dialog, { key: "C" });
+    expect(mode()).toBe("false");
+    fireEvent.keyDown(dialog, { key: "c", metaKey: true });
+    expect(mode()).toBe("false");
   });
 });

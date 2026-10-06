@@ -34,11 +34,21 @@ render check; Go re-checks on save (see ADR-0042).
 ## Review
 
 `PrototypeReview`: toolbar (Screen, Flow, Role, State, Reset data,
-Preview/Annotate), the kit `PrototypeWindow` (browser chrome, read-only `prototype://<screen>` address bar; styled by the console with `--proto-window-*` Oxygen variables) around the `PrototypeFrame`, and in Annotate the
-`FeedbackPanel`. A live revision replaces the manifest in place
-(`MANIFEST_REPLACED`). Escape clears the selection, then closes. With focus in
-the prototype, only the frame's `proto:escape` counts (sent when the prototype
-left the key unused); the dialog ignores an Escape whose target is the frame.
+Preview/Annotate), the kit `PrototypeWindow` (browser chrome, read-only `prototype://<screen>` address bar; styled by the console with `--proto-window-*` Oxygen variables) around the `PrototypeFrame` at full width, and the floating
+`SendBar` below it. A live revision replaces the manifest in place
+(`MANIFEST_REPLACED`). The view and the open comment bubble are one pure state
+(`model/review.ts`: the kit's view reducer plus `CommentBubble` = on the
+selection, on the whole screen, or a queued comment opened from the bar's
+list). `C` toggles Annotate; Escape closes the bubble, then clears the
+selection, then closes (`useReviewKeys`). With focus in the prototype, only
+the frame's `proto:escape` counts (sent when the prototype left the key
+unused); the review ignores an Escape whose target is the frame.
+
+- **Send bar** (`SendBar`): `N comments`, `Comment on screen` (a whole-screen
+  comment; its bubble anchors to the bar; clicking empty canvas opens
+  nothing), `Send to agent`, the queue-full note, and an expandable list of
+  every queued comment across screens, roles and states. An entry goes to its
+  screen, role and state and opens the comment.
 
 - **Preview** acts: navigation, forms, mock data. **Annotate** only selects;
   selected elements are pinned and a request is typed against them (max 4000
@@ -47,7 +57,7 @@ left the key unused); the dialog ignores an Escape whose target is the frame.
   It carries the hash of the revision of its first request. Requests,
   limits, pins and the hash are the kit's (`@wso2/prototype-kit/feedback`);
   the hash is plain JavaScript, so it works over plain HTTP.
-- **Send all:** refused with the reason while the chat is not idle (queue
+- **Send to agent:** refused with the reason while the chat is not idle (queue
   kept). Otherwise `chatStore.send("/prototype <c>", {kind: "prototype",
   feedback})`; on success the queue clears, the overlay closes and the design
   data is read again. The batch is journaled with the turn and comes back in
