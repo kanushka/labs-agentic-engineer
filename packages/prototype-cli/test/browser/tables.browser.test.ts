@@ -74,9 +74,9 @@ describe("prototype preview — stats, sections and row actions", () => {
     await driver.waitFor(page, app.heading("Request from Sam Lee"));
   });
 
-  it("selects a row action in Annotate, not its row, and neither acts", async () => {
+  it("selects a row action in Comment mode, not its row, and neither acts", async () => {
     await asManager();
-    await driver.click(page, host.button("Annotate"));
+    await driver.click(page, host.button("Comment"));
     await driver.frameMode(page, "annotate");
 
     await driver.click(page, app.element("row.team-queue.req-2001.approve"));

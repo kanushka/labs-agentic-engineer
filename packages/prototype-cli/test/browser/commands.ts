@@ -151,6 +151,29 @@ const waitFor: BrowserCommand<[pageId: string, target: Target, state?: "visible"
   await locate(pageId, target).first().waitFor({ state, timeout: 15_000 });
 };
 
+/**
+ * The cursor the app frame shows with the pointer at the middle of `target`
+ * (an app element), or (null) on empty space at the bottom-left of the
+ * frame's viewport: the computed cursor of whatever the frame hit-tests
+ * there, which is what the pointer draws.
+ */
+const cursorAt: BrowserCommand<[pageId: string, target: Target | null]> = async (_ctx, pageId, target) => {
+  if (target !== null) {
+    return locate(pageId, target).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return hit ? getComputedStyle(hit).cursor : "";
+    });
+  }
+  const handle = await page(pageId).locator(APP_FRAME).elementHandle();
+  const frame = await handle?.contentFrame();
+  if (!frame) throw new Error("the app frame is not there");
+  return frame.evaluate(() => {
+    const hit = document.elementFromPoint(4, window.innerHeight - 4);
+    return hit ? getComputedStyle(hit).cursor : "";
+  });
+};
+
 /** Evaluates an expression inside the sandboxed app frame and returns its result as a string. */
 const evalInApp: BrowserCommand<[pageId: string, expression: string]> = async (_ctx, pageId, expression) => {
   const handle = await page(pageId).locator(APP_FRAME).elementHandle();
@@ -254,6 +277,7 @@ export const commands = {
   resizePage,
   waitFor,
   evalInApp,
+  cursorAt,
   viewBeforeLoad,
   requests,
   setStorage,

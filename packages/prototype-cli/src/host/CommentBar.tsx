@@ -17,8 +17,8 @@
  */
 
 /**
- * The floating comment bar at the bottom of the review (Annotate's only
- * panel): how many comments are queued, an expandable list of them across
+ * The floating comment bar at the bottom of the review (Comment mode's only
+ * panel): how many comments are queued, in Comment mode a hint that a click comments, an expandable list of them across
  * screens, roles and states (an entry goes there and opens it), Comment on
  * screen, and Save feedback, which writes them to the feedback file for the
  * agent.
@@ -35,6 +35,8 @@ export interface CommentBarProps {
   labels: ScreenLabels;
   /** The comments (0-based) written on an earlier revision than the one showing. */
   earlier: readonly number[];
+  /** In Comment mode: the bar says a click comments. */
+  commenting: boolean;
   onCommentOnScreen: () => void;
   /** Go to where the `index`th (0-based) comment was made and open it. */
   onOpen: (index: number) => void;
@@ -62,7 +64,7 @@ export function count(n: number): string {
   return `${n} ${n === 1 ? "comment" : "comments"}`;
 }
 
-export function CommentBar({ manifest, requests, labels, earlier, onCommentOnScreen, onOpen, onRemove, onSave, ref }: CommentBarProps) {
+export function CommentBar({ manifest, requests, labels, earlier, commenting, onCommentOnScreen, onOpen, onRemove, onSave, ref }: CommentBarProps) {
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const listId = useId();
@@ -75,7 +77,11 @@ export function CommentBar({ manifest, requests, labels, earlier, onCommentOnScr
     <section ref={ref} className="ph-bar" aria-label="Comments">
       {expanded && (
         <ol id={listId} className="ph-bar-list" aria-label="Queued comments">
-          {requests.length === 0 && <li className="ph-bar-empty">No comments yet. Switch to Annotate and click an element, or comment on the whole screen.</li>}
+          {requests.length === 0 && (
+            <li className="ph-bar-empty">
+              No comments yet. Press <kbd>C</kbd> or choose Comment, then click anything on the screen. Or comment on the whole screen.
+            </li>
+          )}
           {requests.map((r, i) => (
             <li key={i}>
               <button type="button" className="ph-bar-entry" onClick={() => onOpen(i)}>
@@ -105,6 +111,12 @@ export function CommentBar({ manifest, requests, labels, earlier, onCommentOnScr
             {expanded ? "▾" : "▴"}
           </span>
         </button>
+        {commenting && (
+          <span className="ph-bar-hint">
+            <i aria-hidden />
+            Click anything to comment
+          </span>
+        )}
         <span className="ph-spacer" />
         <button type="button" onClick={onCommentOnScreen} disabled={full}>
           Comment on screen

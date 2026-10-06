@@ -46,6 +46,8 @@ export const driver = {
   count: (page: string, target: Target) => call("read")(page, target, "count") as Promise<number>,
   waitFor: (page: string, target: Target, state: "visible" | "hidden" = "visible") => call("waitFor")(page, target, state) as Promise<void>,
   evalInApp: (page: string, expression: string) => call("evalInApp")(page, expression) as Promise<string>,
+  /** The cursor the app frame shows over the middle of `target`, or (null) over empty space at the bottom of the screen. */
+  cursorAt: (page: string, target: Target | null) => call("cursorAt")(page, target) as Promise<string>,
   /** Waits until the app frame draws in `mode`: a host's mode switch reaches the frame by message, after the click. */
   frameMode: (page: string, mode: "preview" | "annotate") =>
     call("evalInApp")(

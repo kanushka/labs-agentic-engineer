@@ -56,7 +56,7 @@ const onCorner = (name: string, key: string) =>
 
 describe("comment pins", () => {
   it("draws a queued comment's pin as a button named by its number, on a wrapped element and over a table row", async () => {
-    await driver.click(page, host.button("Annotate"));
+    await driver.click(page, host.button("Comment"));
     await driver.frameMode(page, "annotate");
     await driver.click(page, app.element("btn.new"));
     await driver.fill(page, host.field("Comment"), "Make this button green");
@@ -71,7 +71,7 @@ describe("comment pins", () => {
     expect(await driver.evalInApp(page, `(() => { const pin = document.querySelector('[aria-label="Comment 1"]'); pin.focus(); return String(document.activeElement === pin); })()`)).toBe("true");
   });
 
-  it("keeps a pin's click its own in Annotate: nothing is selected", async () => {
+  it("keeps a pin's click its own in Comment mode: nothing is selected", async () => {
     await driver.click(page, app.button("Comment 2"));
     expect(await driver.read(page, app.element(row), "pressed")).toBe("false");
     expect(await driver.read(page, app.element("btn.new"), "pressed")).toBe("false");

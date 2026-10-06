@@ -16,7 +16,7 @@
  * under the License.
  */
 /**
- * Annotate: a click selects (never acts) and opens a comment bubble at the
+ * Comment mode (internally Annotate): a click selects (never acts) and opens a comment bubble at the
  * element; added comments leave pins that open back into the bubble; the
  * floating bar counts and lists them and saves them to
  * .prototype/feedback.json for the agent.
@@ -55,7 +55,7 @@ async function open(fixture: string, heading: string) {
 }
 
 async function annotate(pg: string) {
-  await driver.click(pg, host.button("Annotate"));
+  await driver.click(pg, host.button("Comment"));
   await driver.frameMode(pg, "annotate");
 }
 
@@ -74,10 +74,10 @@ afterAll(async () => {
   await driver.stopPreview(preview.id);
 });
 
-describe("prototype preview — commenting in Annotate", () => {
+describe("prototype preview — commenting in Comment mode", () => {
   it("opens a bubble at the clicked element, queues with Add and Cmd/Ctrl+Enter, and saves the feedback file", async () => {
     await annotate(page);
-    expect(await driver.read(page, host.button("Annotate"), "pressed")).toBe("true");
+    expect(await driver.read(page, host.button("Comment"), "pressed")).toBe("true");
 
     // A click on the button selects it and opens the bubble beside it; it does not navigate.
     await driver.click(page, app.element("btn.new"));
@@ -230,19 +230,19 @@ describe("prototype preview — commenting in Annotate", () => {
     await driver.waitFor(page, host.dialog("Comment 4"));
     expect(await driver.read(page, host.picker("Screen"), "value")).toBe("screen.contacts");
     expect(await driver.read(page, host.picker("State"), "value")).toBe("state.empty");
-    expect(await driver.read(page, host.button("Annotate"), "pressed")).toBe("true");
+    expect(await driver.read(page, host.button("Comment"), "pressed")).toBe("true");
     await driver.pressKey(page, "Escape");
   });
 
-  it("toggles Annotate with C, but not while typing", async () => {
+  it("toggles Comment mode with C, but not while typing", async () => {
     await driver.pressKey(page, "c");
     expect(await driver.read(page, host.button("Preview"), "pressed")).toBe("true");
     await driver.pressKey(page, "c");
-    expect(await driver.read(page, host.button("Annotate"), "pressed")).toBe("true");
+    expect(await driver.read(page, host.button("Comment"), "pressed")).toBe("true");
     await driver.click(page, app.element("btn.new"));
     await driver.press(page, host.field("Comment"), "c");
     expect(await driver.read(page, host.field("Comment"), "value")).toBe("c");
-    expect(await driver.read(page, host.button("Annotate"), "pressed")).toBe("true");
+    expect(await driver.read(page, host.button("Comment"), "pressed")).toBe("true");
   });
 
   it("undoes the nearest thing on Escape: the bubble, then the selection", async () => {
@@ -264,7 +264,7 @@ describe("prototype preview — commenting in Annotate", () => {
   });
 });
 
-describe("prototype preview — Annotate across a revision", () => {
+describe("prototype preview — comments across a revision", () => {
   it("keeps the queue, marks the comment written on the earlier version, and saves the original hash", async () => {
     const { p, pg } = await open("contacts", "Acme contacts");
     try {
@@ -295,7 +295,7 @@ describe("prototype preview — Annotate across a revision", () => {
   });
 });
 
-describe("prototype preview — Annotate limits", () => {
+describe("prototype preview — comment limits", () => {
   it("limits the comment to what the server accepts and stops adding at the queue cap, saying why", async () => {
     const { p, pg } = await open("contacts", "Acme contacts");
     try {
@@ -318,6 +318,67 @@ describe("prototype preview — Annotate limits", () => {
       expect(await driver.read(pg, host.button("Add"), "disabled")).toBe("true");
       await driver.click(pg, host.button("Save feedback"));
       await driver.waitFor(pg, host.text(`Saved ${MAX_FEEDBACK_REQUESTS} comments to .prototype/feedback.json`));
+    } finally {
+      await driver.closePage(pg);
+      await driver.stopPreview(p.id);
+    }
+  });
+});
+
+/** A comment cursor: an arrow with a bubble beside it, hotspot at the arrow's tip, and its fallback; null for any other cursor. */
+function commentCursor(cursor: string): { svg: string; fallback: string } | null {
+  const m = /^url\("data:image\/svg\+xml,(.+)"\) 3 2, ([a-z-]+)$/.exec(cursor);
+  return m ? { svg: decodeURIComponent(m[1]!), fallback: m[2]! } : null;
+}
+const ORANGE = /fill="#ff7300"/i;
+
+describe("prototype preview — the Preview and Comment tools", () => {
+  it("switches with the tools and V and C, signals Comment mode, and draws the comment cursor only there", async () => {
+    const { p, pg } = await open("contacts", "Acme contacts");
+    const signals = async () => [await driver.count(pg, host.text("Comment mode", true)), await driver.count(pg, host.text("Click anything to comment"))];
+    try {
+      // Preview: the default cursors, and no mode signals.
+      expect(await driver.read(pg, host.button("Preview"), "pressed")).toBe("true");
+      expect(await signals()).toEqual([0, 0]);
+      expect(commentCursor(await driver.cursorAt(pg, app.element("heading.contacts")))).toBeNull();
+      expect(commentCursor(await driver.cursorAt(pg, null))).toBeNull();
+
+      await annotate(pg);
+      expect(await driver.read(pg, host.button("Comment"), "pressed")).toBe("true");
+      expect(await driver.read(pg, host.button("Preview"), "pressed")).toBe("false");
+      expect(await signals()).toEqual([1, 1]);
+      // Over an element that takes a comment: the solid orange bubble with a "+"; over empty space, the hollow one.
+      const over = commentCursor(await driver.cursorAt(pg, app.element("heading.contacts")));
+      expect(over?.svg).toMatch(ORANGE);
+      expect(over?.fallback).toBe("crosshair");
+      const empty = commentCursor(await driver.cursorAt(pg, null));
+      expect(empty).not.toBeNull();
+      expect(empty?.svg).not.toMatch(ORANGE);
+
+      // V returns to Preview; C toggles Comment mode.
+      await driver.pressKey(pg, "v");
+      await driver.frameMode(pg, "preview");
+      expect(await driver.read(pg, host.button("Preview"), "pressed")).toBe("true");
+      expect(await signals()).toEqual([0, 0]);
+      await driver.pressKey(pg, "v");
+      expect(await driver.read(pg, host.button("Preview"), "pressed")).toBe("true");
+      await driver.pressKey(pg, "c");
+      await driver.frameMode(pg, "annotate");
+      expect(await driver.read(pg, host.button("Comment"), "pressed")).toBe("true");
+      await driver.click(pg, host.button("Preview"));
+      await driver.frameMode(pg, "preview");
+      expect(await signals()).toEqual([0, 0]);
+    } finally {
+      await driver.closePage(pg);
+      await driver.stopPreview(p.id);
+    }
+  });
+
+  it("says how to start in the empty list", async () => {
+    const { p, pg } = await open("contacts", "Acme contacts");
+    try {
+      await driver.click(pg, host.button("0 comments"));
+      await driver.waitFor(pg, host.text("Press C or choose Comment, then click anything", true));
     } finally {
       await driver.closePage(pg);
       await driver.stopPreview(p.id);

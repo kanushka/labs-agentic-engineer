@@ -18,7 +18,7 @@
 
 /**
  * The preview host: the live prototype in a browser window, the review
- * controls, the findings overlay and (in preview) Annotate: comment bubbles
+ * controls, the findings overlay and (in preview) Comment mode: comment bubbles
  * at the elements, pins that open them again, and the comment bar that saves
  * the feedback file.
  */
@@ -111,6 +111,8 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   const [bar, setBar] = useState<HTMLElement | null>(null);
   const full = requests.length >= MAX_FEEDBACK_REQUESTS;
   const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
+  // Comment mode shows itself: a ring round the window, a tag in its bar, a hint in the comment bar.
+  const commenting = annotate && view.mode === "annotate";
   const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[view.screenId]?.[k] ?? k);
 
   /** Keyboard focus back into the prototype, on the element a bubble was on (or the pin that opened it). */
@@ -130,7 +132,15 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
     else return false;
     return true;
   };
-  useReviewKeys(annotate ? { onEscape: escape, onToggleAnnotate: () => dispatch({ type: view.mode === "annotate" ? "EXIT_ANNOTATE" : "ENTER_ANNOTATE" }) } : null);
+  useReviewKeys(
+    annotate
+      ? {
+          onEscape: escape,
+          onToggleAnnotate: () => dispatch({ type: view.mode === "annotate" ? "EXIT_ANNOTATE" : "ENTER_ANNOTATE" }),
+          onPreview: () => dispatch({ type: "EXIT_ANNOTATE" }),
+        }
+      : null,
+  );
 
   const add = (text: string) => {
     // The feedback is given against the revision showing when its first comment was queued.
@@ -185,7 +195,19 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
     <>
       <Toolbar manifest={manifest} view={view} dispatch={dispatch} onReset={reset} annotate={annotate} />
       <div className={annotate ? "ph-body ph-body-annotate" : "ph-body"}>
-        <PrototypeWindow title={manifest.name} manifest={manifest} view={view}>
+        <PrototypeWindow
+          title={manifest.name}
+          manifest={manifest}
+          view={view}
+          className={commenting ? "ph-commenting" : undefined}
+          tag={
+            commenting && (
+              <span className="ph-mode-tag">
+                Comment mode <kbd>Esc</kbd>
+              </span>
+            )
+          }
+        >
           <PrototypeFrame
             ref={frame}
             title={manifest.name}
@@ -244,6 +266,7 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
             requests={requests}
             labels={labels}
             earlier={earlier}
+            commenting={commenting}
             onCommentOnScreen={() => dispatch({ type: "COMMENT_ON_SCREEN" })}
             onOpen={open}
             onRemove={remove}

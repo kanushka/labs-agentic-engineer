@@ -34,9 +34,15 @@ placement (`placeBubble`) and focus on a click away (`focusLeftBehind`). `--pers
 `localStorage` under `proto:data:<revision hash>`; a new revision starts from
 the seed.
 
-Annotate (preview only, never in an export) comments in place, as the
-console's review does, in the host's own styles:
+Comment mode (the view's `annotate`; preview only, never in an export)
+comments in place, as the console's review does, in the host's own styles:
 
+- The toolbar's Preview · Comment tool pair (`Toolbar`): labelled, with
+  icons, `V` and `C` in their tooltips; the active tool is tinted orange in
+  Comment and neutral in Preview. While in Comment mode the window has an
+  orange ring, its bar a "Comment mode · Esc" tag, and the comment bar the
+  hint "Click anything to comment"; the frame draws the kit's comment cursor
+  (solid "+" bubble over an element, hollow over empty space).
 - A click on an element opens a comment bubble at it (`AnchoredBubble`, by
   the kit's `useFrameAnchors` and `placeBubble`: below the element, or above
   it when there is no room, and kept there as the prototype scrolls or the
@@ -59,8 +65,10 @@ console's review does, in the host's own styles:
   `.prototype/feedback.json` as before (`POST /feedback`; the drafts are
   never in it). It says when the queue is full (50; saving does not empty
   it, so the way on is removing one), and marks each comment written on an
-  earlier revision.
-- Keys on the host page: C toggles Annotate (not while typing); Escape closes
+  earlier revision. Its empty list says how to start ("Press C or choose
+  Comment, then click anything").
+- Keys on the host page: V returns to Preview and C toggles Comment mode
+  (neither while typing); Escape closes
   the bubble, then clears the selection (the frame reports an Escape it did
   not use itself). There is no review to close here.
 
@@ -75,7 +83,7 @@ turn, so no revision lifecycle.
 One HTML file: the host bundle, the frame runtime and the revision inlined as a
 JSON config, escaped against `</script>` breakout (tested). Its CSP allows
 inline script with `'unsafe-eval'` because the `srcdoc` frame inherits it;
-`connect-src 'none'`. No Annotate, no persistence.
+`connect-src 'none'`. No Comment mode, no persistence.
 
 ## Tests
 
@@ -83,6 +91,7 @@ Seam 1: the built bin (`test/*.test.ts`, node) and the browser lane
 (`vitest.browser.config.ts`, `pnpm --filter @wso2/prototype-cli test:browser`):
 tests run in the browser and drive Playwright pages through node-side commands
 (`test/browser/commands.ts`: clicks with modifiers, page-level keys, element
-boxes in the page's viewport, viewport resizes), so `annotate.browser.test.ts`
-asserts the bubble against the real frame's layout. Seam 2: `test/consumer.test.ts` installs the packed
+boxes in the page's viewport, viewport resizes, the cursor the frame draws at
+a point), so `annotate.browser.test.ts` asserts the bubble against the real
+frame's layout and the comment cursor per mode and target. Seam 2: `test/consumer.test.ts` installs the packed
 tarballs with npm in a temp directory.

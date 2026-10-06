@@ -16,7 +16,11 @@
  * under the License.
  */
 
-/** The review's controls: screen, flow, role and display-state pickers, Reset data and (in preview) the Preview/Annotate toggle. */
+/**
+ * The review's controls: screen, flow, role and display-state pickers, Reset
+ * data and (in preview) the Preview · Comment tool pair. Comment is the
+ * reviewer's word for the view's Annotate mode.
+ */
 
 import { screensForRole, type PrototypeManifest, type PrototypeViewEvent, type PrototypeViewState } from "@wso2/prototype-kit/host";
 
@@ -25,11 +29,24 @@ export interface ToolbarProps {
   view: PrototypeViewState;
   dispatch: (event: PrototypeViewEvent) => void;
   onReset: () => void;
-  /** Whether Annotate is offered (not in an export). */
+  /** Whether Comment mode is offered (not in an export). */
   annotate: boolean;
 }
 
 const NO_FLOW = "";
+
+/** The tools' icons (a pointer; a speech bubble with a "+"), drawn in the text's colour. */
+function Icon({ d }: { d: readonly string[] }) {
+  return (
+    <svg className="ph-icon" viewBox="0 0 24 24" aria-hidden>
+      {d.map((path) => (
+        <path key={path} d={path} />
+      ))}
+    </svg>
+  );
+}
+const POINTER = ["M4 3l7 17 2.5-7.5L21 10z"];
+const COMMENT = ["M7.9 20A9 9 0 1 0 4 16.1L2 22z", "M8 12h8M12 8v8"];
 
 export function Toolbar({ manifest, view, dispatch, onReset, annotate }: ToolbarProps) {
   return (
@@ -80,12 +97,20 @@ export function Toolbar({ manifest, view, dispatch, onReset, annotate }: Toolbar
         Reset data
       </button>
       {annotate && (
-        <span className="ph-modes" role="group" aria-label="Mode">
-          <button type="button" aria-pressed={view.mode === "preview"} onClick={() => dispatch({ type: "EXIT_ANNOTATE" })}>
+        <span className="ph-tools" role="group" aria-label="Mode">
+          <button type="button" title="Preview · V" aria-pressed={view.mode === "preview"} onClick={() => dispatch({ type: "EXIT_ANNOTATE" })}>
+            <Icon d={POINTER} />
             Preview
           </button>
-          <button type="button" aria-pressed={view.mode === "annotate"} onClick={() => dispatch({ type: "ENTER_ANNOTATE" })}>
-            Annotate
+          <button
+            type="button"
+            className="ph-tool-comment"
+            title="Comment · C"
+            aria-pressed={view.mode === "annotate"}
+            onClick={() => dispatch({ type: "ENTER_ANNOTATE" })}
+          >
+            <Icon d={COMMENT} />
+            Comment
           </button>
         </span>
       )}

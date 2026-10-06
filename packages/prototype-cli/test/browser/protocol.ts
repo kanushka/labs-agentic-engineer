@@ -21,7 +21,7 @@
 /** Where a target lives: the host page, or the prototype app inside its sandboxed frame. */
 export type Where = "host" | "app";
 
-/** An element, found the way a person would: by role and name, label, text, or (Annotate) element id. */
+/** An element, found the way a person would: by role and name, label, text, or (Comment mode) element id. */
 export interface Target {
   where: Where;
   role?: string;

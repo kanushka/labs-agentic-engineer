@@ -292,8 +292,8 @@ describe("prototype preview — the app shell", () => {
     await driver.waitFor(page, app.heading("My requests"));
   });
 
-  it("selects the user menu in Annotate instead of opening it", async () => {
-    await driver.click(page, host.button("Annotate"));
+  it("selects the user menu in Comment mode instead of opening it", async () => {
+    await driver.click(page, host.button("Comment"));
     await driver.frameMode(page, "annotate");
     await driver.click(page, app.element("shell.user"));
     await driver.waitFor(page, host.dialog("Comment on Priya Shah"));
