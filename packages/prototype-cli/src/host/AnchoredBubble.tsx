@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { HostRect } from "@wso2/prototype-kit/host";
+import { placeBubble, type HostRect } from "@wso2/prototype-kit/host";
 
 /**
  * Where a bubble points: elements in the frame (the kit's frame anchors, in
@@ -33,24 +33,6 @@ import type { HostRect } from "@wso2/prototype-kit/host";
  * a whole-screen comment).
  */
 export type BubbleAnchor = HostRect | HTMLElement;
-
-const GAP = 8;
-const MARGIN = 8;
-
-interface Size {
-  width: number;
-  height: number;
-}
-
-/** The bubble's top-left corner for its anchor, size and the window's size. */
-function place(anchor: HostRect, bubble: Size, window: Size): { top: number; left: number } {
-  const below = anchor.top + anchor.height + GAP;
-  const above = anchor.top - GAP - bubble.height;
-  const fitsBelow = below + bubble.height <= window.height - MARGIN;
-  const top = fitsBelow || above < MARGIN ? below : above;
-  const left = Math.max(MARGIN, Math.min(anchor.left, window.width - bubble.width - MARGIN));
-  return { top: Math.max(MARGIN, top), left };
-}
 
 function rectOf(anchor: BubbleAnchor): HostRect {
   if (!(anchor instanceof HTMLElement)) return anchor;
@@ -79,7 +61,7 @@ export function AnchoredBubble({
     const el = bubble.current;
     if (!el || !anchor) return;
     const measure = () => {
-      const next = place(rectOf(anchor), { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
+      const next = placeBubble(rectOf(anchor), { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
       setAt((a) => (a && a.top === next.top && a.left === next.left ? a : next));
     };
     measure();

@@ -37,6 +37,7 @@ export {
 } from "./bridge.js";
 export { PROTOTYPE_FRAME_CSP, prototypeFrameDocument } from "./frame-document.js";
 export { PROTOTYPE_START_TIMEOUT_MS, PrototypeFrame, type PrototypeFrameHandle, type PrototypeFrameProps } from "./PrototypeFrame.js";
+export { placeBubble, type BubbleSize } from "./bubble-placement.js";
 export { useFrameAnchors, type FrameAnchors, type FrameGeometry, type HostRect } from "./useFrameAnchors.js";
 export { PrototypeWindow, prototypeAddress, type PrototypeWindowProps } from "./PrototypeWindow.js";
 export { useReviewKeys, type ReviewKeys, type ReviewKeysOptions } from "./useReviewKeys.js";
