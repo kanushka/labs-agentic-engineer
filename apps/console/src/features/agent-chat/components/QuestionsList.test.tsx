@@ -75,6 +75,15 @@ const batch = (extra: Partial<Extract<ChatItem, { kind: "question" }>> = {}): Ch
 });
 
 describe("QuestionsList", () => {
+  it("shows each option with a radio, or a checkbox where several may be picked, that follows the pick", () => {
+    show([batch({ questions: [WHO, { ...NOTIFY, multiSelect: true }] })]);
+    const [who, notify] = screen.getAllByRole("listitem");
+    expect(who!.querySelectorAll("input[type=radio]")).toHaveLength(2);
+    expect(notify!.querySelectorAll("input[type=checkbox]")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("radio", { name: /Finance/ }));
+    expect((who!.querySelectorAll("input[type=radio]")[1] as HTMLInputElement).checked).toBe(true);
+  });
+
   it("lists every question at once, numbered, with no pages", () => {
     show([batch()]);
     expect(screen.getByRole("heading", { name: "Questions for you" })).toBeTruthy();
@@ -123,8 +132,8 @@ describe("QuestionsList", () => {
 
   it("can be answered while the batch arrives, and sent once it is complete", () => {
     show([batch({ streaming: true, questions: [WHO] })]);
-    const pick = screen.getByRole("radio", { name: /Finance/ }) as HTMLButtonElement;
-    expect(pick.disabled).toBe(false);
+    const pick = screen.getByRole("radio", { name: /Finance/ });
+    expect(pick.getAttribute("aria-disabled")).toBeNull();
     expect((screen.getByRole("button", { name: "Send answer" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Still asking/)).toBeTruthy();
   });

@@ -17,8 +17,7 @@
  */
 
 import { useRef } from "react";
-import { Box, ButtonBase, InputBase, Typography } from "@wso2/oxygen-ui";
-import { Check } from "@wso2/oxygen-ui-icons-react";
+import { Box, ButtonBase, Checkbox, Chip, InputBase, Radio, Typography } from "@wso2/oxygen-ui";
 import type { AskQuestionInput, AskQuestionOption, QuestionAnswer } from "@aep/agent-stream";
 import { isFreeTextOption } from "../questionCards";
 
@@ -26,6 +25,14 @@ import { isFreeTextOption } from "../questionCards";
 // own words. Widgets after the old console's SpecQuestionForm (QuestionBlock,
 // OptionCard). The Questions card lists one per question the agent asked.
 
+/**
+ * One option as a card, after the classic console's OptionCard: a radio (or a
+ * checkbox, when several may be picked), the label, a Recommended chip, and
+ * the description, always shown so the choices can be weighed side by side.
+ * The whole card is the control; the radio or checkbox in it only shows the
+ * state, so assistive tech reads the card once. A div, not a button: a button
+ * may not hold the input.
+ */
 function OptionButton({
   opt,
   multi,
@@ -39,8 +46,10 @@ function OptionButton({
   disabled: boolean;
   onSelect: () => void;
 }) {
+  const Control = multi ? Checkbox : Radio;
   return (
     <ButtonBase
+      component="div"
       role={multi ? "checkbox" : "radio"}
       aria-checked={on}
       disabled={disabled}
@@ -48,35 +57,43 @@ function OptionButton({
       sx={{
         width: "100%",
         display: "flex",
-        flexDirection: "column",
         alignItems: "flex-start",
+        justifyContent: "flex-start",
+        gap: 1,
         textAlign: "start",
-        gap: 0.25,
         px: 1.25,
-        py: 0.875,
+        py: 1,
         border: 1,
         borderRadius: 2,
         borderColor: on ? "primary.main" : "divider",
         bgcolor: on ? "rgba(var(--oxygen-palette-primary-mainChannel) / 0.08)" : "transparent",
-        "&:hover": { bgcolor: on ? undefined : "action.hover" },
+        "&:hover": { borderColor: "primary.main" },
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, width: "100%" }}>
-        <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
-          {opt.label}
-        </Typography>
-        {opt.recommended && (
-          <Typography variant="caption" sx={{ color: "primary.main", flexShrink: 0 }}>
-            Recommended
+      <Control
+        size="small"
+        checked={on}
+        disabled={disabled}
+        disableRipple
+        tabIndex={-1}
+        slotProps={{ input: { "aria-hidden": true, tabIndex: -1 } }}
+        sx={{ p: 0, mt: 0.125, pointerEvents: "none" }}
+      />
+      <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 0.25 }}>
+        <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.75 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {opt.label}
+          </Typography>
+          {opt.recommended && (
+            <Chip label="Recommended" size="small" color="primary" variant="outlined" sx={{ height: 20 }} />
+          )}
+        </Box>
+        {opt.description && (
+          <Typography variant="caption" color="text.secondary">
+            {opt.description}
           </Typography>
         )}
-        {on && <Check size={14} aria-hidden />}
       </Box>
-      {opt.description && (
-        <Typography variant="caption" color="text.secondary">
-          {opt.description}
-        </Typography>
-      )}
     </ButtonBase>
   );
 }
