@@ -130,3 +130,56 @@ describe("parseFromFrameMessage — where elements are (frame viewport coordinat
     expect(parseFromFrameMessage({ type: "proto:geometry", boxes })).toBeNull();
   });
 });
+
+describe("parseFromFrameMessage — a pin was clicked", () => {
+  const box = { x: 12, y: 40, width: 120, height: 32 };
+
+  it("names the element, the queued comments the pin numbers, and where the element is", () => {
+    expect(parseFromFrameMessage({ type: "proto:pin", key: "btn.new", requests: [2], box })).toEqual({ type: "proto:pin", key: "btn.new", requests: [2], box });
+  });
+
+  it("names no comment for an element's draft pin", () => {
+    expect(parseFromFrameMessage({ type: "proto:pin", key: "btn.new", requests: [], box })).toEqual({ type: "proto:pin", key: "btn.new", requests: [], box });
+  });
+
+  it.each([
+    ["no key", { requests: [1], box }],
+    ["no comment numbers", { key: "btn.new", box }],
+    ["a comment number that is not a positive whole number", { key: "btn.new", requests: [0], box }],
+    ["a fractional comment number", { key: "btn.new", requests: [1.5], box }],
+    ["no box", { key: "btn.new", requests: [1] }],
+    ["a malformed box", { key: "btn.new", requests: [1], box: { ...box, x: Number.NaN } }],
+  ])("ignores a pin message with %s", (_name, fields) => {
+    expect(parseFromFrameMessage({ type: "proto:pin", ...fields })).toBeNull();
+  });
+});
+
+describe("parseToFrameMessage — draft pins and focus", () => {
+  const view = (extra: object) => ({ mode: "annotate", roleId: "r", stateId: "s", screenId: "x", selectedKeys: [], pins: { a: [1] }, ...extra });
+
+  it("carries the elements that hold a draft, drawn as hollow pins", () => {
+    expect(parseToFrameMessage({ type: "proto:view", view: view({ drafts: ["b"] }) })).toEqual({ type: "proto:view", view: view({ drafts: ["b"] }) });
+  });
+
+  it("reads a view from a host on the older protocol: no drafts", () => {
+    expect(parseToFrameMessage({ type: "proto:view", view: view({}) })).toEqual({ type: "proto:view", view: view({}) });
+  });
+
+  it("ignores a view whose drafts are not element ids", () => {
+    expect(parseToFrameMessage({ type: "proto:view", view: view({ drafts: "b" }) })).toBeNull();
+    expect(parseToFrameMessage({ type: "proto:view", view: view({ drafts: [1] }) })).toBeNull();
+  });
+
+  it("asks for focus back on an element, or on the pin that opened its comment", () => {
+    expect(parseToFrameMessage({ type: "proto:focus", key: "a" })).toEqual({ type: "proto:focus", key: "a" });
+    expect(parseToFrameMessage({ type: "proto:focus", key: "a", requests: [1] })).toEqual({ type: "proto:focus", key: "a", requests: [1] });
+    expect(parseToFrameMessage({ type: "proto:focus", key: "a", requests: [] })).toEqual({ type: "proto:focus", key: "a", requests: [] });
+  });
+
+  it.each([
+    ["no key", {}],
+    ["malformed comment numbers", { key: "a", requests: ["1"] }],
+  ])("ignores a focus message with %s", (_name, fields) => {
+    expect(parseToFrameMessage({ type: "proto:focus", ...fields })).toBeNull();
+  });
+});

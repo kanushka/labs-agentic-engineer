@@ -44,6 +44,8 @@ export interface FrameView {
   screenId: string;
   selectedKeys: string[];
   pins: Record<string, number[]>;
+  /** The elements that hold a comment the reviewer started but did not add (a draft), drawn as a hollow pin; none when absent. */
+  drafts?: string[] | undefined;
   colorScheme?: FrameColorScheme | undefined;
 }
 
@@ -54,7 +56,13 @@ export type ToFrameMessage =
   /** Draw another view of the loaded prototype. */
   | { type: "proto:view"; view: FrameView }
   /** Start the mock data from the seed again. */
-  | { type: "proto:reset" };
+  | { type: "proto:reset" }
+  /**
+   * Put keyboard focus back on the element `key` (a comment bubble on it
+   * closed): on its pin for `requests` when given (`[]`: its draft pin), as
+   * `proto:pin` named it, else on the element.
+   */
+  | { type: "proto:focus"; key: string; requests?: number[] | undefined };
 
 /** An element the current screen draws, as the reviewer sees it. */
 export interface FrameElement {
@@ -88,6 +96,12 @@ export type FromFrameMessage =
    * new one). A frame on the older protocol sends the key alone.
    */
   | { type: "proto:toggle"; elementKey: string; box?: FrameBox | undefined; additive?: boolean | undefined }
+  /**
+   * A pin was clicked (in either mode): the element it is on, the queued
+   * comments' numbers it shows (none: the element's draft pin), and where
+   * the element is.
+   */
+  | { type: "proto:pin"; key: string; requests: number[]; box: FrameBox }
   /** Where the selected and pinned elements are now, re-sent after every scroll, resize and redraw that moves them. */
   | { type: "proto:geometry"; boxes: Record<string, FrameBox> }
   /** Escape was pressed inside the frame. */
@@ -103,6 +117,8 @@ const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null 
 const isString = (v: unknown): v is string => typeof v === "string";
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isString);
 const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+/** A queued comment's number: 1-based, as the pins show it. */
+const isCommentNumbers = (v: unknown): v is number[] => Array.isArray(v) && v.every((n) => Number.isInteger(n) && n > 0);
 
 function isBox(v: unknown): v is FrameBox {
   if (!isObject(v)) return false;
@@ -117,8 +133,10 @@ function isView(v: unknown): v is FrameView {
   if (!isObject(v)) return false;
   const pins = v["pins"];
   const scheme = v["colorScheme"];
+  const drafts = v["drafts"];
   return (
     (scheme === undefined || scheme === "light" || scheme === "dark") &&
+    (drafts === undefined || isStringArray(drafts)) &&
     (v["mode"] === "preview" || v["mode"] === "annotate") &&
     isString(v["roleId"]) &&
     isString(v["stateId"]) &&
@@ -143,6 +161,11 @@ export function parseToFrameMessage(data: unknown): ToFrameMessage | null {
       return isView(data["view"]) ? { type: "proto:view", view: data["view"] } : null;
     case "proto:reset":
       return { type: "proto:reset" };
+    case "proto:focus": {
+      const { key, requests } = data;
+      if (!isString(key) || (requests !== undefined && !isCommentNumbers(requests))) return null;
+      return { type: "proto:focus", key, ...(requests !== undefined ? { requests: [...requests] } : {}) };
+    }
     default:
       return null;
   }
@@ -177,6 +200,11 @@ export function parseFromFrameMessage(data: unknown): FromFrameMessage | null {
         ...(box !== undefined ? { box: boxOf(box) } : {}),
         ...(additive !== undefined ? { additive } : {}),
       };
+    }
+    case "proto:pin": {
+      const { key, requests, box } = data;
+      if (!isString(key) || !isCommentNumbers(requests) || !isBox(box)) return null;
+      return { type: "proto:pin", key, requests: [...requests], box: boxOf(box) };
     }
     case "proto:geometry": {
       const boxes = data["boxes"];
