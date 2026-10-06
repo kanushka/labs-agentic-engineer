@@ -59,6 +59,8 @@ export type PrototypeViewEvent =
   | { type: "TOGGLE_SELECTION"; elementKey: string }
   /** A plain click in Annotate: the element alone is selected (a new comment on it). */
   | { type: "SELECT_ONLY"; elementKey: string }
+  /** The host selects these elements (to reopen a comment it holds on them, a draft): Annotate, with them selected. */
+  | { type: "SELECT_ELEMENTS"; elementKeys: string[] }
   | { type: "NAVIGATE"; screenId: string }
   | { type: "SET_ROLE"; roleId: string }
   | { type: "SET_FLOW"; flowId: string | null }
@@ -86,6 +88,11 @@ export function reducePrototypeView(manifest: PrototypeManifest, s: PrototypeVie
       return toggleSelection(s, e.elementKey);
     case "SELECT_ONLY":
       return selects(s, e.elementKey) ? { ...s, selectedKeys: [e.elementKey] } : s;
+    case "SELECT_ELEMENTS": {
+      const annotating: PrototypeViewState = { ...s, mode: "annotate" };
+      const keys = [...new Set(e.elementKeys)];
+      return keys.length > 0 && keys.every((k) => selects(annotating, k)) ? { ...annotating, selectedKeys: keys } : s;
+    }
     case "NAVIGATE":
       if (e.screenId === s.screenId || !screensForRole(manifest, s.roleId).some((x) => x.id === e.screenId)) return s;
       return { ...s, screenId: e.screenId, selectedKeys: [] };
