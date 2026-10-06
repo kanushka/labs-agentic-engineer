@@ -1,0 +1,88 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/**
+ * Comment pins, as the frame draws them under the default theme: each a
+ * button named by its comment number, in both modes, on an element the kit
+ * wraps and over one it cannot (a table row); pressing a pin opens its comment
+ * in the host, so it neither selects nor acts in the prototype.
+ */
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { app, driver, host } from "./driver.js";
+import type { Preview } from "./protocol.js";
+
+let preview: Preview;
+let page: string;
+let row: string;
+
+beforeAll(async () => {
+  preview = await driver.startPreview("contacts");
+  page = await driver.openPage(preview.url);
+  await driver.waitFor(page, app.heading("Acme contacts"));
+  row = await driver.evalInApp(page, `document.querySelector('[data-proto-root][data-proto-key^="row."]').dataset.protoKey`);
+});
+
+afterAll(async () => {
+  await driver.closePage(page);
+  await driver.stopPreview(preview.id);
+});
+
+/** Whether the pin named `name` sits on the top-right corner of the element `key`. */
+const onCorner = (name: string, key: string) =>
+  driver.evalInApp(
+    page,
+    `(() => {
+      const pin = document.querySelector('[aria-label="${name}"]').getBoundingClientRect();
+      const el = document.querySelector('[data-proto-key="${key}"]').getBoundingClientRect();
+      return String(Math.abs(pin.right - el.right) < 24 && pin.top < el.top + 24 && pin.bottom > el.top - 24);
+    })()`,
+  );
+
+describe("comment pins", () => {
+  it("draws a queued comment's pin as a button named by its number, on a wrapped element and over a table row", async () => {
+    await driver.click(page, host.button("Annotate"));
+    await driver.frameMode(page, "annotate");
+    await driver.click(page, app.element("btn.new"));
+    await driver.fill(page, host.field("Request"), "Make this button green");
+    await driver.click(page, host.button("Add request"));
+    await driver.click(page, app.element(row));
+    await driver.fill(page, host.field("Request"), "Show the phone number too");
+    await driver.click(page, host.button("Add request"));
+
+    await driver.waitFor(page, app.button("Comment 1"));
+    await driver.waitFor(page, app.button("Comment 2"));
+    expect(await onCorner("Comment 2", row)).toBe("true");
+    expect(await driver.evalInApp(page, `(() => { const pin = document.querySelector('[aria-label="Comment 1"]'); pin.focus(); return String(document.activeElement === pin); })()`)).toBe("true");
+  });
+
+  it("keeps a pin's click its own in Annotate: nothing is selected", async () => {
+    await driver.click(page, app.button("Comment 2"));
+    expect(await driver.read(page, app.element(row), "pressed")).toBe("false");
+    expect(await driver.read(page, app.element("btn.new"), "pressed")).toBe("false");
+  });
+
+  it("draws the pins in Preview too, where a pin's click does not act", async () => {
+    await driver.click(page, host.button("Preview"));
+    await driver.frameMode(page, "preview");
+    await driver.waitFor(page, app.button("Comment 1"));
+    await driver.click(page, app.button("Comment 2"));
+    await driver.click(page, app.button("Comment 1"));
+    expect(await driver.read(page, host.picker("Screen"), "value")).toBe("screen.contacts");
+  });
+});
