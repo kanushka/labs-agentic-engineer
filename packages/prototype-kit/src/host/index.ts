@@ -19,12 +19,14 @@
 /**
  * `@wso2/prototype-kit/host`: the browser side a host page needs — the
  * sandboxed `PrototypeFrame`, the bridge's messages and parsers, the frame
- * document and its CSP, and the pure view-state reducer. No theme components.
+ * document and its CSP, the pure view-state reducer, and the headless anchors
+ * a host places its own UI by. No theme components.
  */
 
 export {
   parseFromFrameMessage,
   parseToFrameMessage,
+  type FrameBox,
   type FrameColorScheme,
   type FrameElement,
   type FrameMode,
@@ -34,6 +36,7 @@ export {
 } from "./bridge.js";
 export { PROTOTYPE_FRAME_CSP, prototypeFrameDocument } from "./frame-document.js";
 export { PROTOTYPE_START_TIMEOUT_MS, PrototypeFrame, type PrototypeFrameProps } from "./PrototypeFrame.js";
+export { useFrameAnchors, type FrameAnchors, type FrameGeometry, type HostRect } from "./useFrameAnchors.js";
 export { PrototypeWindow, prototypeAddress, type PrototypeWindowProps } from "./PrototypeWindow.js";
 export {
   frameViewOf,

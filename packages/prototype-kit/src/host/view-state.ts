@@ -55,7 +55,10 @@ export type PrototypeViewEvent =
   | { type: "ENTER_ANNOTATE" }
   | { type: "EXIT_ANNOTATE" }
   | { type: "CLEAR_SELECTION" }
+  /** A Shift-click in Annotate: add the element to the selection, or take it out. */
   | { type: "TOGGLE_SELECTION"; elementKey: string }
+  /** A plain click in Annotate: the element alone is selected (a new comment on it). */
+  | { type: "SELECT_ONLY"; elementKey: string }
   | { type: "NAVIGATE"; screenId: string }
   | { type: "SET_ROLE"; roleId: string }
   | { type: "SET_FLOW"; flowId: string | null }
@@ -81,6 +84,8 @@ export function reducePrototypeView(manifest: PrototypeManifest, s: PrototypeVie
       return { ...s, selectedKeys: [] };
     case "TOGGLE_SELECTION":
       return toggleSelection(s, e.elementKey);
+    case "SELECT_ONLY":
+      return selects(s, e.elementKey) ? { ...s, selectedKeys: [e.elementKey] } : s;
     case "NAVIGATE":
       if (e.screenId === s.screenId || !screensForRole(manifest, s.roleId).some((x) => x.id === e.screenId)) return s;
       return { ...s, screenId: e.screenId, selectedKeys: [] };
@@ -118,9 +123,14 @@ export function reducePrototypeView(manifest: PrototypeManifest, s: PrototypeVie
   }
 }
 
-/** Select or deselect an element the frame reported a click on: only while annotating, and only an id of sane length. */
+/** Whether a click the frame reported on `key` selects: only while annotating, and only an id of sane length. */
+function selects(s: PrototypeViewState, key: string): boolean {
+  return s.mode === "annotate" && key.trim() !== "" && key.length <= MAX_ELEMENT_KEY;
+}
+
+/** Select or deselect an element the frame reported a click on. */
 function toggleSelection(s: PrototypeViewState, key: string): PrototypeViewState {
-  if (s.mode !== "annotate" || key.trim() === "" || key.length > MAX_ELEMENT_KEY) return s;
+  if (!selects(s, key)) return s;
   const selected = s.selectedKeys.includes(key);
   return { ...s, selectedKeys: selected ? s.selectedKeys.filter((k) => k !== key) : [...s.selectedKeys, key] };
 }

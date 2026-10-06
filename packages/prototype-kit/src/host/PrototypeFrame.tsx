@@ -21,7 +21,8 @@
  * inside a sandboxed frame, never in the host's own page. The host tells the
  * frame what to run (`load`), what to draw (`view`) and when to start the
  * mock data over (`reset`); the frame answers with navigations, selection
- * toggles, the elements a screen draws, data snapshots, Escape and errors.
+ * toggles, the elements a screen draws, where the elements a host anchors to
+ * are (`onGeometry`, for `useFrameAnchors`), data snapshots, Escape and errors.
  * Every message's source and shape is checked. Until the app first draws,
  * a loading cover sits over the frame, so an early click is not silently
  * lost; a frame that neither draws nor reports an error within
@@ -31,8 +32,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { DataSnapshot } from "../data.js";
 import type { PrototypeManifest } from "../manifest/types.js";
-import { parseFromFrameMessage, type FrameColorScheme, type FrameElement, type FrameView, type ToFrameMessage } from "./bridge.js";
+import { parseFromFrameMessage, type FrameBox, type FrameColorScheme, type FrameElement, type FrameView, type ToFrameMessage } from "./bridge.js";
 import { prototypeFrameDocument } from "./frame-document.js";
+import type { FrameGeometry } from "./useFrameAnchors.js";
 
 export interface PrototypeFrameProps {
   /** The prototype's name, for the frame's accessible title (`<title> prototype app`). */
@@ -49,10 +51,13 @@ export interface PrototypeFrameProps {
   /** Bump to start the mock data from the seed again. */
   resetToken?: number | undefined;
   onNavigate: (screenId: string) => void;
-  onToggle: (elementKey: string) => void;
+  /** A click in Annotate on an element; `additive` when it held Shift (add to the selection rather than start a new one). */
+  onToggle: (elementKey: string, additive: boolean) => void;
   onEscape: () => void;
   onElements: (screenId: string, elements: FrameElement[]) => void;
   onData?: ((data: DataSnapshot) => void) | undefined;
+  /** Where the toggled, selected and pinned elements are drawn, whenever that changes; give it `useFrameAnchors().onGeometry`. */
+  onGeometry?: ((geometry: FrameGeometry) => void) | undefined;
   /**
    * What covers the frame until the prototype first draws (or fails): the
    * runtime is large and takes a moment to start, and a click before then
@@ -88,6 +93,12 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
   // The latest props, for the one message listener and the effects below.
   const latest = useRef(props);
   latest.current = props;
+  // The boxes the frame last reported: its geometry replaces them all, a toggle adds the clicked element's at once.
+  const boxes = useRef<Readonly<Record<string, FrameBox>>>({});
+  const reportBoxes = (next: Readonly<Record<string, FrameBox>>) => {
+    boxes.current = next;
+    if (frame.current) latest.current.onGeometry?.({ frame: frame.current, boxes: next });
+  };
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -103,7 +114,11 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
           p.onNavigate(message.screenId);
           break;
         case "proto:toggle":
-          p.onToggle(message.elementKey);
+          if (message.box) reportBoxes({ ...boxes.current, [message.elementKey]: message.box });
+          p.onToggle(message.elementKey, message.additive === true);
+          break;
+        case "proto:geometry":
+          reportBoxes(message.boxes);
           break;
         case "proto:escape":
           p.onEscape();

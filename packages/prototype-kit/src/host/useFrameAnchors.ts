@@ -1,0 +1,105 @@
+/**
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/**
+ * Where the frame's elements are in the host page, for a host that draws its
+ * own UI by them (a comment bubble, a pin). The frame reports element boxes
+ * in its own viewport (`proto:toggle`, `proto:geometry`); this adds where the
+ * frame element sits in the host's viewport, and keeps that current as the
+ * host page scrolls or resizes, or the frame element moves or resizes. The
+ * frame re-reports its boxes when the prototype scrolls, resizes or redraws,
+ * so together the anchors follow the element. Headless: the host draws.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FrameBox } from "./bridge.js";
+
+/** The elements' boxes as the frame last reported them, and the frame element they are drawn in. */
+export interface FrameGeometry {
+  frame: HTMLElement;
+  boxes: Readonly<Record<string, FrameBox>>;
+}
+
+/** A rectangle in the host's viewport (CSS pixels, as `getBoundingClientRect()` gives). */
+export interface HostRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+export interface FrameAnchors {
+  /** Give to `PrototypeFrame`'s `onGeometry`. */
+  onGeometry: (geometry: FrameGeometry) => void;
+  /** The smallest host rectangle around the drawn elements among `keys`; null when the frame draws none of them. */
+  anchor: (keys: readonly string[]) => HostRect | null;
+}
+
+const NO_BOXES: Readonly<Record<string, FrameBox>> = Object.freeze({});
+
+function sameOrigin(a: { top: number; left: number } | null, b: { top: number; left: number }): boolean {
+  return a !== null && a.top === b.top && a.left === b.left;
+}
+
+export function useFrameAnchors(): FrameAnchors {
+  const [frame, setFrame] = useState<HTMLElement | null>(null);
+  const [boxes, setBoxes] = useState(NO_BOXES);
+  // The frame viewport's top-left corner in the host's viewport.
+  const [origin, setOrigin] = useState<{ top: number; left: number } | null>(null);
+
+  const onGeometry = useCallback((geometry: FrameGeometry) => {
+    setFrame(geometry.frame);
+    setBoxes(geometry.boxes);
+  }, []);
+
+  useEffect(() => {
+    if (!frame) return;
+    const measure = () => {
+      const r = frame.getBoundingClientRect();
+      const next = { top: r.top + frame.clientTop, left: r.left + frame.clientLeft };
+      setOrigin((o) => (sameOrigin(o, next) ? o : next));
+    };
+    measure();
+    // Capture: a scroll in any of the host's scrollers can move the frame.
+    window.addEventListener("scroll", measure, { capture: true, passive: true });
+    window.addEventListener("resize", measure);
+    const resized = new ResizeObserver(measure);
+    resized.observe(frame);
+    return () => {
+      window.removeEventListener("scroll", measure, { capture: true });
+      window.removeEventListener("resize", measure);
+      resized.disconnect();
+    };
+  }, [frame]);
+
+  const anchor = useCallback(
+    (keys: readonly string[]): HostRect | null => {
+      if (!origin) return null;
+      const drawn = keys.map((k) => (Object.hasOwn(boxes, k) ? boxes[k] : undefined)).filter((b): b is FrameBox => b !== undefined);
+      if (drawn.length === 0) return null;
+      const left = Math.min(...drawn.map((b) => b.x));
+      const top = Math.min(...drawn.map((b) => b.y));
+      const right = Math.max(...drawn.map((b) => b.x + b.width));
+      const bottom = Math.max(...drawn.map((b) => b.y + b.height));
+      return { top: origin.top + top, left: origin.left + left, width: right - left, height: bottom - top };
+    },
+    [origin, boxes],
+  );
+
+  return useMemo(() => ({ onGeometry, anchor }), [onGeometry, anchor]);
+}
