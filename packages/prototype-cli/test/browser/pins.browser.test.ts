@@ -59,11 +59,11 @@ describe("comment pins", () => {
     await driver.click(page, host.button("Annotate"));
     await driver.frameMode(page, "annotate");
     await driver.click(page, app.element("btn.new"));
-    await driver.fill(page, host.field("Request"), "Make this button green");
-    await driver.click(page, host.button("Add request"));
+    await driver.fill(page, host.field("Comment"), "Make this button green");
+    await driver.click(page, host.button("Add"));
     await driver.click(page, app.element(row));
-    await driver.fill(page, host.field("Request"), "Show the phone number too");
-    await driver.click(page, host.button("Add request"));
+    await driver.fill(page, host.field("Comment"), "Show the phone number too");
+    await driver.click(page, host.button("Add"));
 
     await driver.waitFor(page, app.button("Comment 1"));
     await driver.waitFor(page, app.button("Comment 2"));

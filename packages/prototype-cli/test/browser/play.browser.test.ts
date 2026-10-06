@@ -296,7 +296,7 @@ describe("prototype preview — the app shell", () => {
     await driver.click(page, host.button("Annotate"));
     await driver.frameMode(page, "annotate");
     await driver.click(page, app.element("shell.user"));
-    await driver.waitFor(page, host.text("Selected: Priya Shah"));
+    await driver.waitFor(page, host.dialog("Comment on Priya Shah"));
     expect(await driver.count(page, entry("Account"))).toBe(0);
     await driver.click(page, host.button("Preview"));
   });

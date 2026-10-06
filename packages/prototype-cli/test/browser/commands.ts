@@ -32,7 +32,7 @@ import { pathToFileURL } from "node:url";
 import type { FrameLocator, Locator, Page } from "playwright";
 import type { BrowserCommand } from "vitest/node";
 import { PACKAGE_ROOT, copyFixture, runCli, startPreview as spawnPreview, tempDir, type PreviewProcess } from "../harness.js";
-import type { Action, Preview, Reading, Target } from "./protocol.js";
+import type { Action, Box, Preview, Reading, Target } from "./protocol.js";
 
 const previews = new Map<string, PreviewProcess>();
 const pages = new Map<string, { page: Page; requests: string[] }>();
@@ -115,7 +115,7 @@ const closePage: BrowserCommand<[id: string]> = async (_ctx, id) => {
 
 const act: BrowserCommand<[pageId: string, target: Target, action: Action]> = async (_ctx, pageId, target, action) => {
   const l = locate(pageId, target);
-  if (action.type === "click") await l.click();
+  if (action.type === "click") await l.click(action.modifiers ? { modifiers: action.modifiers } : {});
   else if (action.type === "fill") await l.fill(action.value);
   else if (action.type === "press") await l.press(action.key);
   else await l.selectOption({ label: action.label });
@@ -129,6 +129,22 @@ const read: BrowserCommand<[pageId: string, target: Target, reading: Reading]> =
   if (reading === "maxlength") return l.getAttribute("maxlength");
   if (reading === "disabled") return String(await l.isDisabled());
   return l.getAttribute("aria-pressed");
+};
+
+/** Where the target is drawn in the page's viewport; it must be visible. */
+const box: BrowserCommand<[pageId: string, target: Target]> = async (_ctx, pageId, target) => {
+  const b = await locate(pageId, target).boundingBox();
+  if (!b) throw new Error(`not drawn: ${JSON.stringify(target)}`);
+  return b satisfies Box;
+};
+
+/** A key pressed on the page itself, wherever focus is (Playwright key names, e.g. "c", "Escape"). */
+const pressKey: BrowserCommand<[pageId: string, key: string]> = async (_ctx, pageId, key) => {
+  await page(pageId).keyboard.press(key);
+};
+
+const resizePage: BrowserCommand<[pageId: string, width: number, height: number]> = async (_ctx, pageId, width, height) => {
+  await page(pageId).setViewportSize({ width, height });
 };
 
 const waitFor: BrowserCommand<[pageId: string, target: Target, state?: "visible" | "hidden"]> = async (_ctx, pageId, target, state = "visible") => {
@@ -233,6 +249,9 @@ export const commands = {
   closePage,
   act,
   read,
+  box,
+  pressKey,
+  resizePage,
   waitFor,
   evalInApp,
   viewBeforeLoad,
