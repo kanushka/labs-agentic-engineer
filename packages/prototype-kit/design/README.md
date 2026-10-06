@@ -109,7 +109,10 @@ elements and closed unfinished, kept per screen and element set (any order):
 pin per draft, on its first element) and `draftOfPin` (the latest there).
 `followSelection` is the rule both hosts follow when the open comment's
 selection changes: Shift carries the text, anything else keeps it as a draft
-and opens the new selection with its own. Drafts are client-only; the
+and opens the new selection with its own. After a revision lands,
+`orphansOnScreen` names the comments on the screen, role and state showing
+whose elements the frame no longer reports drawn, and `keepOnScreen` turns
+one into a whole-screen comment at its number. Drafts are client-only; the
 feedback contract and `feedback-cases.json` (batch validity) are unchanged.
 
 ## Host reducer and bridge (`/host`)
