@@ -18,10 +18,10 @@
 
 import { useEffect, useState } from "react";
 import { chatStore } from "../agent-chat/useProjectChat";
+import type { QueueUpdate } from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../agent-chat/turnScope";
 import type { AppPrototype } from "./model/prototypes";
 import { NEW_SESSION, follow, sendStarted, turnEnded, type ReviewSession } from "./model/revision";
-import type { QueueUpdate } from "./useCommentDraft";
 
 export interface PrototypeReviews {
   /** The review of `component`: its queue, the batch out with the agent, what to say, and the revision to show. */

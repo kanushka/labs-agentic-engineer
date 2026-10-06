@@ -28,7 +28,6 @@ import {
   draftPinsOnScreen,
   editRequest,
   enqueue,
-  followSelection,
   keepDraft,
   keepOnScreen,
   orphansOnScreen,
@@ -121,57 +120,6 @@ describe("drafts", () => {
     expect(draftPinsOnScreen(q, "queue")).toEqual(["a", "c"]);
     expect(draftOfPin(q, "queue", "a")?.text).toBe("alone");
     expect(draftOfPin(q, "queue", "b")).toBeUndefined();
-  });
-});
-
-describe("the open comment following the selection", () => {
-  const view = (selectedKeys: string[], screenId = "queue"): PrototypeViewState => ({
-    mode: "annotate",
-    roleId: "approver",
-    screenId,
-    flowId: null,
-    stateId: "default",
-    selectedKeys,
-  });
-
-  it("keeps typed text as a draft when the comment closes, and opens empty next time", () => {
-    const closed = followSelection(EMPTY_FEEDBACK_QUEUE, view(["a"]), "Half a thought", view([]), false);
-    expect(closed).toEqual({ queue: { ...EMPTY_FEEDBACK_QUEUE, drafts: [on(["a"], "Half a thought")] }, text: "" });
-  });
-
-  it("restores the draft when its elements are selected again", () => {
-    const q = keepDraft(EMPTY_FEEDBACK_QUEUE, on(["a"], "Half a thought"));
-    expect(followSelection(q, view([]), "", view(["a"]), false)).toEqual({ queue: q, text: "Half a thought" });
-  });
-
-  it("keeps the text of a comment moved to other elements as a draft there, and opens theirs", () => {
-    const q = keepDraft(EMPTY_FEEDBACK_QUEUE, on(["b"], "About b"));
-    const moved = followSelection(q, view(["a"]), "About a", view(["b"]), false);
-    expect(moved.text).toBe("About b");
-    expect(draftAt(moved.queue, "queue", ["a"])?.text).toBe("About a");
-  });
-
-  it("carries the text when Shift adds or takes out an element", () => {
-    expect(followSelection(EMPTY_FEEDBACK_QUEUE, view(["a"]), "Swap", view(["a", "b"]), true)).toEqual({ queue: EMPTY_FEEDBACK_QUEUE, text: "Swap" });
-  });
-
-  it("keeps the text as a draft when Shift takes out the last element", () => {
-    expect(followSelection(EMPTY_FEEDBACK_QUEUE, view(["a"]), "Swap", view([]), true).queue.drafts).toEqual([on(["a"], "Swap")]);
-  });
-
-  it("changes nothing while the selection stays", () => {
-    const q = keepDraft(EMPTY_FEEDBACK_QUEUE, on(["a"], "old"));
-    expect(followSelection(q, view(["a"]), "typing", view(["a"]), false)).toEqual({ queue: q, text: "typing" });
-  });
-
-  it("keeps nothing for an empty comment, and drops the draft whose text was cleared", () => {
-    const q = keepDraft(EMPTY_FEEDBACK_QUEUE, on(["a"], "old"));
-    expect(followSelection(q, view(["a"]), "", view([]), false).queue.drafts).toEqual([]);
-  });
-
-  it("keeps the draft on the screen it was written on", () => {
-    const moved = followSelection(EMPTY_FEEDBACK_QUEUE, view(["a"]), "About a", view([], "detail"), false);
-    expect(draftPinsOnScreen(moved.queue, "queue")).toEqual(["a"]);
   });
 });
 

@@ -44,7 +44,6 @@ export {
   draftPinsOnScreen,
   editRequest,
   enqueue,
-  followSelection,
   keepDraft,
   keepOnScreen,
   orphansOnScreen,

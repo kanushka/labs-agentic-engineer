@@ -27,9 +27,10 @@
  *    they were selected) so selecting them again restores it. A draft is
  *    neither counted against the limit nor sent;
  *  - comments a revision orphaned: their elements are no longer drawn;
- *    one can be kept on its whole screen instead;
- *  - how the open comment follows the selection (`followSelection`), so
- *    typed text is never lost.
+ *    one can be kept on its whole screen instead.
+ *
+ * How the open comment's text becomes a draft is the host layer's
+ * (`host/comment-draft.ts`).
  *
  * Every operation returns a new queue (the same one when it refuses).
  */
@@ -146,25 +147,4 @@ export function draftOfPin(queue: FeedbackQueue, screenId: string, key: string):
 /** What a host sends: the queued comments on their revision (never the drafts); null while none is queued. */
 export function submissionOf(queue: FeedbackQueue): FeedbackSubmission | null {
   return queue.hash === null || queue.requests.length === 0 ? null : { prototypeHash: queue.hash, requests: [...queue.requests] };
-}
-
-/**
- * The open comment's text and the queue after the selection moved from
- * `before` (with `text` typed for it) to `after`. A comment is open while
- * something is selected. Shift (`carry`) adding or taking out an element
- * carries the text along; any other change keeps the text as a draft on
- * the elements it was written for, and opens the comment on the new
- * selection with its draft, if it has one.
- */
-export function followSelection(
-  queue: FeedbackQueue,
-  before: PrototypeViewState,
-  text: string,
-  after: PrototypeViewState,
-  carry: boolean,
-): { queue: FeedbackQueue; text: string } {
-  if (before.screenId === after.screenId && sameElements(before.selectedKeys, after.selectedKeys)) return { queue, text };
-  if (carry && after.selectedKeys.length > 0) return { queue, text };
-  const kept = before.selectedKeys.length > 0 ? keepDraft(queue, requestFor(before, text)) : queue;
-  return { queue: kept, text: after.selectedKeys.length > 0 ? (draftAt(kept, after.screenId, after.selectedKeys)?.text ?? "") : "" };
 }

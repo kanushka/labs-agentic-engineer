@@ -30,10 +30,12 @@ import {
   frameViewOf,
   initialReview,
   reduceReview,
+  useCommentDraft,
   useFrameAnchors,
   type DataSnapshot,
   type PrototypeFrameHandle,
   type PrototypeManifest,
+  type QueueUpdate,
   type ReviewEvent,
 } from "@wso2/prototype-kit/host";
 import {
@@ -59,7 +61,6 @@ import { clearSnapshot, loadSnapshot, saveSnapshot } from "./persistence.js";
 import { HOST_CSS } from "./styles.js";
 import { QueuedCommentBubble } from "./QueuedCommentBubble.js";
 import { Toolbar } from "./Toolbar.js";
-import { useCommentDraft, type QueueUpdate } from "./useCommentDraft.js";
 import { useReviewKeys } from "./useReviewKeys.js";
 
 export function App({ config }: { config: HostConfig }) {

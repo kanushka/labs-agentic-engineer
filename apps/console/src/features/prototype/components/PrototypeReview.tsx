@@ -25,8 +25,10 @@ import {
   frameViewOf,
   initialReview,
   reduceReview,
+  useCommentDraft,
   useFrameAnchors,
   type PrototypeFrameHandle,
+  type QueueUpdate,
   type ReviewEvent,
 } from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
@@ -45,7 +47,6 @@ import {
 import { commentCount, feedbackBatch } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import type { ReviewSession, RevisionNotice } from "../model/revision";
-import { useCommentDraft, type QueueUpdate } from "../useCommentDraft";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
 import { useReviewKeys } from "../useReviewKeys";
 import { CommentBubble } from "./CommentBubble";
