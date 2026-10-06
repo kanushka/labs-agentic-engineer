@@ -27,17 +27,21 @@ Frames the app in the kit's `PrototypeWindow`; uses the kit's `/host` reducers
 for all view state (`reduceReview`: the view plus the open comment bubble) and
 its `/feedback` for the request shape, limits, the comment queue
 (`FeedbackQueue`: `enqueue`, `editRequest`, `dequeue`, drafts,
-`submissionOf`) and the revision hash. `--persist` keeps snapshots in
+`submissionOf`, `earlierComments`, `targetLabel`) and the revision hash. The
+review's behaviour is the kit's, shared with the console: the comment draft
+(`useCommentDraft`), the keys (`useReviewKeys`, bubble phase), the bubble's
+placement (`placeBubble`) and focus on a click away (`focusLeftBehind`). `--persist` keeps snapshots in
 `localStorage` under `proto:data:<revision hash>`; a new revision starts from
 the seed.
 
 Annotate (preview only, never in an export) comments in place, as the
 console's review does, in the host's own styles:
 
-- A click on an element opens a comment bubble at it (`AnchoredBubble`,
-  placed by the kit's `useFrameAnchors` below the element, or above it when
-  there is no room, and kept there as the prototype scrolls or the window
-  resizes). Shift-click adds or removes elements, keeping the text. Add or
+- A click on an element opens a comment bubble at it (`AnchoredBubble`, by
+  the kit's `useFrameAnchors` and `placeBubble`: below the element, or above
+  it when there is no room, and kept there as the prototype scrolls or the
+  window resizes). A click away closes it; focus stays where the click put
+  it, or goes back to the element when it put it nowhere. Shift-click adds or removes elements, keeping the text. Add or
   Cmd/Ctrl+Enter queues the comment and leaves a numbered pin. The text is
   held to the comment limit, with a counter near it.
 - A pin opens its comment, in either mode, to read, Edit (Save or
@@ -50,17 +54,21 @@ console's review does, in the host's own styles:
   An empty bubble just closes.
 - The comment bar at the bottom (`CommentBar`) replaces the old side panel:
   the count, which expands into a list of every comment across screens,
-  roles and states (an entry goes there and opens the comment), Comment on
-  screen, and Save feedback, which writes `.prototype/feedback.json` as
-  before (`POST /feedback`; the drafts are never in it). It says when the
-  queue is full (50) and when it was started on an earlier revision.
+  roles and states, its elements named by their labels (an entry goes there
+  and opens the comment), Comment on screen, and Save feedback, which writes
+  `.prototype/feedback.json` as before (`POST /feedback`; the drafts are
+  never in it). It says when the queue is full (50; saving does not empty
+  it, so the way on is removing one), and marks each comment written on an
+  earlier revision.
 - Keys on the host page: C toggles Annotate (not while typing); Escape closes
   the bubble, then clears the selection (the frame reports an Escape it did
   not use itself). There is no review to close here.
 
 The queue lives in the page's memory: it survives revisions and is saved with
-the hash it was started against (`prototypeHash`). There is no agent turn, so
-no revision lifecycle.
+the hash it was started against (`prototypeHash`): a revision here is the
+author's edit, not one the reviewer asked for and waited on, so unlike the
+console the queue is not moved onto it (no `onRevision`). There is no agent
+turn, so no revision lifecycle.
 
 ## Export
 

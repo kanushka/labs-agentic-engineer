@@ -101,19 +101,24 @@ agent-stream and Go all assert.
 
 The review's comment queue is headless here too (`queue.ts`), so the console
 and the CLI host keep it alike and only draw their own UI: `FeedbackQueue`
-(`hash` of the first queued comment's revision, `requests`, `drafts`) with
-`enqueue` (refused at the limit), `editRequest`, `dequeue` (the rest
-renumber), `submissionOf` (never the drafts). A draft is a comment started on
-elements and closed unfinished, kept per screen and element set (any order):
-`keepDraft` (empty text drops it), `draftAt`, `draftPinsOnScreen` (one hollow
-pin per draft, on its first element) and `draftOfPin` (the latest there).
-`followSelection` is the rule both hosts follow when the open comment's
-selection changes: Shift carries the text, anything else keeps it as a draft
-and opens the new selection with its own. After a revision lands,
-`orphansOnScreen` names the comments on the screen, role and state showing
-whose elements the frame no longer reports drawn, and `keepOnScreen` turns
-one into a whole-screen comment at its number. Drafts are client-only; the
-feedback contract and `feedback-cases.json` (batch validity) are unchanged.
+(`hash`: the revision the batch names; `requests`: `QueuedComment`s, each
+with the `revision` it was written on; `drafts`) with `enqueue` (refused at
+the limit; the queue takes the first comment's revision), `editRequest`,
+`dequeue` (the rest renumber), `submissionOf` (never the drafts, nor a
+comment's own revision). `onRevision` moves the queue onto a revision that
+landed while it waited (a host whose reviewer keeps writing against it: the
+console), and `earlierComments` names the comments written before the one
+showing. A draft is a comment started and closed unfinished, kept per screen
+and element set (any order; none for the whole screen): `keepDraft` (empty
+text drops it), `draftAt`, `draftPinsOnScreen` (one hollow pin per draft, on
+its first element) and `draftOfPin` (the latest there). `targetLabel` is what
+a comment is on as both hosts' bubbles and lists name it: its elements'
+labels, or "Whole screen". `orphansOnScreen` names the comments written on
+an earlier revision, on the screen, role and state showing, whose elements
+the frame no longer reports drawn for the revision showing, and
+`keepOnScreen` turns one into a whole-screen comment at its number. Drafts
+and a comment's revision are client-only; the feedback contract and
+`feedback-cases.json` (batch validity) are unchanged.
 
 ## Host reducer and bridge (`/host`)
 
@@ -157,8 +162,26 @@ opens it on the selection (Shift keeps it open as the selection grows);
 `OPEN_COMMENT` goes to where a queued comment was made and opens it;
 `OPEN_PIN` opens a pin's comment in place (either mode); `CLOSE_BUBBLE`
 keeps the selection; clearing the selection, or moving off the screen,
-closes it. What happens to typed text is the queue's (`followSelection`,
-`keepDraft`).
+closes it.
+
+The rest of a host's review is headless here too, so both hosts behave
+alike and only draw:
+
+- `useCommentDraft` (over `comment-draft.ts`'s `followComment` and
+  `keepOpenComment`): the open new comment's text, kept as a draft where it
+  was written (elements, or the whole screen) whenever the bubble closes or
+  a plain click moves it; Shift carries it; a bubble opening where a draft
+  is kept starts from it; the review unmounting keeps it too.
+- `useReviewKeys`: C toggles Annotate (not while typing), Escape undoes the
+  bubble, then the selection. `capture` listens on the way down and stops a
+  used Escape, for a host whose review sits in something that closes on
+  Escape (the console's dialog); otherwise a used Escape is only marked
+  handled.
+- `placeBubble` (`bubble-placement.ts`): below the anchor, flipped above
+  when there is no room, kept inside the window (a host with its own popper
+  need not use it). `focusLeftBehind` (`bubble-focus.ts`): whether a click
+  away left focus nowhere, so the host puts it back on the element instead
+  of taking it from a control the click focused.
 
 ## Build helper
 
