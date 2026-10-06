@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { followSelection, keepDraft, requestFor, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
+import { draftAt, followSelection, keepDraft, requestFor, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
 import type { PrototypeViewState } from "@wso2/prototype-kit/host";
 import type { ReviewState } from "./model/review";
 
@@ -37,13 +37,17 @@ function commentedOn({ view, bubble }: ReviewState): PrototypeViewState {
   return bubble?.on === "selection" ? view : { ...view, selectedKeys: [] };
 }
 
+/** Whether the bubble is open on the whole screen (the send bar's Comment on screen). */
+const onScreen = (r: ReviewState) => r.bubble?.on === "screen";
+
 /**
  * The new comment's text, never lost (#885): whenever the bubble on a
  * selection closes, or a plain click moves it to other elements, its text is
  * kept as a draft on the elements it was written for (the kit's queue model,
  * `followSelection`); a bubble opening on elements that hold a draft starts
- * from it. The same holds when the review goes away with the bubble open. A
- * whole-screen comment's bubble starts empty.
+ * from it. A whole-screen comment's text is kept the same way, as the
+ * screen's draft, which its bubble opens with again. The same holds when the
+ * review goes away with the bubble open.
  */
 export function useCommentDraft({ review, queue, onQueue }: { review: ReviewState; queue: FeedbackQueue; onQueue: (update: QueueUpdate) => void }): CommentDraft {
   const [text, setText] = useState("");
@@ -59,9 +63,15 @@ export function useCommentDraft({ review, queue, onQueue }: { review: ReviewStat
     const along = carry.current;
     carry.current = false;
     const next = followSelection(queue, from, text, to, along);
-    if (next.queue !== queue) onQueue((q) => followSelection(q, from, text, to, along).queue);
-    const screenBubble = (r: ReviewState) => r.bubble?.on === "screen";
-    setText(screenBubble(before) !== screenBubble(review) ? "" : next.text);
+    const left = onScreen(before) && !onScreen(review);
+    if (next.queue !== queue || left)
+      onQueue((q) => {
+        const followed = followSelection(q, from, text, to, along).queue;
+        // The whole-screen comment closed: its text is the screen's draft (none, when emptied).
+        return left ? keepDraft(followed, requestFor(from, text)) : followed;
+      });
+    if (onScreen(review)) setText(onScreen(before) ? text : (draftAt(next.queue, review.view.screenId, [])?.text ?? ""));
+    else setText(left ? "" : next.text);
   }, [review, queue, text, onQueue]);
 
   // The review going away (closed, sent, or its prototype gone) keeps the open comment's text as a draft.
@@ -71,7 +81,7 @@ export function useCommentDraft({ review, queue, onQueue }: { review: ReviewStat
     () => () => {
       const { review, text, onQueue } = latest.current;
       const on = commentedOn(review);
-      if (on.selectedKeys.length > 0 && text.trim() !== "") onQueue((q) => keepDraft(q, requestFor(on, text)));
+      if ((on.selectedKeys.length > 0 || onScreen(review)) && text.trim() !== "") onQueue((q) => keepDraft(q, requestFor(on, text)));
     },
     [],
   );
