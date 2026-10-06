@@ -251,7 +251,9 @@ describe("prototype preview — commenting in Annotate", () => {
     await driver.waitFor(page, host.dialog("Comment on New contact"), "hidden");
     expect(await driver.read(page, app.element("btn.new"), "pressed")).toBe("true");
     await driver.pressKey(page, "Escape");
-    expect(await driver.read(page, app.element("btn.new"), "pressed")).toBe("false");
+    // Focus went back into the frame: this Escape reaches the host as the frame's message, so the selection clears a moment later.
+    const cleared = `new Promise((resolve) => { const t = Date.now(); const check = () => { const p = document.querySelector('[data-proto-key="btn.new"]')?.getAttribute("aria-pressed"); p === "false" || Date.now() - t > 2000 ? resolve(String(p)) : setTimeout(check, 20); }; check(); })`;
+    expect(await driver.evalInApp(page, cleared)).toBe("false");
   });
 
   it("acts again in Preview", async () => {
@@ -279,7 +281,7 @@ describe("prototype preview — Annotate across a revision", () => {
       await driver.click(pg, host.button("Comment on screen"));
       await driver.fill(pg, host.field("Comment"), "Say people, not contacts");
       await driver.click(pg, host.button("Add"));
-      await driver.waitFor(pg, host.text("2 comments"));
+      await driver.waitFor(pg, host.button("2 comments"));
       await driver.waitFor(pg, host.text("1 comment was written on an earlier version of the prototype."));
       await driver.click(pg, host.button("Save feedback"));
       await driver.waitFor(pg, host.text("Saved 2 comments to .prototype/feedback.json"));
