@@ -20,7 +20,8 @@
  * A preview smoke run under Oxygen: `prototype preview --theme` played in
  * Chromium, through the sandboxed frame, as a reviewer clicks it. It covers
  * what a theme draws and wires — navigation, rows, forms and validation, tabs,
- * dialogs, drawers, the stepper, Annotate selecting instead of acting — and
+ * dialogs, drawers, the stepper, Comment mode selecting instead of acting and
+ * drawing the comment cursor — and
  * that the frame fetches nothing.
  */
 
@@ -58,6 +59,33 @@ async function open(fixture: string): Promise<Session> {
   await page.goto(preview.url);
   return { preview, page, app: page.frameLocator('iframe[title$="prototype app"]'), requests, errors };
 }
+
+/**
+ * The cursor the frame draws with the pointer over the middle of the element
+ * `key` names, or (no key) on empty space at the bottom-left of the screen:
+ * the cursor of whatever the frame hit-tests there.
+ */
+async function cursorAt(s: Session, key?: string): Promise<string> {
+  if (key !== undefined) {
+    return s.app.locator(`[data-proto-key="${key}"]`).evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return hit ? getComputedStyle(hit).cursor : "";
+    });
+  }
+  const frame = s.page.frames().find((f) => f !== s.page.mainFrame())!;
+  return frame.evaluate(() => {
+    const hit = document.elementFromPoint(4, window.innerHeight - 4);
+    return hit ? getComputedStyle(hit).cursor : "";
+  });
+}
+
+/** The comment cursor's SVG (an arrow and a bubble, hotspot at the arrow's tip, `fallback` after it); null for any other cursor. */
+function commentCursor(cursor: string, fallback: string): string | null {
+  const m = /^url\("data:image\/svg\+xml,(.+)"\) 3 2, ([a-z-]+)$/.exec(cursor);
+  return m && m[2] === fallback ? decodeURIComponent(m[1]!) : null;
+}
+const ORANGE = /fill="#ff7300"/i;
 
 /**
  * The frame is sandboxed without `allow-same-origin`, so it has no storage: any
@@ -133,9 +161,17 @@ describe("contacts under Oxygen", () => {
     await s.app.getByRole("heading", { name: "Globex contacts" }).waitFor();
   });
 
-  it("selects instead of acting in Annotate", async () => {
-    await s.page.getByRole("button", { name: "Annotate" }).click();
+  it("selects instead of acting in Comment mode, under the comment cursor", async () => {
+    expect(commentCursor(await cursorAt(s, "btn.new"), "crosshair")).toBeNull();
+    expect(commentCursor(await cursorAt(s), "default")).toBeNull();
+    await s.page.getByRole("button", { name: "Comment", exact: true }).click();
     const button = s.app.locator('[data-proto-key="btn.new"]');
+    await expect.poll(() => button.getAttribute("data-proto-annotating")).toBe("");
+    // A solid orange bubble with a "+" over what takes a comment; a hollow one over empty space.
+    expect(commentCursor(await cursorAt(s, "btn.new"), "crosshair")).toMatch(ORANGE);
+    const empty = commentCursor(await cursorAt(s), "default");
+    expect(empty).not.toBeNull();
+    expect(empty).not.toMatch(ORANGE);
     await button.click();
     expect(await button.getAttribute("aria-pressed")).toBe("true");
     expect(await s.app.getByRole("heading", { name: "New contact" }).count()).toBe(0);
@@ -281,8 +317,8 @@ describe("the app shell under Oxygen", () => {
     await expect.poll(scheme).toBe("light");
   });
 
-  it("selects the user menu in Annotate instead of opening it", async () => {
-    await s.page.getByRole("button", { name: "Annotate" }).click();
+  it("selects the user menu in Comment mode instead of opening it", async () => {
+    await s.page.getByRole("button", { name: "Comment", exact: true }).click();
     const user = s.app.locator('[data-proto-key="shell.user"]');
     await user.click();
     expect(await user.getAttribute("aria-pressed")).toBe("true");
@@ -317,14 +353,14 @@ describe("stats, sections and row actions under Oxygen", () => {
     await s.app.getByRole("heading", { name: "New Leave Request" }).waitFor();
   });
 
-  it("acts on a row's action in Preview without pressing the row, and selects it in Annotate without acting", async () => {
+  it("acts on a row's action in Preview without pressing the row, and selects it in Comment mode without acting", async () => {
     await s.page.getByRole("combobox", { name: "Role" }).selectOption({ label: "Manager" });
     await s.app.getByRole("heading", { name: "Pending Requests" }).waitFor();
     await s.app.locator('[data-proto-key="row.team-queue.req-2001.approve"]').click();
     await s.app.getByText("Alex Doe").waitFor({ state: "hidden" });
     await s.app.getByRole("heading", { name: "Pending Requests" }).waitFor();
 
-    await s.page.getByRole("button", { name: "Annotate" }).click();
+    await s.page.getByRole("button", { name: "Comment", exact: true }).click();
     const reject = s.app.locator('[data-proto-key="row.team-queue.req-2002.reject"]');
     await expect.poll(() => reject.getAttribute("data-proto-annotating")).toBe("");
     await reject.click();
