@@ -16,15 +16,26 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Box, Chip, CircularProgress, Dialog, IconButton, Tooltip, Typography, useColorScheme } from "@wso2/oxygen-ui";
 import { X } from "@wso2/oxygen-ui-icons-react";
-import { PrototypeFrame, PrototypeWindow, frameViewOf, useFrameAnchors } from "@wso2/prototype-kit/host";
+import { PrototypeFrame, PrototypeWindow, frameViewOf, useFrameAnchors, type PrototypeFrameHandle } from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
-import { MAX_FEEDBACK_REQUESTS, pinsOnScreen, requestFor } from "@wso2/prototype-kit/feedback";
-import { dequeue, enqueue, feedbackBatch, type ReviewQueue } from "../model/feedback";
+import {
+  MAX_FEEDBACK_REQUESTS,
+  dequeue,
+  draftOfPin,
+  draftPinsOnScreen,
+  editRequest,
+  enqueue,
+  pinsOnScreen,
+  requestFor,
+  type FeedbackQueue,
+} from "@wso2/prototype-kit/feedback";
+import { feedbackBatch, sent } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import { initialReview, reduceReview, type ReviewEvent } from "../model/review";
+import { useCommentDraft, type QueueUpdate } from "../useCommentDraft";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
 import { useReviewKeys } from "../useReviewKeys";
 import { CommentBubble } from "./CommentBubble";
@@ -34,9 +45,9 @@ import { SendBar } from "./SendBar";
 
 export interface PrototypeReviewProps {
   prototype: AppPrototype;
-  /** The requests queued on this prototype so far; they outlive the overlay. */
-  queue: ReviewQueue | null;
-  onQueue: (queue: ReviewQueue | null) => void;
+  /** The comments queued and drafted on this prototype so far; they outlive the overlay. */
+  queue: FeedbackQueue;
+  onQueue: (update: QueueUpdate) => void;
   /** Whether a turn can start now (the chat is loaded and idle). */
   ready: boolean;
   /** Send the batch as one revision turn; resolves false when it was not sent. */
@@ -214,23 +225,33 @@ function Session({
     [],
   );
 
-  const requests = useMemo(() => queue?.requests ?? [], [queue]);
+  const { requests } = queue;
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [resetToken, setResetToken] = useState(0);
   const [refused, setRefused] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const pins = useMemo(() => pinsOnScreen(requests, view.screenId), [requests, view.screenId]);
-  const frameView = useMemo(() => frameViewOf(view, pins), [view, pins]);
+  const drafts = useMemo(() => draftPinsOnScreen(queue, view.screenId), [queue, view.screenId]);
+  const frameView = useMemo(() => frameViewOf(view, pins, drafts), [view, pins, drafts]);
+  const frame = useRef<PrototypeFrameHandle>(null);
+  const draft = useCommentDraft({ review: current.review, queue, onQueue });
   const anchors = useFrameAnchors();
   // The send bar, which a whole-screen comment's bubble points at.
   const [bar, setBar] = useState<HTMLDivElement | null>(null);
   const full = requests.length >= MAX_FEEDBACK_REQUESTS;
   const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
 
+  /** Keyboard focus back into the prototype, on the element a bubble was on (or the pin that opened it). */
+  const focusBack = (key: string | undefined, requests?: readonly number[]) => {
+    if (key !== undefined) frame.current?.focusElement(key, requests);
+  };
   /** Escape, wherever it came from: the bubble, then the selection, then (false) the review. */
   const escape = () => {
-    if (bubble) dispatch({ type: "CLOSE_BUBBLE" });
-    else if (view.selectedKeys.length > 0) dispatch({ type: "CLEAR_SELECTION" });
+    if (bubble) {
+      if (bubble.on === "selection") focusBack(view.selectedKeys[0]);
+      else if (bubble.on === "comment" && bubble.pin) focusBack(bubble.pin.key, bubble.pin.requests);
+      dispatch({ type: "CLOSE_BUBBLE" });
+    } else if (view.selectedKeys.length > 0) dispatch({ type: "CLEAR_SELECTION" });
     else return false;
     return true;
   };
@@ -240,15 +261,30 @@ function Session({
   });
 
   const add = (text: string) => {
-    onQueue(enqueue(queue, hash, requestFor(view, text)));
+    onQueue((q) => enqueue(q, hash, requestFor(view, text)));
+    // Added, the comment is no longer a draft to keep.
+    draft.setText("");
     setRefused(null);
+    focusBack(view.selectedKeys[0]);
     dispatch({ type: "CLEAR_SELECTION" });
   };
   const remove = (index: number) => {
-    if (!queue) return;
-    // An open comment's number would shift under it.
-    if (bubble?.on === "comment") dispatch({ type: "CLOSE_BUBBLE" });
-    onQueue(dequeue(queue, index));
+    // An open comment's number would shift under it; its pin goes, so focus goes to its element.
+    if (bubble?.on === "comment") {
+      focusBack(bubble.pin?.key);
+      dispatch({ type: "CLOSE_BUBBLE" });
+    }
+    onQueue((q) => dequeue(q, index));
+  };
+  /** A pin in the frame: a queued comment's opens it; a draft pin reopens the draft on its elements (in Annotate). */
+  const openPin = (key: string, numbers: number[]) => {
+    if (numbers.length === 0) {
+      const kept = draftOfPin(queue, view.screenId, key);
+      if (kept) dispatch({ type: "SELECT_ELEMENTS", elementKeys: kept.elementIds });
+      return;
+    }
+    const index = (numbers[0] ?? 0) - 1;
+    if (requests[index]) dispatch({ type: "OPEN_PIN", index, pin: { key, requests: numbers } });
   };
   const open = (index: number) => {
     const request = requests[index];
@@ -256,20 +292,20 @@ function Session({
   };
   const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[k] ?? k);
   const send = async () => {
-    if (!queue || queue.requests.length === 0) return;
+    const feedback = feedbackBatch(prototype.component, queue);
+    if (!feedback) return;
     if (!ready) {
       setRefused(BUSY);
       return;
     }
     setSending(true);
-    const feedback = feedbackBatch(prototype.component, queue);
-    const sent = await onSend(feedback);
+    const delivered = await onSend(feedback);
     setSending(false);
-    if (!sent) {
+    if (!delivered) {
       setRefused(NOT_SENT);
       return;
     }
-    onQueue(null);
+    onQueue(sent);
     onClose();
   };
 
@@ -283,6 +319,7 @@ function Session({
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", p: 2, pb: 10, ...WINDOW_LOOK }}>
           <PrototypeWindow title={manifest.name} manifest={manifest} view={view}>
             <PrototypeFrame
+              ref={frame}
               title={manifest.name}
               runtime={runtime}
               manifest={manifest}
@@ -295,7 +332,11 @@ function Session({
                 // The frame is untrusted: only Preview navigates (the reducer checks the target against the role).
                 if (view.mode === "preview") dispatch({ type: "NAVIGATE", screenId });
               }}
-              onToggle={(elementKey, additive) => dispatch({ type: additive ? "TOGGLE_SELECTION" : "SELECT_ONLY", elementKey })}
+              onToggle={(elementKey, additive) => {
+                if (additive) draft.carryNext();
+                dispatch({ type: additive ? "TOGGLE_SELECTION" : "SELECT_ONLY", elementKey });
+              }}
+              onPin={openPin}
               onGeometry={anchors.onGeometry}
               onEscape={() => escape() || onClose()}
               onElements={(_screenId, elements) => setLabels(Object.fromEntries(elements.map((e) => [e.key, e.label])))}
@@ -318,8 +359,11 @@ function Session({
               anchor={bubble.on === "screen" ? bar : anchors.anchor(view.selectedKeys)}
               labels={bubble.on === "screen" ? [`${screenName(manifest, view.screenId)} (whole screen)`] : labelsOf(view.selectedKeys)}
               full={full}
+              text={draft.text}
+              onText={draft.setText}
               onAdd={add}
-              onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
+              // Text on elements is kept as a draft; a whole-screen comment with text stays open.
+              onClose={() => (bubble.on === "selection" || draft.text.trim() === "") && dispatch({ type: "CLOSE_BUBBLE" })}
             />
           )}
           {bubble?.on === "comment" && opened && (
@@ -329,6 +373,7 @@ function Session({
               number={bubble.index + 1}
               request={opened}
               on={opened.elementIds.length > 0 ? labelsOf(opened.elementIds).join(", ") : "Whole screen"}
+              onEdit={(text) => onQueue((q) => editRequest(q, bubble.index, text))}
               onRemove={() => remove(bubble.index)}
               onClose={() => dispatch({ type: "CLOSE_BUBBLE" })}
             />
@@ -339,7 +384,7 @@ function Session({
             ref={setBar}
             manifest={manifest}
             requests={requests}
-            stale={queue !== null && queue.hash !== hash}
+            stale={queue.hash !== null && queue.hash !== hash}
             refused={refused}
             sending={sending}
             onSend={() => void send()}

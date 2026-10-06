@@ -28,15 +28,26 @@ import type { FeedbackRequest } from "@wso2/prototype-kit/feedback";
 // The review's view (the kit's view reducer: pickers, mode, selection) and its
 // comment bubble, as one state. The bubble is what the reviewer is writing or
 // reading a comment on: the selected elements, the whole screen (the send
-// bar's Comment on screen), or a queued comment opened from the bar's list.
+// bar's Comment on screen), or a queued comment opened from the bar's list
+// or its pin.
 
 /** What the open comment bubble is on; null when none is open. */
 export type CommentBubble =
   | { on: "selection" }
   | { on: "screen" }
-  /** The queued comment at `index` (0-based, as the queue holds it). */
-  | { on: "comment"; index: number }
+  /**
+   * The queued comment at `index` (0-based, as the queue holds it); `pin`
+   * when its pin opened it (the pin's element and numbers, where keyboard
+   * focus goes back to).
+   */
+  | { on: "comment"; index: number; pin?: CommentPin | undefined }
   | null;
+
+/** A pin in the frame, as `PrototypeFrame.onPin` names it. */
+export interface CommentPin {
+  key: string;
+  requests: number[];
+}
 
 export interface ReviewState {
   view: PrototypeViewState;
@@ -49,6 +60,8 @@ export type ReviewEvent =
   | { type: "COMMENT_ON_SCREEN" }
   /** Go to where a queued comment was made and open it. */
   | { type: "OPEN_COMMENT"; index: number; request: FeedbackRequest }
+  /** A queued comment's pin was clicked (either mode): open it where it is, letting the selection go. */
+  | { type: "OPEN_PIN"; index: number; pin: CommentPin }
   /** Close the bubble; the selection stays (Escape clears it next). */
   | { type: "CLOSE_BUBBLE" };
 
@@ -78,6 +91,8 @@ export function reduceReview(manifest: PrototypeManifest, s: ReviewState, e: Rev
       });
       return { view, bubble: { on: "comment", index: e.index } };
     }
+    case "OPEN_PIN":
+      return { view: reducePrototypeView(manifest, s.view, { type: "CLEAR_SELECTION" }), bubble: { on: "comment", index: e.index, pin: e.pin } };
     case "CLOSE_BUBBLE":
       return { ...s, bubble: null };
     default: {
@@ -99,7 +114,7 @@ function bubbleAfter(s: ReviewState, view: PrototypeViewState, e: PrototypeViewE
   // A click the reducer refused (empty canvas, Preview) changes nothing.
   if (view === s.view) return s.bubble;
   const selected = view.mode === "annotate" && view.selectedKeys.length > 0;
-  if (e.type === "SELECT_ONLY" || e.type === "TOGGLE_SELECTION") return selected ? { on: "selection" } : null;
+  if (e.type === "SELECT_ONLY" || e.type === "TOGGLE_SELECTION" || e.type === "SELECT_ELEMENTS") return selected ? { on: "selection" } : null;
   if (s.bubble?.on === "selection") return selected ? s.bubble : null;
   return s.bubble && !selected && samePlace(s.view, view) ? s.bubble : null;
 }

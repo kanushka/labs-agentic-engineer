@@ -20,7 +20,7 @@ import { useState } from "react";
 import { Box, Button, Chip, CircularProgress, Skeleton, Tooltip, Typography } from "@wso2/oxygen-ui";
 import { AppWindow } from "@wso2/oxygen-ui-icons-react";
 import { PHONE } from "../../shell/layout";
-import type { ReviewQueue } from "../model/feedback";
+import { EMPTY_FEEDBACK_QUEUE, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
 import { markReviewed } from "../model/reviewed";
 import type { AppPrototype, PrototypeStatus } from "../model/prototypes";
 import { usePrototypes } from "../usePrototypes";
@@ -153,7 +153,7 @@ function Row({ prototype, ready, waiting, onReview, onMake, compact }: RowProps 
  * prototype's status, Review (the full-screen overlay) and Make or Update.
  * Before any prototype exists it says what one takes, with Make prototype
  * when the design has a web application. The open review is the route's
- * (`?review=<component>`); the requests queued in a review are kept here, so
+ * (`?review=<component>`); the comments queued and drafted in a review are kept here, so
  * closing and opening it again keeps them.
  */
 export function PrototypeWorkspace({
@@ -167,7 +167,7 @@ export function PrototypeWorkspace({
 }) {
   const prototypes = usePrototypes(projectName);
   const turns = usePrototypeTurns(projectName);
-  const [queues, setQueues] = useState<Record<string, ReviewQueue | null>>({});
+  const [queues, setQueues] = useState<Record<string, FeedbackQueue>>({});
 
   if (!prototypes) {
     return (
@@ -262,8 +262,8 @@ export function PrototypeWorkspace({
       {open && (
         <PrototypeReview
           prototype={open}
-          queue={queues[open.component] ?? null}
-          onQueue={(queue) => setQueues((q) => ({ ...q, [open.component]: queue }))}
+          queue={queues[open.component] ?? EMPTY_FEEDBACK_QUEUE}
+          onQueue={(update) => setQueues((q) => ({ ...q, [open.component]: update(q[open.component] ?? EMPTY_FEEDBACK_QUEUE) }))}
           ready={turns.ready}
           onSend={turns.sendFeedback}
           onSeen={(hash) => markReviewed(projectName, open.component, hash)}

@@ -108,7 +108,7 @@ function fromFrame(data: object) {
 
 /** What the host last told the frame to draw. */
 function lastView(post: { mock: { calls: unknown[][] } }) {
-  const messages = post.mock.calls.map((c) => c[0] as { type: string; view?: { mode: string; screenId: string; selectedKeys: string[]; pins: object } });
+  const messages = post.mock.calls.map((c) => c[0] as { type: string; view?: { mode: string; screenId: string; selectedKeys: string[]; pins: object; drafts?: string[] } });
   return messages.filter((m) => m.view).at(-1)!.view!;
 }
 
@@ -563,24 +563,6 @@ describe("commenting in place", () => {
     expect(bubble()).toHaveAccessibleName("Comment on Reject, Approve");
   });
 
-  it("closes an empty bubble on a click away from it, but not one holding text", async () => {
-    const { dialog } = await annotating();
-    const clickAway = async () => {
-      // A click away counts once the bubble has settled in, not the very event that opened it.
-      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-      fireEvent.mouseDown(within(dialog).getByText("Prototype · Acme Expenses"));
-      fireEvent.click(within(dialog).getByText("Prototype · Acme Expenses"));
-    };
-    clickElement("btn.reject");
-    await clickAway();
-    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
-
-    clickElement("btn.reject");
-    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "Half a thought" } });
-    await clickAway();
-    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
-  });
-
   it("holds a comment to the length limit and counts down near it", async () => {
     await annotating();
     clickElement("btn.reject");
@@ -690,5 +672,210 @@ describe("the send bar", () => {
     expect(mode()).toBe("false");
     fireEvent.keyDown(dialog, { key: "c", metaKey: true });
     expect(mode()).toBe("false");
+  });
+});
+
+/** A click in the console away from the open bubble, once it has settled in (not the very event that opened it). */
+async function clickAway(dialog: HTMLElement) {
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+  fireEvent.mouseDown(within(dialog).getByText("Prototype · Acme Expenses"));
+  fireEvent.click(within(dialog).getByText("Prototype · Acme Expenses"));
+}
+
+/** A click on a pin in the prototype, as the frame reports it: its element and the comment numbers it shows (none: the draft pin). */
+function clickPin(key: string, requests: number[]) {
+  fromFrame({ type: "proto:pin", key, requests, box: BOX });
+}
+
+/** What the host last asked the frame to focus. */
+function lastFocus(post: { mock: { calls: unknown[][] } }) {
+  return post.mock.calls.map((c) => c[0] as { type: string }).filter((m) => m.type === "proto:focus").at(-1);
+}
+
+describe("pins and drafts", () => {
+  const ELEMENTS = [
+    { key: "btn.reject", label: "Reject" },
+    { key: "btn.approve", label: "Approve" },
+  ];
+
+  async function annotating() {
+    const opened = await openReview();
+    fireEvent.change(within(opened.dialog).getByLabelText("Flow"), { target: { value: "flow.approve" } });
+    annotate(opened.dialog);
+    fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: ELEMENTS });
+    return opened;
+  }
+
+  /** The review opened again after it closed, on the approval flow. */
+  async function reopen() {
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    const again = await screen.findByRole("dialog");
+    await waitFor(() => expect(frame()).toBeInTheDocument());
+    const post = vi.spyOn(frame().contentWindow!, "postMessage");
+    fromFrame({ type: "proto:ready" });
+    await waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: "proto:load" }), "*"));
+    fireEvent.change(within(again).getByLabelText("Flow"), { target: { value: "flow.approve" } });
+    return post;
+  }
+
+  function type(text: string) {
+    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: text } });
+  }
+
+  function escapeBubble() {
+    fireEvent.keyDown(within(bubble()).getByLabelText("Comment"), { key: "Escape" });
+  }
+
+  it("opens a queued comment from its pin, and edits it in place", async () => {
+    const { post } = await annotating();
+    clickElement("btn.reject");
+    addComment("Ask for a reason");
+    clickPin("btn.reject", [1]);
+
+    const opened = screen.getByRole("dialog", { name: "Comment 1" });
+    expect(opened).toHaveTextContent("Ask for a reason");
+    fireEvent.click(within(opened).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(opened).getByLabelText("Comment"), { target: { value: "Ask why, in a sentence" } });
+    fireEvent.click(within(opened).getByRole("button", { name: "Save" }));
+
+    expect(screen.getByRole("dialog", { name: "Comment 1" })).toHaveTextContent("Ask why, in a sentence");
+    expect(within(commentList()).getByRole("listitem")).toHaveTextContent("Ask why, in a sentence");
+    expect(lastView(post).pins).toEqual({ "btn.reject": [1] });
+  });
+
+  it("opens a pin in Preview too, and Remove drops the comment and renumbers the rest", async () => {
+    const { dialog, post } = await annotating();
+    clickElement("btn.reject");
+    addComment("Ask for a reason");
+    clickElement("btn.approve");
+    addComment("Make it green");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Preview" }));
+
+    clickPin("btn.reject", [1]);
+    expect(lastView(post).mode).toBe("preview");
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Comment 1" })).getByRole("button", { name: "Remove" }));
+    expect(screen.queryByRole("dialog", { name: /^Comment \d/ })).toBeNull();
+    expect(lastView(post).pins).toEqual({ "btn.approve": [1] });
+    expect(lastFocus(post)).toEqual({ type: "proto:focus", key: "btn.reject" });
+    clickPin("btn.approve", [1]);
+    expect(screen.getByRole("dialog", { name: "Comment 1" })).toHaveTextContent("Make it green");
+  });
+
+  it("closes an opened comment with Escape and puts focus back on its pin", async () => {
+    const { post } = await annotating();
+    clickElement("btn.reject");
+    addComment("Ask for a reason");
+    clickPin("btn.reject", [1]);
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Comment 1" }), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Comment 1" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Prototype · Acme Expenses" })).toBeInTheDocument();
+    expect(lastFocus(post)).toEqual({ type: "proto:focus", key: "btn.reject", requests: [1] });
+  });
+
+  it("puts focus back on the element when a new comment closes with Escape or is added", async () => {
+    const { post } = await annotating();
+    clickElement("btn.approve");
+    escapeBubble();
+    expect(lastFocus(post)).toEqual({ type: "proto:focus", key: "btn.approve" });
+    clickElement("btn.reject");
+    addComment("Ask for a reason");
+    expect(lastFocus(post)).toEqual({ type: "proto:focus", key: "btn.reject" });
+  });
+
+  it("keeps typed text as a draft on a click away, with a hollow pin that reopens it", async () => {
+    const { dialog, post } = await annotating();
+    clickElement("btn.reject");
+    type("Half a thought");
+    await clickAway(dialog);
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastView(post).pins).toEqual({});
+    expect(lastView(post).drafts).toEqual(["btn.reject"]);
+    expect(within(bar()).queryByRole("button", { name: /^[1-9]\d* comments?$/ })).toBeNull();
+
+    clickPin("btn.reject", []);
+    expect(bubble()).toHaveAccessibleName("Comment on Reject");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
+  });
+
+  it("restores the draft when its element is clicked again, and reopens it from Preview in Annotate", async () => {
+    const { dialog } = await annotating();
+    clickElement("btn.reject");
+    type("Half a thought");
+    escapeBubble();
+    clickElement("btn.reject");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
+
+    escapeBubble();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Preview" }));
+    clickPin("btn.reject", []);
+    expect(within(dialog).getByRole("button", { name: "Annotate" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Half a thought");
+  });
+
+  it("keeps the text as a draft when a plain click moves to another element, and Shift-click carries it", async () => {
+    const { post } = await annotating();
+    clickElement("btn.reject");
+    type("About Reject");
+    clickElement("btn.approve");
+    expect(bubble()).toHaveAccessibleName("Comment on Approve");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("");
+    expect(lastView(post).drafts).toEqual(["btn.reject"]);
+
+    type("Both of them");
+    clickElement("btn.reject", { shift: true });
+    expect(bubble()).toHaveAccessibleName("Comment on Approve, Reject");
+    expect(within(bubble()).getByLabelText("Comment")).toHaveValue("Both of them");
+  });
+
+  it("just closes an empty bubble, leaving no draft", async () => {
+    const { dialog, post } = await annotating();
+    clickElement("btn.reject");
+    await clickAway(dialog);
+    expect(screen.queryByRole("dialog", { name: /^Comment on/ })).toBeNull();
+    expect(lastView(post).drafts).toBeUndefined();
+  });
+
+  it("drops the draft when it is added as a comment", async () => {
+    const { post } = await annotating();
+    clickElement("btn.reject");
+    type("Half a thought");
+    escapeBubble();
+    clickElement("btn.reject");
+    addComment("A whole thought");
+    expect(lastView(post).drafts).toBeUndefined();
+    expect(lastView(post).pins).toEqual({ "btn.reject": [1] });
+  });
+
+  it("never counts or sends a draft, and keeps it once the rest is sent", async () => {
+    const { dialog } = await annotating();
+    clickElement("btn.approve");
+    addComment("Make it green");
+    clickElement("btn.reject");
+    type("Half a thought");
+    expect(within(bar()).getByRole("button", { name: "1 comment" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Send/ }));
+
+    await waitFor(() => expect(send).toHaveBeenCalled());
+    const [, , turn] = send.mock.calls[0] as [string, string, { feedback: { requests: { text: string }[] } }];
+    expect(turn.feedback.requests.map((r) => r.text)).toEqual(["Make it green"]);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const post = await reopen();
+    expect(lastView(post).pins).toEqual({});
+    expect(lastView(post).drafts).toEqual(["btn.reject"]);
+  });
+
+  it("keeps drafts, and the text left open, across closing and opening the review again", async () => {
+    const { dialog } = await annotating();
+    clickElement("btn.approve");
+    type("About Approve");
+    escapeBubble();
+    clickElement("btn.reject");
+    type("About Reject");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const post = await reopen();
+    expect(lastView(post).drafts).toEqual(["btn.approve", "btn.reject"]);
   });
 });

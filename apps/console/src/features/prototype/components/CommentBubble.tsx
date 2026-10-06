@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
 import { Box, Button, TextField, Typography } from "@wso2/oxygen-ui";
 import { MAX_FEEDBACK_TEXT } from "@wso2/prototype-kit/feedback";
 import { AnchoredBubble, type BubbleAnchor } from "./AnchoredBubble";
@@ -28,8 +28,11 @@ export interface CommentBubbleProps {
   labels: readonly string[];
   /** The queue holds the contract's most requests: another cannot be added (the send bar says so). */
   full: boolean;
+  /** The comment's text: the reviewer's, or the draft the bubble reopened with. */
+  text: string;
+  onText: (text: string) => void;
   onAdd: (text: string) => void;
-  /** The reviewer clicked away from an empty bubble. Escape is the review's (bubble, then selection, then review). */
+  /** The reviewer clicked away (typed text on elements is kept as a draft). Escape is the review's (bubble, then selection, then review). */
   onClose: () => void;
 }
 
@@ -40,8 +43,7 @@ export interface CommentBubbleProps {
  * Cmd/Ctrl+Enter queues the comment. The comment's length limit holds here
  * (counted near the limit); a full queue disables Add.
  */
-export function CommentBubble({ anchor, labels, full, onAdd, onClose }: CommentBubbleProps) {
-  const [text, setText] = useState("");
+export function CommentBubble({ anchor, labels, full, text, onText, onAdd, onClose }: CommentBubbleProps) {
   const empty = text.trim() === "";
   const add = () => {
     if (full || empty) return;
@@ -55,7 +57,7 @@ export function CommentBubble({ anchor, labels, full, onAdd, onClose }: CommentB
   };
   const name = labels.join(", ");
   return (
-    <AnchoredBubble anchor={anchor} label={`Comment on ${name}`} onClickAway={() => empty && onClose()} onKeyDown={onKeyDown}>
+    <AnchoredBubble anchor={anchor} label={`Comment on ${name}`} onClickAway={onClose} onKeyDown={onKeyDown}>
       <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
         {name}
       </Typography>
@@ -65,7 +67,7 @@ export function CommentBubble({ anchor, labels, full, onAdd, onClose }: CommentB
         minRows={2}
         autoFocus
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => onText(e.target.value)}
         slotProps={{ htmlInput: { maxLength: MAX_FEEDBACK_TEXT } }}
         helperText={text.length > MAX_FEEDBACK_TEXT - 200 ? `${text.length} / ${MAX_FEEDBACK_TEXT}` : undefined}
       />
