@@ -1070,7 +1070,7 @@ describe("the revision landing in the open review", () => {
 
   /** What the host last loaded into the frame. */
   function lastLoad(post: { mock: { calls: unknown[][] } }) {
-    return post.mock.calls.map((c) => c[0] as { type: string; source?: string; data?: unknown; view?: { screenId: string } }).filter((m) => m.type === "proto:load").at(-1)!;
+    return post.mock.calls.map((c) => c[0] as { type: string; source?: string; version?: string; data?: unknown; view?: { screenId: string } }).filter((m) => m.type === "proto:load").at(-1)!;
   }
 
   /** Comments `texts` on the pending approvals' Reject, sent; the agent takes the turn. */
@@ -1213,6 +1213,21 @@ describe("the revision landing in the open review", () => {
     expect(bar()).not.toHaveTextContent("no longer on this screen");
 
     fromFrame({ type: "proto:rendered", screenId: "screen.pending", elements: [{ key: "btn.reject", label: "Reject" }] });
+    expect(bar()).toHaveTextContent("1 comment points at an element no longer on this screen.");
+  });
+
+  it("flags no orphan from a report of the revision before, arriving after the swap", async () => {
+    const { post } = await sent();
+    clickElement("btn.approve");
+    addComment("Make it green");
+    ended(revised());
+    await waitFor(() => expect(lastLoad(post)).toMatchObject({ source: REVISED_SOURCE, version: prototypeHash(SAMPLE_MANIFEST, REVISED_SOURCE) }));
+
+    // Drawn by the old revision before the frame loaded the new one: no Approve.
+    fromFrame({ type: "proto:rendered", version: prototypeHash(SAMPLE_MANIFEST, SAMPLE_SOURCE), screenId: "screen.pending", elements: [{ key: "btn.reject", label: "Reject" }] });
+    expect(bar()).not.toHaveTextContent("no longer on this screen");
+
+    fromFrame({ type: "proto:rendered", version: prototypeHash(SAMPLE_MANIFEST, REVISED_SOURCE), screenId: "screen.pending", elements: [{ key: "btn.reject", label: "Reject" }] });
     expect(bar()).toHaveTextContent("1 comment points at an element no longer on this screen.");
   });
 

@@ -143,7 +143,12 @@ The reducer owns view state. `NAVIGATE` only moves to a screen reachable for the
 current role. `proto:data` snapshots are shape-validated with a bounded walk
 (cycles rejected, node cap) before a host persists them (`isDataSnapshot`).
 `PrototypeFrame` re-sends `load` on every frame `ready`, so a reloaded frame
-recovers. The host ignores frame navigation outside Preview. Until the frame
+recovers. `load` names the prototype's `version`, and the frame echoes it on
+every `proto:rendered` of that prototype; `PrototypeFrame` drops a report of
+another version (drawn before the frame loaded the current one, arriving
+after), so `onElements` is only what the current version draws. Both fields
+are optional: a report without one, from a frame on the older protocol, is
+passed on as before. The host ignores frame navigation outside Preview. Until the frame
 first draws (`proto:rendered` or `proto:error`) after its latest `ready`,
 `PrototypeFrame` covers it with its `loading` node (a plain "Loading the
 prototype…" by default), so a click while the large runtime starts is not

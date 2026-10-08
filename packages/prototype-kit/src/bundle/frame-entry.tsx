@@ -68,6 +68,8 @@ interface Loaded {
   app: PrototypeApp;
   manifest: PrototypeManifest;
   initialData: DataSnapshot | undefined;
+  /** The version the host named this prototype (none from a host on the older protocol), echoed on each report of what it drew. */
+  version: string | undefined;
   /** Bumped per load and reset, so the app remounts with a fresh store. */
   generation: number;
 }
@@ -79,12 +81,12 @@ let generation = 0;
  * `PrototypeFrame` a `PrototypeManifest`, so the frame does not parse it again
  * (which keeps the manifest schema's validator out of this runtime).
  */
-function load(source: string, manifest: PrototypeManifest, data: DataSnapshot | undefined): Loaded {
+function load(source: string, manifest: PrototypeManifest, data: DataSnapshot | undefined, version: string | undefined): Loaded {
   const transpiled = transpileSource(source);
   if (!transpiled.ok) throw new Error(transpiled.findings.map((f) => `${f.location}: ${f.message}`).join("; "));
   // The frame is the sandbox: evaluating the module here is what it is for.
   const factory = (0, eval)(moduleFactorySource(transpiled.code)) as ModuleFactory;
-  return { app: runPrototypeModule(factory), manifest, initialData: data, generation: ++generation };
+  return { app: runPrototypeModule(factory), manifest, initialData: data, version, generation: ++generation };
 }
 
 /** The elements the document draws now, in document order, each once. */
@@ -100,20 +102,26 @@ function drawnElements(): FrameElement[] {
   return out;
 }
 
-/** Reports the drawn elements whenever they change, at most once a frame. */
-function watchElements(screenId: () => string | undefined): { report: () => void; stop: () => void } {
+/** What is drawn: the loaded prototype's version and the screen showing (none before an app is loaded). */
+interface Drawing {
+  version: string | undefined;
+  screenId: string;
+}
+
+/** Reports the drawn elements whenever they (or the version drawing them) change, at most once a frame. */
+function watchElements(drawing: () => Drawing | undefined): { report: () => void; stop: () => void } {
   let last = "";
   // The animation frame a report waits for; null when none is pending.
   let pending: number | null = null;
   const report = () => {
     pending = null;
-    const screen = screenId();
-    if (screen === undefined) return;
+    const now = drawing();
+    if (now === undefined) return;
     const elements = drawnElements();
-    const signature = `${screen}\n${elements.map((e) => `${e.key}\t${e.label}`).join("\n")}`;
+    const signature = `${now.version ?? ""}\n${now.screenId}\n${elements.map((e) => `${e.key}\t${e.label}`).join("\n")}`;
     if (signature === last) return;
     last = signature;
-    post({ type: "proto:rendered", screenId: screen, elements });
+    post({ type: "proto:rendered", ...(now.version !== undefined ? { version: now.version } : {}), screenId: now.screenId, elements });
   };
   const observer = new MutationObserver(() => {
     if (pending === null) pending = requestAnimationFrame(report);
@@ -133,9 +141,9 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [view, setView] = useState<FrameView | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const screen = useRef<string | undefined>(undefined);
+  const drawing = useRef<Drawing | undefined>(undefined);
   // Nothing has drawn until an app is loaded: a view sent before it must not report a draw (that clears the host's loading cover).
-  screen.current = loaded ? view?.screenId : undefined;
+  drawing.current = loaded && view ? { version: loaded.version, screenId: view.screenId } : undefined;
   const watcher = useRef<ReturnType<typeof watchElements> | null>(null);
   // The elements the host anchors its UI to: the selected, the pinned and the drafted ones.
   const anchored = useRef<readonly string[]>([]);
@@ -143,7 +151,7 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
   const geometry = useRef<ReturnType<typeof watchGeometry> | null>(null);
 
   useEffect(() => {
-    watcher.current = watchElements(() => screen.current);
+    watcher.current = watchElements(() => drawing.current);
     return () => watcher.current?.stop();
   }, []);
 
@@ -181,7 +189,7 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
       }
       if (message.type === "proto:load") {
         try {
-          setLoaded(load(message.source, message.manifest, message.data));
+          setLoaded(load(message.source, message.manifest, message.data, message.version));
           setFailure(null);
         } catch (e) {
           const text = e instanceof Error ? e.message : String(e);

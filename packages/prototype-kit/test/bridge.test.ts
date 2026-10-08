@@ -262,3 +262,27 @@ describe("parseToFrameMessage — whole-screen comments' pins", () => {
     expect(parseToFrameMessage({ type: "proto:focus-screen-pin" })).toBeNull();
   });
 });
+
+describe("the prototype's version, from load to the frame's report of what it drew", () => {
+  const view = { mode: "preview", roleId: "r", stateId: "s", screenId: "x", selectedKeys: [], pins: {} };
+  const load = { type: "proto:load", source: "export default 1", manifest: {}, view };
+  const elements = [{ key: "btn.ok", label: "OK" }];
+
+  it("carries the version the host loads, and reads a load from a host on the older protocol without it", () => {
+    expect(parseToFrameMessage({ ...load, version: "v2" })).toMatchObject({ type: "proto:load", version: "v2" });
+    expect(parseToFrameMessage(load)).not.toHaveProperty("version");
+  });
+
+  it("ignores a load whose version is not a string", () => {
+    expect(parseToFrameMessage({ ...load, version: 2 })).toBeNull();
+  });
+
+  it("carries the version a report was drawn for, and reads a report from a frame on the older protocol without it", () => {
+    expect(parseFromFrameMessage({ type: "proto:rendered", version: "v2", screenId: "x", elements })).toEqual({ type: "proto:rendered", version: "v2", screenId: "x", elements });
+    expect(parseFromFrameMessage({ type: "proto:rendered", screenId: "x", elements })).toEqual({ type: "proto:rendered", screenId: "x", elements });
+  });
+
+  it("ignores a report whose version is not a string", () => {
+    expect(parseFromFrameMessage({ type: "proto:rendered", version: 2, screenId: "x", elements })).toBeNull();
+  });
+});

@@ -174,7 +174,9 @@ whole-screen comment there (`proto:screen-click`).
   "Written on an earlier version". Those are checked against the elements
   the frame says it draws for the revision and view now showing (the kit's
   `orphansOnScreen`, same screen, role and state only; a report from before
-  the swap or a view switch is not used), so a comment is flagged "Element no
+  the swap is not used, as the frame echoes the version it drew and
+  `PrototypeFrame` drops a report of an earlier one; nor is one of another
+  screen), so a comment is flagged "Element no
   longer on this screen" when its screen is visited, with Keep as screen
   comment (`keepOnScreen`) or Remove. A failed
   turn (`chatStore.onTurnEnd`) or an invalid revision keeps the last ready

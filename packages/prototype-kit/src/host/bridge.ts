@@ -72,8 +72,13 @@ export interface FrameScreenPin {
 
 /** What the host sends the frame. */
 export type ToFrameMessage =
-  /** Run this prototype and draw `view`; start the mock data from `data` when given, else from the seed. */
-  | { type: "proto:load"; source: string; manifest: PrototypeManifest; view: FrameView; data?: DataSnapshot | undefined }
+  /**
+   * Run this prototype and draw `view`; start the mock data from `data` when
+   * given, else from the seed. `version` names the prototype (the host's
+   * `PrototypeFrame` version), echoed on every `proto:rendered` of it; a host
+   * on the older protocol leaves it out.
+   */
+  | { type: "proto:load"; source: string; manifest: PrototypeManifest; view: FrameView; data?: DataSnapshot | undefined; version?: string | undefined }
   /** Draw another view of the loaded prototype. */
   | { type: "proto:view"; view: FrameView }
   /** Start the mock data from the seed again. */
@@ -109,8 +114,13 @@ export interface FrameBox {
 export type FromFrameMessage =
   /** The runtime is up and waits for `load`. */
   | { type: "proto:ready" }
-  /** The screen drew these elements (after every change to them). */
-  | { type: "proto:rendered"; screenId: string; elements: FrameElement[] }
+  /**
+   * The screen drew these elements (after every change to them), for the
+   * prototype `version` loaded (none when its load named none, or from a
+   * frame on the older protocol): a report of an earlier version can arrive
+   * after the host loaded the next one.
+   */
+  | { type: "proto:rendered"; version?: string | undefined; screenId: string; elements: FrameElement[] }
   /** A press in Preview asked for another screen. */
   | { type: "proto:navigate"; screenId: string }
   /**
@@ -198,9 +208,17 @@ export function parseToFrameMessage(data: unknown): ToFrameMessage | null {
   switch (data["type"]) {
     case "proto:load": {
       const snapshot = data["data"];
+      const version = data["version"];
       if (!isString(data["source"]) || !isObject(data["manifest"]) || !isView(data["view"])) return null;
-      if (snapshot !== undefined && !isObject(snapshot)) return null;
-      return { type: "proto:load", source: data["source"], manifest: data["manifest"] as unknown as PrototypeManifest, view: data["view"], data: snapshot };
+      if ((snapshot !== undefined && !isObject(snapshot)) || (version !== undefined && !isString(version))) return null;
+      return {
+        type: "proto:load",
+        source: data["source"],
+        manifest: data["manifest"] as unknown as PrototypeManifest,
+        view: data["view"],
+        data: snapshot,
+        ...(version !== undefined ? { version } : {}),
+      };
     }
     case "proto:view":
       return isView(data["view"]) ? { type: "proto:view", view: data["view"] } : null;
@@ -226,11 +244,12 @@ export function parseFromFrameMessage(data: unknown): FromFrameMessage | null {
     case "proto:escape":
       return { type: data["type"] };
     case "proto:rendered": {
-      const elements = data["elements"];
-      if (!isString(data["screenId"]) || !Array.isArray(elements)) return null;
+      const { elements, version } = data;
+      if (!isString(data["screenId"]) || !Array.isArray(elements) || (version !== undefined && !isString(version))) return null;
       if (!elements.every((e) => isObject(e) && isString(e["key"]) && isString(e["label"]))) return null;
       return {
         type: "proto:rendered",
+        ...(version !== undefined ? { version } : {}),
         screenId: data["screenId"],
         elements: (elements as Json[]).map((e) => ({ key: e["key"] as string, label: e["label"] as string })),
       };

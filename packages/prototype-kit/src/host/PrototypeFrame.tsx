@@ -159,6 +159,8 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
           p.onEscape();
           break;
         case "proto:rendered":
+          // A report of an earlier version (one the frame drew before it loaded this one) is not what shows.
+          if (message.version !== undefined && message.version !== p.version) break;
           setProgress((s) => ({ ...s, settled: true }));
           p.onElements(message.screenId, message.elements);
           break;
@@ -202,7 +204,7 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
     const p = latest.current;
     setError(null);
     loadedVersion.current = version;
-    post({ type: "proto:load", source: p.source, manifest: p.manifest, view, data: p.initialData });
+    post({ type: "proto:load", source: p.source, manifest: p.manifest, view, data: p.initialData, version });
   }, [readies, version]);
 
   // A frame that neither draws nor says why within the bound stops being waited for, visibly.
