@@ -35,7 +35,6 @@ import {
 } from "@wso2/prototype-kit/host";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
 import {
-  MAX_FEEDBACK_REQUESTS,
   dequeue,
   draftAt,
   draftOfPin,
@@ -49,7 +48,7 @@ import {
   screenPinsOnScreen,
   targetLabel,
 } from "@wso2/prototype-kit/feedback";
-import { commentCount, feedbackBatch } from "../model/feedback";
+import { commentCount, feedbackBatch, queueFull } from "../model/feedback";
 import type { AppPrototype, PrototypeFiles } from "../model/prototypes";
 import type { ReviewSession, RevisionNotice } from "../model/revision";
 import { useFrameRuntime, usePrototypeHash } from "../useReviewAssets";
@@ -289,7 +288,9 @@ function Session({
   const [dock, setDock] = useState<HTMLElement | null>(null);
   // The stage: the prototype window's area, above the dock, which bubbles keep within.
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
-  const full = requests.length >= MAX_FEEDBACK_REQUESTS;
+  // The comments out with the agent keep their places in the queue until their turn ends.
+  const held = session.sent?.feedback.requests.length ?? 0;
+  const full = queueFull(requests.length, held);
   // Comments written on an earlier revision may point at elements it took away.
   const earlier = useMemo(() => earlierComments(queue, hash), [queue, hash]);
   // Checked only against what the frame drew for this very revision and view, never a report from before a swap or a switch.
@@ -332,7 +333,7 @@ function Session({
 
   const add = (text: string) => {
     const comment = newComment(current.review, text);
-    if (!comment) return;
+    if (!comment || full) return;
     onQueue((q) => enqueue(q, hash, comment));
     // Added, the comment is no longer a draft to keep.
     draft.setText("");
@@ -475,6 +476,7 @@ function Session({
             requests={requests}
             labels={labels}
             earlier={earlier}
+            held={held}
             refused={refused}
             sending={sending}
             revising={revising ? (session.sent?.feedback.requests.length ?? 0) : null}

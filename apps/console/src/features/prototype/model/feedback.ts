@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { EMPTY_FEEDBACK_QUEUE, submissionOf, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
+import { EMPTY_FEEDBACK_QUEUE, MAX_FEEDBACK_REQUESTS, submissionOf, type FeedbackQueue } from "@wso2/prototype-kit/feedback";
 import type { PrototypeFeedback } from "../../agent-chat/turnScope";
 
 // What Send makes of a review's comment queue. The queue itself is the kit's
@@ -39,6 +39,16 @@ export function feedbackBatch(component: string, queue: FeedbackQueue): Prototyp
 export function restored(queue: FeedbackQueue, batch: PrototypeFeedback): FeedbackQueue {
   const given = batch.requests.map((r) => ({ ...r, revision: batch.prototypeHash }));
   return { hash: batch.prototypeHash, requests: [...given, ...queue.requests], drafts: queue.drafts };
+}
+
+/**
+ * Whether no other comment can be queued: `queued` comments are, and `held`
+ * are out with the agent (0 when no batch is). A batch out keeps its places,
+ * so given back by a failed turn (`restored`) it still fits one batch with
+ * the comments written meanwhile.
+ */
+export function queueFull(queued: number, held: number): boolean {
+  return queued + held >= MAX_FEEDBACK_REQUESTS;
 }
 
 /** The queue once its comments are sent: empty, keeping the drafts. */

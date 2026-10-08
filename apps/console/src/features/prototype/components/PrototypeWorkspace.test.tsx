@@ -1254,6 +1254,33 @@ describe("the revision landing in the open review", () => {
     expect(send.mock.calls[1]![2]).toMatchObject({ feedback: { prototypeHash: prototypeHash(SAMPLE_MANIFEST, REVISED_SOURCE) } });
   });
 
+  it("keeps the places of the comments out with the agent: none can be added past the limit while it revises", async () => {
+    await sent(Array.from({ length: MAX_FEEDBACK_REQUESTS }, (_, i) => `Comment ${i + 1}`));
+    clickElement("btn.approve");
+    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "One more" } });
+    expect(within(bubble()).getByRole("button", { name: "Add" })).toBeDisabled();
+    expect(within(bar()).getByRole("note")).toHaveTextContent(`The queue is full (${MAX_FEEDBACK_REQUESTS} comments`);
+    commentList();
+    expect(within(bar()).getByRole("button", { name: "Comment on this screen" })).toBeDisabled();
+  });
+
+  it("gives a failed batch back with the comments held meanwhile as one batch Retry can send", async () => {
+    await sent(["Ask for a reason"]);
+    for (let i = 0; i < MAX_FEEDBACK_REQUESTS - 1; i++) {
+      clickElement("btn.approve");
+      addComment(`Held ${i + 1}`);
+    }
+    clickElement("btn.approve");
+    fireEvent.change(within(bubble()).getByLabelText("Comment"), { target: { value: "One more" } });
+    expect(within(bubble()).getByRole("button", { name: "Add" })).toBeDisabled();
+    ended(files, "failed");
+
+    expect(bar()).toHaveTextContent(`${MAX_FEEDBACK_REQUESTS} comments`);
+    fireEvent.click(within(bar()).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect((send.mock.calls[1]![2] as { feedback: { requests: unknown[] } }).feedback.requests).toHaveLength(MAX_FEEDBACK_REQUESTS);
+  });
+
   it("keeps the last good revision showing when the new one is invalid, and gives the comments back", async () => {
     await sent(["Ask for a reason"]);
     ended({ [manifestPath(C)]: "{" , [sourcePath(C)]: REVISED_SOURCE });

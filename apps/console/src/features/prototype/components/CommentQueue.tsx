@@ -22,7 +22,7 @@ import { ChevronDown, ChevronUp, MessageSquarePlus, Send, Trash2 } from "@wso2/o
 import type { PrototypeManifest } from "@wso2/prototype-kit/host";
 import { MAX_FEEDBACK_REQUESTS, targetLabel, type FeedbackRequest } from "@wso2/prototype-kit/feedback";
 import { visuallyHidden } from "../../../components/visuallyHidden";
-import { commentCount } from "../model/feedback";
+import { commentCount, queueFull } from "../model/feedback";
 import { Key } from "./Key";
 import { DockGroup } from "./ReviewDock";
 
@@ -33,6 +33,8 @@ export interface CommentQueueProps {
   labels: ScreenLabels;
   /** The comments (0-based) written on an earlier revision than the one showing. */
   earlier: readonly number[];
+  /** The comments out with the agent (0 when none are): they keep their places, so fewer can be queued meanwhile. */
+  held: number;
   /** Why the last Send did not go; the queue is kept. */
   refused: string | null;
   sending: boolean;
@@ -192,6 +194,7 @@ export function CommentQueue({
   requests,
   labels,
   earlier,
+  held,
   refused,
   sending,
   revising,
@@ -204,7 +207,7 @@ export function CommentQueue({
   onRemove,
 }: CommentQueueProps) {
   const [expanded, setExpanded] = useState(false);
-  const full = requests.length >= MAX_FEEDBACK_REQUESTS;
+  const full = queueFull(requests.length, held);
   const blocked = requests.length === 0 || requests.length > MAX_FEEDBACK_REQUESTS || sending || revising !== null;
   const listId = useId();
   return (
@@ -238,7 +241,13 @@ export function CommentQueue({
             {failed}
           </Callout>
         )}
-        {full && <Callout severity="info" role="note">{`The queue is full (${MAX_FEEDBACK_REQUESTS} comments): send it or remove one to add another.`}</Callout>}
+        {full && (
+          <Callout severity="info" role="note">
+            {held > 0
+              ? `The queue is full (${MAX_FEEDBACK_REQUESTS} comments, counting the ${commentCount(held)} the agent is working on): add more once it is done, or remove one.`
+              : `The queue is full (${MAX_FEEDBACK_REQUESTS} comments): send it or remove one to add another.`}
+          </Callout>
+        )}
         {refused && (
           <Callout severity="warning" role="alert">
             {refused}

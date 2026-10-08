@@ -119,7 +119,9 @@ whole-screen comment there (`proto:screen-click`).
 - **Preview** acts: navigation, forms, mock data. **Comment** only selects;
   selected elements are pinned and a comment is typed against them (max 4000
   characters, 50 comments per batch, the kit CLI's limits; the contract calls
-  a comment a request).
+  a comment a request). A batch out with the agent keeps its places until its
+  turn ends (`queueFull`): comments written meanwhile fill only the rest, so
+  a failed batch given back with them is still one batch Retry can send.
 - **Pins:** a queued comment's pin (the frame's, in both modes, keyboard
   reachable) opens its bubble (`OPEN_PIN`) with Edit (in place) and Remove
   (the rest renumber). A whole-screen comment made at a spot has its pin
