@@ -34,6 +34,7 @@ import {
   onRevision,
   orphansOnScreen,
   pinsOnScreen,
+  screenPinsOnScreen,
   submissionOf,
   targetLabel,
   type FeedbackQueue,
@@ -185,5 +186,48 @@ describe("comments whose elements a revision took away", () => {
     expect(q.requests).toEqual([written(H1, on(["a"], "one")), written(H1, on([], "two"))]);
     expect(pinsOnScreen(q.requests, "queue")).toEqual({ a: [1] });
     expect(keepOnScreen(q, 5)).toBe(q);
+  });
+});
+
+describe("whole-screen comments made by clicking a spot on the screen", () => {
+  const here = { x: 40, y: 900 };
+  const there = { x: 300, y: 12 };
+
+  it("keeps the spot with the comment, and pins it there on its screen, numbered as the queue numbers it", () => {
+    const q = enqueue(queued(on(["a"], "element")), H1, { ...on([], "too busy"), at: here });
+    expect(q.requests[1]).toEqual({ ...written(H1, on([], "too busy")), at: here });
+    expect(screenPinsOnScreen(q, "queue", null)).toEqual([{ at: here, number: 2 }]);
+    expect(screenPinsOnScreen(q, "detail", null)).toEqual([]);
+    expect(pinsOnScreen(q.requests, "queue")).toEqual({ a: [1] });
+  });
+
+  it("keeps no spot for a comment on elements: their pins are on the elements", () => {
+    const q = enqueue(EMPTY_FEEDBACK_QUEUE, H1, { ...on(["a"], "element"), at: here });
+    expect(q.requests[0]).toEqual(written(H1, on(["a"], "element")));
+  });
+
+  it("sends the comment without its spot: the submission is unchanged", () => {
+    const q = enqueue(EMPTY_FEEDBACK_QUEUE, H1, { ...on([], "too busy"), at: here });
+    expect(submissionOf(q)).toEqual({ prototypeHash: H1, requests: [on([], "too busy")] });
+  });
+
+  it("lists a whole-screen comment queued without a spot, but pins nothing for it", () => {
+    const q = queued(on([], "from the list"));
+    expect(screenPinsOnScreen(q, "queue", null)).toEqual([]);
+    expect(targetLabel(q.requests[0]!, {})).toBe("Whole screen");
+  });
+
+  it("draws the screen's draft hollow at its spot, or (while one is written there) the spot being written at instead", () => {
+    const q = keepDraft(EMPTY_FEEDBACK_QUEUE, { ...on([], "half"), at: here });
+    expect(draftAt(q, "queue", [])).toEqual({ ...on([], "half"), at: here });
+    expect(screenPinsOnScreen(q, "queue", null)).toEqual([{ at: here }]);
+    expect(screenPinsOnScreen(q, "queue", { at: there })).toEqual([{ at: there }]);
+    // Written without a spot (from the list): no hollow pin.
+    expect(screenPinsOnScreen(q, "queue", {})).toEqual([]);
+  });
+
+  it("drops the spot when a comment is kept on its whole screen after its element went", () => {
+    const q = keepOnScreen(queued(on(["gone"], "orphan")), 0);
+    expect(screenPinsOnScreen(q, "queue", null)).toEqual([]);
   });
 });

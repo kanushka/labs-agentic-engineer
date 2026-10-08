@@ -29,22 +29,13 @@ import { ActivityLine } from "./ActivityLine";
 import { InterviewFollowUp } from "./InterviewFollowUp";
 import { NoteActions } from "./NoteActions";
 import { QuestionCard } from "./QuestionCard";
+import { visuallyHidden } from "../../../components/visuallyHidden";
 
 // The conversation, oldest first: what the user said, what the agent said,
 // a compact line for each file it wrote, and its questions as cards. After an
 // interview has written its feature, the walk and the next feature follow;
 // after a prototype turn has written a valid prototype, Open prototype.
 
-// Read out, not shown: who said a line is otherwise told only by its side and
-// its icon.
-const visuallyHidden = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-} as const;
 
 function AgentMark() {
   return (

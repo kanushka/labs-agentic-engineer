@@ -17,10 +17,11 @@
  */
 
 /**
- * The preview host: the live prototype in a browser window, the review
- * controls, the findings overlay and (in preview) Comment mode: comment bubbles
- * at the elements, pins that open them again, and the comment bar that saves
- * the feedback file.
+ * The preview host: a header with the prototype's name, the live prototype in
+ * a browser window, the review's dock below it (every control), the findings
+ * overlay and (in preview) Comment mode: comment bubbles at the elements (or,
+ * clicking empty space, on the whole screen at that spot), pins that open
+ * them again, and the dock's comments, which save the feedback file.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -29,6 +30,7 @@ import {
   PrototypeWindow,
   frameViewOf,
   initialReview,
+  newComment,
   reduceReview,
   useCommentDraft,
   useFrameAnchors,
@@ -44,26 +46,30 @@ import {
   MAX_FEEDBACK_REQUESTS,
   dequeue,
   earlierComments,
+  draftAt,
   draftOfPin,
   draftPinsOnScreen,
   editRequest,
   enqueue,
   pinsOnScreen,
-  requestFor,
+  screenPinsOnScreen,
   submissionOf,
   targetLabel,
   type FeedbackQueue,
 } from "@wso2/prototype-kit/feedback";
 import { FEEDBACK_PATH } from "../feedback.js";
 import type { HostConfig, PrototypeRevision } from "../host-config.js";
-import { CommentBar, count } from "./CommentBar.js";
+import { BubbleBounds } from "./AnchoredBubble.js";
 import { CommentBubble } from "./CommentBubble.js";
+import { CommentQueue, count } from "./CommentQueue.js";
+import { Dock } from "./Dock.js";
 import { FindingsOverlay } from "./FindingsOverlay.js";
 import { useLivePrototype } from "./live.js";
 import { clearSnapshot, loadSnapshot, saveSnapshot } from "./persistence.js";
 import { HOST_CSS } from "./styles.js";
+import { ModeTools } from "./ModeTools.js";
 import { QueuedCommentBubble } from "./QueuedCommentBubble.js";
-import { Toolbar } from "./Toolbar.js";
+import { ViewControls } from "./ViewControls.js";
 
 export function App({ config }: { config: HostConfig }) {
   const live = useLivePrototype(config);
@@ -103,15 +109,19 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   const { requests } = queue;
   const pins = useMemo(() => pinsOnScreen(requests, view.screenId), [requests, view.screenId]);
   const drafts = useMemo(() => draftPinsOnScreen(queue, view.screenId), [queue, view.screenId]);
-  const frameView = useMemo(() => frameViewOf(view, pins, drafts), [view, pins, drafts]);
+  const writing = bubble?.on === "screen" ? bubble : null;
+  const screenPins = useMemo(() => screenPinsOnScreen(queue, view.screenId, writing), [queue, view.screenId, writing]);
+  const frameView = useMemo(() => frameViewOf(view, pins, drafts, screenPins), [view, pins, drafts, screenPins]);
   const frame = useRef<PrototypeFrameHandle>(null);
   const draft = useCommentDraft({ review: current.review, queue, onQueue });
   const anchors = useFrameAnchors();
-  // The comment bar, which a whole-screen comment's bubble points at.
-  const [bar, setBar] = useState<HTMLElement | null>(null);
+  // The dock, which a whole-screen comment's bubble points at when it has no spot.
+  const [dock, setDock] = useState<HTMLElement | null>(null);
+  // The stage: the prototype window's area, above the dock, which bubbles keep within.
+  const [stage, setStage] = useState<HTMLDivElement | null>(null);
   const full = requests.length >= MAX_FEEDBACK_REQUESTS;
   const opened = bubble?.on === "comment" ? requests[bubble.index] : undefined;
-  // Comment mode shows itself: a ring round the window, a tag in its bar, a hint in the comment bar.
+  // Comment mode shows itself: a ring round the window, a tag in its bar, a hint in the dock.
   const commenting = annotate && view.mode === "annotate";
   const labelsOf = (keys: readonly string[]) => keys.map((k) => labels[view.screenId]?.[k] ?? k);
 
@@ -119,10 +129,12 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   const focusBack = (key: string | undefined, requests?: readonly number[]) => {
     if (key !== undefined) frame.current?.focusElement(key, requests);
   };
-  /** Close the bubble; `refocus`: keyboard focus goes back to where it pointed (its element, or the pin that opened it). */
+  /** Close the bubble; `refocus`: keyboard focus goes back to where it pointed (its element, its spot's pin, or the pin that opened it). */
   const closeBubble = (refocus: boolean) => {
     if (refocus && bubble?.on === "selection") focusBack(view.selectedKeys[0]);
-    else if (refocus && bubble?.on === "comment" && bubble.pin) focusBack(bubble.pin.key, bubble.pin.requests);
+    else if (refocus && bubble?.on === "screen" && bubble.at) frame.current?.focusScreenPin([]);
+    else if (refocus && bubble?.on === "comment" && bubble.pin?.key !== undefined) focusBack(bubble.pin.key, bubble.pin.requests);
+    else if (refocus && bubble?.on === "comment" && bubble.pin) frame.current?.focusScreenPin(bubble.pin.requests);
     dispatch({ type: "CLOSE_BUBBLE" });
   };
   /** Escape, wherever it came from: the bubble, then the selection; false when there was neither. */
@@ -143,8 +155,10 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
   );
 
   const add = (text: string) => {
+    const comment = newComment(current.review, text);
+    if (!comment) return;
     // The feedback is given against the revision showing when its first comment was queued.
-    onQueue((q) => enqueue(q, revision.hash, requestFor(view, text)));
+    onQueue((q) => enqueue(q, revision.hash, comment));
     // Added, the comment is no longer a draft to keep.
     draft.setText("");
     focusBack(view.selectedKeys[0]);
@@ -168,6 +182,17 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
     }
     const index = (numbers[0] ?? 0) - 1;
     if (requests[index]) dispatch({ type: "OPEN_PIN", index, pin: { key, requests: numbers } });
+  };
+  /** A whole-screen comment's pin: a queued one's opens it; the hollow one reopens the screen's draft at its spot (in Annotate). */
+  const openScreenPin = (numbers: number[]) => {
+    if (!annotate) return;
+    if (numbers.length === 0) {
+      const at = draftAt(queue, view.screenId, [])?.at;
+      if (at) dispatch({ type: "COMMENT_ON_SCREEN", at });
+      return;
+    }
+    const index = (numbers[0] ?? 0) - 1;
+    if (requests[index]) dispatch({ type: "OPEN_PIN", index, pin: { requests: numbers } });
   };
   const open = (index: number) => {
     const request = requests[index];
@@ -193,86 +218,99 @@ function Review({ config, runtime, revision }: { config: HostConfig; runtime: st
 
   return (
     <>
-      <Toolbar manifest={manifest} view={view} dispatch={dispatch} onReset={reset} annotate={annotate} />
-      <div className={annotate ? "ph-body ph-body-annotate" : "ph-body"}>
-        <PrototypeWindow
-          title={manifest.name}
-          manifest={manifest}
-          view={view}
-          className={commenting ? "ph-commenting" : undefined}
-          tag={
-            commenting && (
-              <span className="ph-mode-tag">
-                Comment mode <kbd>Esc</kbd>
-              </span>
-            )
-          }
-        >
-          <PrototypeFrame
-            ref={frame}
+      <header className="ph-header">
+        <h1 className="ph-name">{manifest.name}</h1>
+      </header>
+      {/* The window, then the dock below it: the dock's own space is reserved, so it never covers the prototype. */}
+      <div className="ph-body">
+        <div ref={setStage} className="ph-stage">
+          <PrototypeWindow
             title={manifest.name}
-            runtime={runtime}
             manifest={manifest}
-            source={revision.source}
-            version={revision.hash}
-            view={frameView}
-            initialData={initialData}
-            resetToken={resetToken}
-            onNavigate={(screenId) => {
-              // The frame is untrusted: only Preview navigates (the reducer checks the target against the role).
-              if (view.mode === "preview") dispatch({ type: "NAVIGATE", screenId });
-            }}
-            onToggle={(elementKey, additive) => {
-              if (additive) draft.carryNext();
-              dispatch({ type: additive ? "TOGGLE_SELECTION" : "SELECT_ONLY", elementKey });
-            }}
-            onPin={openPin}
-            onGeometry={anchors.onGeometry}
-            onEscape={escape}
-            onElements={(screenId, elements) => setLabels((all) => ({ ...all, [screenId]: Object.fromEntries(elements.map((e) => [e.key, e.label])) }))}
-            onData={onData}
-          />
-        </PrototypeWindow>
-        {annotate && (bubble?.on === "selection" || bubble?.on === "screen") && (
-          <CommentBubble
-            // A new bubble (another selection, or the screen) starts afresh.
-            key={bubble.on}
-            anchor={bubble.on === "screen" ? bar : anchors.anchor(view.selectedKeys)}
-            labels={bubble.on === "screen" ? [`${screenName(manifest, view.screenId)} (whole screen)`] : labelsOf(view.selectedKeys)}
-            full={full}
-            text={draft.text}
-            onText={draft.setText}
-            onAdd={add}
-            // Typed text is kept as a draft where it was written.
-            onClose={closeBubble}
-          />
-        )}
-        {annotate && bubble?.on === "comment" && opened && (
-          <QueuedCommentBubble
-            key={bubble.index}
-            anchor={opened.elementIds.length > 0 ? anchors.anchor(opened.elementIds) : bar}
-            number={bubble.index + 1}
-            request={opened}
-            on={targetLabel(opened, labels[opened.screenId] ?? {})}
-            onEdit={(text) => onQueue((q) => editRequest(q, bubble.index, text))}
-            onRemove={() => remove(bubble.index)}
-            onClose={closeBubble}
-          />
-        )}
-        {annotate && (
-          <CommentBar
-            ref={setBar}
-            manifest={manifest}
-            requests={requests}
-            labels={labels}
-            earlier={earlier}
-            commenting={commenting}
-            onCommentOnScreen={() => dispatch({ type: "COMMENT_ON_SCREEN" })}
-            onOpen={open}
-            onRemove={remove}
-            onSave={save}
-          />
-        )}
+            view={view}
+            className={commenting ? "ph-commenting" : undefined}
+            tag={
+              commenting && (
+                <span className="ph-mode-tag">
+                  Comment mode <kbd>Esc</kbd>
+                </span>
+              )
+            }
+          >
+            <PrototypeFrame
+              ref={frame}
+              title={manifest.name}
+              runtime={runtime}
+              manifest={manifest}
+              source={revision.source}
+              version={revision.hash}
+              view={frameView}
+              initialData={initialData}
+              resetToken={resetToken}
+              onNavigate={(screenId) => {
+                // The frame is untrusted: only Preview navigates (the reducer checks the target against the role).
+                if (view.mode === "preview") dispatch({ type: "NAVIGATE", screenId });
+              }}
+              onToggle={(elementKey, additive) => {
+                if (additive) draft.carryNext();
+                dispatch({ type: additive ? "TOGGLE_SELECTION" : "SELECT_ONLY", elementKey });
+              }}
+              onPin={openPin}
+              onScreenClick={(at) => {
+                if (annotate) dispatch({ type: "SCREEN_CLICK", at });
+              }}
+              onScreenPin={openScreenPin}
+              onGeometry={anchors.onGeometry}
+              onEscape={escape}
+              onElements={(screenId, elements) => setLabels((all) => ({ ...all, [screenId]: Object.fromEntries(elements.map((e) => [e.key, e.label])) }))}
+              onData={onData}
+            />
+          </PrototypeWindow>
+        </div>
+        <BubbleBounds.Provider value={stage}>
+          {annotate && (bubble?.on === "selection" || bubble?.on === "screen") && (
+            <CommentBubble
+              // A new bubble (another selection, or the screen) starts afresh.
+              key={bubble.on}
+              anchor={bubble.on === "selection" ? anchors.anchor(view.selectedKeys) : bubble.at ? anchors.point(bubble.at) : dock}
+              labels={bubble.on === "screen" ? [`${screenName(manifest, view.screenId)} (whole screen)`] : labelsOf(view.selectedKeys)}
+              full={full}
+              text={draft.text}
+              onText={draft.setText}
+              onAdd={add}
+              // Typed text is kept as a draft where it was written.
+              onClose={closeBubble}
+            />
+          )}
+          {annotate && bubble?.on === "comment" && opened && (
+            <QueuedCommentBubble
+              key={bubble.index}
+              anchor={opened.elementIds.length > 0 ? anchors.anchor(opened.elementIds) : opened.at ? anchors.point(opened.at) : dock}
+              number={bubble.index + 1}
+              request={opened}
+              on={targetLabel(opened, labels[opened.screenId] ?? {})}
+              onEdit={(text) => onQueue((q) => editRequest(q, bubble.index, text))}
+              onRemove={() => remove(bubble.index)}
+              onClose={closeBubble}
+            />
+          )}
+        </BubbleBounds.Provider>
+        <Dock ref={setDock}>
+          <ViewControls manifest={manifest} view={view} dispatch={dispatch} onReset={reset} />
+          {annotate && <ModeTools view={view} dispatch={dispatch} />}
+          {annotate && (
+            <CommentQueue
+              manifest={manifest}
+              requests={requests}
+              labels={labels}
+              earlier={earlier}
+              onCommentOnScreen={() => dispatch({ type: "COMMENT_ON_SCREEN" })}
+              onOpen={open}
+              onRemove={remove}
+              onSave={save}
+            />
+          )}
+        </Dock>
       </div>
     </>
   );

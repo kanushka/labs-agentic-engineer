@@ -31,6 +31,8 @@ export {
   type FrameColorScheme,
   type FrameElement,
   type FrameMode,
+  type FramePoint,
+  type FrameScreenPin,
   type FrameView,
   type FromFrameMessage,
   type ToFrameMessage,
@@ -43,6 +45,7 @@ export { useFrameAnchors, type FrameAnchors, type FrameGeometry, type HostRect }
 export { PrototypeWindow, prototypeAddress, type PrototypeWindowProps } from "./PrototypeWindow.js";
 export { useReviewKeys, type ReviewKeys, type ReviewKeysOptions } from "./useReviewKeys.js";
 export { useCommentDraft, type CommentDraft, type QueueUpdate } from "./useCommentDraft.js";
+export { newComment } from "./comment-draft.js";
 export { initialReview, reduceReview, type CommentBubble, type CommentPin, type ReviewEvent, type ReviewState } from "./review-state.js";
 export {
   frameViewOf,
@@ -55,4 +58,3 @@ export {
 } from "./view-state.js";
 export { isDataSnapshot, type DataSnapshot } from "../data.js";
 export type { PrototypeManifest } from "../manifest/types.js";
-export { screensForRole } from "../manifest/screens.js";

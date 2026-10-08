@@ -186,6 +186,35 @@ describe("contacts under Oxygen", () => {
     expect(await s.app.getByRole("heading", { name: "New contact" }).count()).toBe(0);
     await s.page.getByRole("button", { name: "Preview" }).click();
   });
+
+  it("comments on the whole screen with a click on empty space, and draws its pin there, over the prototype", async () => {
+    await s.page.getByRole("button", { name: "Comment", exact: true }).click();
+    await expect.poll(() => s.app.locator('[data-proto-key="btn.new"]').getAttribute("data-proto-annotating")).toBe("");
+    const frame = s.page.frames().find((f) => f !== s.page.mainFrame())!;
+    // A spot near the bottom-left, where nothing takes a comment.
+    const spot = await frame.evaluate(() => ({ x: 60, y: innerHeight - 60 }));
+    expect(await frame.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-proto-annotating], .proto-pin") ?? null, spot)).toBeNull();
+    const box = (await s.page.locator('iframe[title$="prototype app"]').boundingBox())!;
+    await s.page.mouse.click(box.x + spot.x, box.y + spot.y);
+    const bubble = s.page.getByRole("dialog", { name: "Comment on Contacts (whole screen)" });
+    await bubble.waitFor();
+    await bubble.getByLabel("Comment").fill("Too much empty space");
+    await bubble.getByRole("button", { name: "Add" }).click();
+
+    const pin = s.app.getByRole("button", { name: "Comment 1" });
+    await pin.waitFor();
+    // At the spot, and the topmost thing there: drawn over the prototype, in the theme's pin look.
+    const drawn = await pin.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const centre = { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+      return { centre, top: document.elementFromPoint(centre.x, centre.y) === el, border: getComputedStyle(el).borderTopStyle };
+    });
+    expect(drawn).toEqual({ centre: spot, top: true, border: "solid" });
+    await pin.click();
+    await s.page.getByRole("dialog", { name: "Comment 1" }).waitFor();
+    await s.page.keyboard.press("Escape");
+    await s.page.getByRole("button", { name: "Preview" }).click();
+  });
 });
 
 describe("integration-monitor under Oxygen", () => {
@@ -383,7 +412,7 @@ describe("stats, sections and row actions under Oxygen", () => {
   it("draws comment pins as buttons over a row, a draft's hollow, in both schemes, and focuses the pin the host names", async () => {
     await s.page.getByRole("combobox", { name: "Role" }).selectOption({ label: "Manager" });
     await s.app.getByRole("heading", { name: "Pending Requests" }).waitFor();
-    const screenId = await s.page.getByRole("combobox", { name: "Screen" }).inputValue();
+    const screenId = "screen.team-queue";
     const row = "row.team-queue.req-2002";
     // As a host does: the view names the pins and drafts; then, as a bubble closes, the pin to focus.
     const send = (message: object) =>

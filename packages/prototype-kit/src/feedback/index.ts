@@ -51,9 +51,11 @@ export {
   orphansOnScreen,
   pinsOnScreen,
   requestFor,
+  screenPinsOnScreen,
   submissionOf,
   targetLabel,
   type FeedbackQueue,
+  type PlacedRequest,
   type QueuedComment,
 } from "./queue.js";
 

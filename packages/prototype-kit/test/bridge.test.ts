@@ -183,3 +183,82 @@ describe("parseToFrameMessage — draft pins and focus", () => {
     expect(parseToFrameMessage({ type: "proto:focus", ...fields })).toBeNull();
   });
 });
+
+describe("parseFromFrameMessage — a click on empty space in Annotate (a whole-screen comment there)", () => {
+  const point = { x: 40, y: 120.5 };
+  const at = { x: 40, y: 620.5 };
+
+  it("names where the click was, in the frame's viewport and in its scrolled document", () => {
+    expect(parseFromFrameMessage({ type: "proto:screen-click", point, at })).toEqual({ type: "proto:screen-click", point, at });
+  });
+
+  it.each([
+    ["no point", { at }],
+    ["no document point", { point }],
+    ["a point that is not an object", { point: "40,120", at }],
+    ["a string coordinate", { point: { x: "40", y: 1 }, at }],
+    ["a non-finite coordinate", { point, at: { x: 1, y: Number.POSITIVE_INFINITY } }],
+  ])("ignores a screen click with %s", (_name, fields) => {
+    expect(parseFromFrameMessage({ type: "proto:screen-click", ...fields })).toBeNull();
+  });
+
+  it("copies the points without whatever else the frame put on them", () => {
+    expect(parseFromFrameMessage({ type: "proto:screen-click", point: { ...point, extra: 1 }, at })).toEqual({ type: "proto:screen-click", point, at });
+  });
+});
+
+describe("parseFromFrameMessage — a whole-screen comment's pin was clicked", () => {
+  const point = { x: 40, y: 20 };
+  const at = { x: 40, y: 520 };
+
+  it("names the queued comment the pin numbers (none: the screen's draft), and where it is", () => {
+    expect(parseFromFrameMessage({ type: "proto:screen-pin", requests: [3], point, at })).toEqual({ type: "proto:screen-pin", requests: [3], point, at });
+    expect(parseFromFrameMessage({ type: "proto:screen-pin", requests: [], point, at })).toEqual({ type: "proto:screen-pin", requests: [], point, at });
+  });
+
+  it.each([
+    ["no comment numbers", { point, at }],
+    ["a comment number that is not a positive whole number", { requests: [0], point, at }],
+    ["no point", { requests: [1], at }],
+    ["a malformed document point", { requests: [1], point, at: { x: Number.NaN, y: 0 } }],
+  ])("ignores a screen pin message with %s", (_name, fields) => {
+    expect(parseFromFrameMessage({ type: "proto:screen-pin", ...fields })).toBeNull();
+  });
+});
+
+describe("parseFromFrameMessage — how far the frame's document is scrolled", () => {
+  const box = { x: 1, y: 2, width: 3, height: 4 };
+
+  it("carries the scroll with the boxes, and reads geometry from a frame on the older protocol without it", () => {
+    expect(parseFromFrameMessage({ type: "proto:geometry", boxes: { a: box }, scroll: { x: 0, y: 500 } })).toEqual({ type: "proto:geometry", boxes: { a: box }, scroll: { x: 0, y: 500 } });
+    expect(parseFromFrameMessage({ type: "proto:geometry", boxes: { a: box } })).toEqual({ type: "proto:geometry", boxes: { a: box } });
+  });
+
+  it("ignores geometry whose scroll is malformed", () => {
+    expect(parseFromFrameMessage({ type: "proto:geometry", boxes: {}, scroll: { x: 0 } })).toBeNull();
+  });
+});
+
+describe("parseToFrameMessage — whole-screen comments' pins", () => {
+  const view = (extra: object) => ({ mode: "annotate", roleId: "r", stateId: "s", screenId: "x", selectedKeys: [], pins: {}, ...extra });
+
+  it("carries the pins at the spots on the screen, numbered or hollow (a draft, or the comment being written)", () => {
+    const screenPins = [{ at: { x: 10, y: 900 }, number: 2 }, { at: { x: 300, y: 40 } }];
+    expect(parseToFrameMessage({ type: "proto:view", view: view({ screenPins }) })).toEqual({ type: "proto:view", view: view({ screenPins }) });
+  });
+
+  it.each([
+    ["not a list", { at: { x: 1, y: 1 } }],
+    ["a pin without a spot", [{ number: 1 }]],
+    ["a malformed spot", [{ at: { x: "1", y: 1 } }]],
+    ["a number that is not a positive whole number", [{ at: { x: 1, y: 1 }, number: 0 }]],
+  ])("ignores a view whose screen pins are %s", (_name, screenPins) => {
+    expect(parseToFrameMessage({ type: "proto:view", view: view({ screenPins }) })).toBeNull();
+  });
+
+  it("asks for focus back on a whole-screen comment's pin, or on the screen's hollow one", () => {
+    expect(parseToFrameMessage({ type: "proto:focus-screen-pin", requests: [2] })).toEqual({ type: "proto:focus-screen-pin", requests: [2] });
+    expect(parseToFrameMessage({ type: "proto:focus-screen-pin", requests: [] })).toEqual({ type: "proto:focus-screen-pin", requests: [] });
+    expect(parseToFrameMessage({ type: "proto:focus-screen-pin" })).toBeNull();
+  });
+});

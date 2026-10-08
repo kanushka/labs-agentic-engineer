@@ -34,7 +34,7 @@
 
 import { screensForRole } from "../manifest/screens.js";
 import type { PrototypeManifest } from "../manifest/types.js";
-import type { FrameView } from "./bridge.js";
+import type { FrameScreenPin, FrameView } from "./bridge.js";
 
 export type PrototypeMode = "preview" | "annotate";
 
@@ -167,7 +167,16 @@ function requestOf(s: PrototypeViewState): PrototypeViewRequest {
   return { screen: s.screenId, role: s.roleId, state: s.stateId, flow: s.flowId ?? undefined, mode: s.mode };
 }
 
-/** The view as the frame draws it, with the current screen's comment pins and the elements holding a draft. */
-export function frameViewOf(s: PrototypeViewState, pins: Record<string, number[]> = {}, drafts: string[] = []): FrameView {
-  return { mode: s.mode, roleId: s.roleId, stateId: s.stateId, screenId: s.screenId, selectedKeys: s.selectedKeys, pins, ...(drafts.length > 0 ? { drafts } : {}) };
+/** The view as the frame draws it, with the current screen's comment pins, the elements holding a draft and its whole-screen comments' pins. */
+export function frameViewOf(s: PrototypeViewState, pins: Record<string, number[]> = {}, drafts: string[] = [], screenPins: FrameScreenPin[] = []): FrameView {
+  return {
+    mode: s.mode,
+    roleId: s.roleId,
+    stateId: s.stateId,
+    screenId: s.screenId,
+    selectedKeys: s.selectedKeys,
+    pins,
+    ...(drafts.length > 0 ? { drafts } : {}),
+    ...(screenPins.length > 0 ? { screenPins } : {}),
+  };
 }

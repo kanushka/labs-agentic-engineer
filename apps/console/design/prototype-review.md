@@ -38,14 +38,39 @@ render check; Go re-checks on save (see ADR-0042).
 
 ## Review
 
-`PrototypeReview`: toolbar (Screen, Flow, Role, State, Reset data, and the
-Preview · Comment tool pair in `ReviewToolbar`: labelled, with icons, their
-shortcuts `V` and `C` in tooltips; the active tool is tinted primary in
-Comment and neutral in Preview), the kit `PrototypeWindow` (browser chrome, read-only `prototype://<screen>` address bar; styled by the console with `--proto-window-*` Oxygen variables) around the `PrototypeFrame` at full width, and the floating
-`SendBar` below it. The view and the open comment bubble are one pure state,
-the kit's (`reduceReview` in `@wso2/prototype-kit/host`: the view reducer plus
-`CommentBubble` = on the selection, on the whole screen, or a queued comment
-opened from the bar's list). Comment is the user's word for the view's
+`PrototypeReview`: a header of only the title and Close (X, Esc), the kit
+`PrototypeWindow` (browser chrome, read-only `prototype://<screen>` address
+bar; styled by the console with `--proto-window-*` Oxygen variables) around
+the `PrototypeFrame` at full width, and below it one floating dock
+(`ReviewDock`) holding every control, in three groups split by dividers:
+
+- **View** (`ViewControls`): Role and State, two compact native selects (the
+  name inline before the value), and Reset data (an icon button, its name in
+  the tooltip).
+- **Mode** (`ModeTools`): the Preview · Comment tool pair (labelled, with
+  icons, `V` and `C` in tooltips; the active tool tinted primary in Comment,
+  neutral in Preview) and, in Comment mode, "Click anything to comment".
+- **Comments** (`CommentQueue`): `N comments` (its list holds Comment on
+  this screen) and Send to agent, which shows the revising status itself.
+
+There is no screen or flow picker: the reviewer moves through the prototype
+by using it (Preview), and an entry in the comment list goes to its comment's
+screen, role and state. The view starts on the manifest's entry screen; the
+kit reducer's `NAVIGATE` and `SET_FLOW` stay for the frame and the kit CLI.
+
+The dock sits below the window in the layout (a column: window, then dock),
+so its space is reserved and it never covers the prototype's last rows; what
+it opens grows upward over the prototype. Below 1100px it drops the Comment
+mode hint (the window's tag still says it); below 1000px the selects drop
+their inline names and keep the value. Bubbles stay inside the stage (the
+window's area, `BubbleBounds`: Popper's flip and overflow boundary), so a
+bubble at the window's foot never covers the dock; a whole-screen comment's
+bubble opens at its spot, or (from the list) above the dock.
+
+The view and the open comment bubble are one pure state, the kit's
+(`reduceReview` in `@wso2/prototype-kit/host`: the view reducer plus
+`CommentBubble` = on the selection, on the whole screen (at a spot, or from
+the list), or a queued comment opened from the dock's list or a pin). Comment is the user's word for the view's
 `annotate` mode. `V` returns to Preview, `C` toggles Comment (neither while
 typing); Escape closes the bubble,
 then clears the selection, then closes (the kit's `useReviewKeys`, captured so
@@ -56,10 +81,11 @@ unused); the review ignores an Escape whose target is the frame.
 Comment mode shows itself three ways, only while it is on: a primary ring
 round the prototype window (its `--proto-window-border`/`-shadow`), a
 "Comment mode · Esc" tag in the window bar (`PrototypeWindow`'s `tag`), and
-the send bar's hint "Click anything to comment". Inside the frame the kit
+the dock's hint "Click anything to comment". Inside the frame the kit
 draws the comment cursor (an arrow with a bubble: solid with a "+" over an
 element that takes a comment, hollow over empty space), so it follows the
-pointer natively with no bridge message.
+pointer natively with no bridge message. A click where it is hollow is a
+whole-screen comment there (`proto:screen-click`).
 
 - **Bubble** (`CommentBubble`, `QueuedCommentBubble` in `AnchoredBubble`): an
   click in Comment mode opens it at the element (Shift-click adds elements), drawn by
@@ -67,19 +93,28 @@ pointer natively with no bridge message.
   (`useFrameAnchors`), never inside it (ADR-0003). Add or Cmd/Ctrl+Enter
   queues the comment. A click away closes it; focus stays where the click
   put it, and when it put it nowhere (the dialog's blank parts), it goes
-  back to the element (the kit's `focusLeftBehind`).
-- **Send bar** (`SendBar`): `N comments`, `Comment on screen` (a whole-screen
-  comment; its bubble anchors to the bar; clicking empty canvas opens
-  nothing), `Send to agent`, the queue-full note, and an expandable list of
-  every queued comment across screens, roles and states, its elements named
+  back to the element (the kit's `focusLeftBehind`). A click on empty space
+  in the prototype opens a whole-screen comment at that spot (the kit's
+  `SCREEN_CLICK`; `useFrameAnchors().point` places the bubble there and
+  keeps it there as the prototype scrolls), with a hollow pin at the spot
+  while it is written; with a bubble open, it only closes it.
+- **Comments** (`CommentQueue`, the dock's group): `N comments`, `Send to
+  agent`, and a list, opening upward over the prototype, of every queued
+  comment across screens, roles and states, ending in `Comment on this
+  screen` (the keyboard's whole-screen comment, its bubble at the dock; the
+  pointer's is a click on empty space), its elements named
   by their labels (the kit's `targetLabel`, from each visited screen's
   labels as the frame reported them; ids for a screen not seen since a
-  reload). An entry goes to its screen, role and state and opens the
-  comment. While a revision runs it says `Agent is revising… (N comments)`
-  and Send waits (the bar is the one place that says so; the header has no
-  chip); it marks comments written on an earlier version, flags those whose
-  element is gone and says why a revision failed, with Retry. Its empty
-  list says how to start: "Press C or choose Comment, then click anything".
+  reload). An entry goes to its screen, role and state, opens the
+  comment and closes the list. While a revision runs, Send to agent
+  becomes a disabled `Revising…` button with a spinner, and a polite live
+  region reads out `Agent is revising… (N comments)` (the button is the one
+  place that shows it; there is no separate label or header chip); it marks comments written on an earlier version and flags those
+  whose element is gone. Callouts above the dock say why a revision failed
+  (with Retry), why a send was refused, that the queue is full, and how many
+  comments were written on an earlier version or lost their element. Its empty
+  list says how to start: "Press C or choose Comment, then click anything on
+  the screen: an element, or empty space for the whole screen".
 
 - **Preview** acts: navigation, forms, mock data. **Comment** only selects;
   selected elements are pinned and a comment is typed against them (max 4000
@@ -87,8 +122,13 @@ pointer natively with no bridge message.
   a comment a request).
 - **Pins:** a queued comment's pin (the frame's, in both modes, keyboard
   reachable) opens its bubble (`OPEN_PIN`) with Edit (in place) and Remove
-  (the rest renumber). Closing a bubble with Escape, Add or Remove puts focus
-  back on its element or pin (`PrototypeFrame.focusElement`).
+  (the rest renumber). A whole-screen comment made at a spot has its pin
+  there, drawn by the frame at the spot of its document so it scrolls with
+  the page (`FrameView.screenPins`); one made from the list has none. Closing
+  a bubble with Escape, Add or Remove puts focus back on its element or pin
+  (`PrototypeFrame.focusElement`, `focusScreenPin`). Each screen's pins are
+  drawn whenever it shows, so comments on several screens, roles and states
+  all go in the one batch Send to agent sends.
 - **Drafts** (the kit's `useCommentDraft`, the same in the kit CLI's
   preview): the text of a bubble on elements is never lost. Escape, a click
   away, a plain click on other elements or closing the review keeps it as a
@@ -96,7 +136,11 @@ pointer natively with no bridge message.
   draft pin reopens it. A draft pin clicked in Preview switches to Comment
   (`SELECT_ELEMENTS`) and reopens it there. Drafts are not counted or sent,
   and survive Send. A whole-screen comment's text is kept the same way, as
-  the screen's draft (no pin), which Comment on screen reopens with.
+  the screen's draft, its hollow pin at its spot (none without one); the
+  pin, the next click on empty space or Comment on this screen reopens it.
+  A comment's spot is client-only queue data: the batch carries
+  `elementIds: []` and no spot, as before. A sent batch a revision gives back
+  comes back without spots (no pins; listed as Whole screen).
 - **Queue** (the kit's `FeedbackQueue`; `model/feedback.ts` makes the batch):
   per component, with its drafts, kept across closing the review and leaving
   the tab. Each comment keeps the revision it was written on; the queue's

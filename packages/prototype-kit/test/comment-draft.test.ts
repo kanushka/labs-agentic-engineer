@@ -19,7 +19,7 @@
 
 import { describe, expect, it } from "vitest";
 import { EMPTY_FEEDBACK_QUEUE, draftAt, draftPinsOnScreen, keepDraft, type FeedbackRequest } from "../src/feedback/index.js";
-import { followComment, keepOpenComment } from "../src/host/comment-draft.js";
+import { followComment, keepOpenComment, newComment } from "../src/host/comment-draft.js";
 import type { ReviewState } from "../src/host/review-state.js";
 
 const on = (elementIds: string[], text: string, screenId = "queue"): FeedbackRequest => ({ screenId, roleId: "approver", stateId: "default", elementIds, text });
@@ -34,8 +34,8 @@ const view = (selectedKeys: string[], screenId = "queue") => ({
 });
 /** A review with its bubble open on the selection (or closed, with nothing selected). */
 const selecting = (keys: string[], screenId = "queue"): ReviewState => ({ view: view(keys, screenId), bubble: keys.length > 0 ? { on: "selection" } : null });
-/** A review with its bubble open on the whole screen. */
-const onScreen = (screenId = "queue"): ReviewState => ({ view: view([], screenId), bubble: { on: "screen" } });
+/** A review with its bubble open on the whole screen (at a spot, when a click on the screen opened it). */
+const onScreen = (screenId = "queue", at?: { x: number; y: number }): ReviewState => ({ view: view([], screenId), bubble: at ? { on: "screen", at } : { on: "screen" } });
 const closed = (screenId = "queue"): ReviewState => ({ view: view([], screenId), bubble: null });
 
 describe("the open comment following the review", () => {
@@ -94,6 +94,14 @@ describe("the open comment following the review", () => {
     expect(draftAt(moved.queue, "queue", [])?.text).toBe("About the page");
   });
 
+  it("keeps a whole-screen comment's text as the screen's draft at the spot it was written at, and opens it at another spot", () => {
+    const here = { x: 40, y: 900 };
+    const left = followComment(EMPTY_FEEDBACK_QUEUE, onScreen("queue", here), "About the page", closed(), false);
+    expect(left.queue.drafts).toEqual([{ ...on([], "About the page"), at: here }]);
+    expect(followComment(left.queue, closed(), "", onScreen("queue", { x: 1, y: 2 }), false).text).toBe("About the page");
+    expect(keepOpenComment(EMPTY_FEEDBACK_QUEUE, onScreen("queue", here), "Unsaved").drafts).toEqual([{ ...on([], "Unsaved"), at: here }]);
+  });
+
   it("follows no comment while a queued one is open", () => {
     const reading: ReviewState = { view: view([]), bubble: { on: "comment", index: 0 } };
     expect(followComment(EMPTY_FEEDBACK_QUEUE, reading, "", closed(), false)).toEqual({ queue: EMPTY_FEEDBACK_QUEUE, text: "" });
@@ -109,5 +117,14 @@ describe("the review going away with a comment open", () => {
   it("keeps nothing when no new comment is open or it is empty", () => {
     expect(keepOpenComment(EMPTY_FEEDBACK_QUEUE, closed(), "stale")).toBe(EMPTY_FEEDBACK_QUEUE);
     expect(keepOpenComment(EMPTY_FEEDBACK_QUEUE, selecting(["a"]), "  ")).toBe(EMPTY_FEEDBACK_QUEUE);
+  });
+});
+
+describe("the comment the open bubble adds", () => {
+  it("is on the selected elements, or on the whole screen at the spot clicked, or none when no new comment is open", () => {
+    expect(newComment(selecting(["a", "b"]), "Swap")).toEqual(on(["a", "b"], "Swap"));
+    expect(newComment(onScreen("queue", { x: 4, y: 800 }), "Busy")).toEqual({ ...on([], "Busy"), at: { x: 4, y: 800 } });
+    expect(newComment(onScreen(), "Busy")).toEqual(on([], "Busy"));
+    expect(newComment(closed(), "stale")).toBeNull();
   });
 });

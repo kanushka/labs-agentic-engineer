@@ -25,19 +25,28 @@
  * the text along to the grown or shrunk selection.
  */
 
-import { draftAt, keepDraft, requestFor, type FeedbackQueue } from "../feedback/queue.js";
+import { draftAt, keepDraft, requestFor, type FeedbackQueue, type PlacedRequest } from "../feedback/queue.js";
+import type { FramePoint } from "./bridge.js";
 import type { ReviewState } from "./review-state.js";
 import type { PrototypeViewState } from "./view-state.js";
 
-/** Where the open new comment is: the selected elements, or (none) the whole screen; null when no new comment is open. */
-function writingOn({ view, bubble }: ReviewState): PrototypeViewState | null {
+/** Where a new comment is written: the view, its selection the elements (none: the whole screen), and the whole screen's spot, if any. */
+type Place = PrototypeViewState & { at?: FramePoint | undefined };
+
+/** Where the open new comment is: the selected elements, or (none) the whole screen, at its spot; null when no new comment is open. */
+function writingOn({ view, bubble }: ReviewState): Place | null {
   if (bubble?.on === "selection") return view;
-  if (bubble?.on === "screen") return { ...view, selectedKeys: [] };
+  if (bubble?.on === "screen") return { ...view, selectedKeys: [], at: bubble.at };
   return null;
 }
 
-/** Whether two places a comment is written on are the same: the screen and its elements, in any order. */
-function samePlace(a: PrototypeViewState | null, b: PrototypeViewState | null): boolean {
+/** The draft `text` makes where it was written. */
+function draftOf(place: Place, text: string): PlacedRequest {
+  return place.at ? { ...requestFor(place, text), at: place.at } : requestFor(place, text);
+}
+
+/** Whether two places a comment is written on are the same: the screen and its elements, in any order (a whole screen's spot aside). */
+function samePlace(a: Place | null, b: Place | null): boolean {
   if (a === null || b === null) return a === b;
   return a.screenId === b.screenId && a.selectedKeys.length === b.selectedKeys.length && a.selectedKeys.every((k) => b.selectedKeys.includes(k));
 }
@@ -52,12 +61,18 @@ export function followComment(queue: FeedbackQueue, before: ReviewState, text: s
   const to = writingOn(after);
   if (samePlace(from, to)) return { queue, text };
   if (carry && from !== null && to !== null && from.selectedKeys.length > 0 && to.selectedKeys.length > 0) return { queue, text };
-  const kept = from === null ? queue : keepDraft(queue, requestFor(from, text));
+  const kept = from === null ? queue : keepDraft(queue, draftOf(from, text));
   return { queue: kept, text: to === null ? "" : (draftAt(kept, to.screenId, to.selectedKeys)?.text ?? "") };
+}
+
+/** The comment the open new comment's `text` adds: on the selected elements, or on the whole screen at its spot; null when no new comment is open. */
+export function newComment(review: ReviewState, text: string): PlacedRequest | null {
+  const on = writingOn(review);
+  return on && draftOf(on, text);
 }
 
 /** The queue once the review went away with `text` typed in its open comment: the text kept as a draft there. */
 export function keepOpenComment(queue: FeedbackQueue, review: ReviewState, text: string): FeedbackQueue {
   const on = writingOn(review);
-  return on === null || text.trim() === "" ? queue : keepDraft(queue, requestFor(on, text));
+  return on === null || text.trim() === "" ? queue : keepDraft(queue, draftOf(on, text));
 }

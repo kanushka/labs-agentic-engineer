@@ -46,7 +46,28 @@ export interface FrameView {
   pins: Record<string, number[]>;
   /** The elements that hold a comment the reviewer started but did not add (a draft), drawn as a hollow pin; none when absent. */
   drafts?: string[] | undefined;
+  /** Whole-screen comments' pins, each at the spot on the screen it was made; none when absent. */
+  screenPins?: FrameScreenPin[] | undefined;
   colorScheme?: FrameColorScheme | undefined;
+}
+
+/**
+ * A spot in the frame, in CSS pixels: of its viewport (`clientX`/`clientY`),
+ * or of its document, scrolled with it (`pageX`/`pageY`), as each use says.
+ */
+export interface FramePoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * A whole-screen comment's pin, at the spot of the frame's document where the
+ * reviewer clicked to make it: numbered by its queued comment, or (no number)
+ * hollow, for the screen's draft or the comment being written there.
+ */
+export interface FrameScreenPin {
+  at: FramePoint;
+  number?: number | undefined;
 }
 
 /** What the host sends the frame. */
@@ -62,7 +83,9 @@ export type ToFrameMessage =
    * closed): on its pin for `requests` when given (`[]`: its draft pin), as
    * `proto:pin` named it, else on the element.
    */
-  | { type: "proto:focus"; key: string; requests?: number[] | undefined };
+  | { type: "proto:focus"; key: string; requests?: number[] | undefined }
+  /** Put keyboard focus on the whole-screen comment's pin numbered `requests[0]` (`[]`: the hollow one), as `proto:screen-pin` named it. */
+  | { type: "proto:focus-screen-pin"; requests: number[] };
 
 /** An element the current screen draws, as the reviewer sees it. */
 export interface FrameElement {
@@ -102,8 +125,20 @@ export type FromFrameMessage =
    * the element is.
    */
   | { type: "proto:pin"; key: string; requests: number[]; box: FrameBox }
-  /** Where the selected and pinned elements are now, re-sent after every scroll, resize and redraw that moves them. */
-  | { type: "proto:geometry"; boxes: Record<string, FrameBox> }
+  /**
+   * Annotate: a click on empty space, on no element that takes a comment (a
+   * whole-screen comment there): where, in the frame's viewport (`point`) and
+   * in its document (`at`, where its pin is drawn).
+   */
+  | { type: "proto:screen-click"; point: FramePoint; at: FramePoint }
+  /** A whole-screen comment's pin was clicked (in either mode): the queued comment's number it shows (none: the hollow pin), and where it is, as for a screen click. */
+  | { type: "proto:screen-pin"; requests: number[]; point: FramePoint; at: FramePoint }
+  /**
+   * Where the selected and pinned elements are now, and how far the frame's
+   * document is scrolled (`scroll`; a frame on the older protocol leaves it
+   * out), re-sent after every scroll, resize and redraw that moves them.
+   */
+  | { type: "proto:geometry"; boxes: Record<string, FrameBox>; scroll?: FramePoint | undefined }
   /** Escape was pressed inside the frame. */
   | { type: "proto:escape" }
   /** The prototype failed to load or a screen failed to render. */
@@ -129,14 +164,24 @@ function isBox(v: unknown): v is FrameBox {
 /** A checked box, copied without whatever else the frame put on it. */
 const boxOf = ({ x, y, width, height }: FrameBox): FrameBox => ({ x, y, width, height });
 
+const isPoint = (v: unknown): v is FramePoint => isObject(v) && isFiniteNumber(v["x"]) && isFiniteNumber(v["y"]);
+
+/** A checked point, copied without whatever else the frame put on it. */
+const pointOf = ({ x, y }: FramePoint): FramePoint => ({ x, y });
+
+const isScreenPin = (v: unknown): v is FrameScreenPin =>
+  isObject(v) && isPoint(v["at"]) && (v["number"] === undefined || isCommentNumbers([v["number"]]));
+
 function isView(v: unknown): v is FrameView {
   if (!isObject(v)) return false;
   const pins = v["pins"];
   const scheme = v["colorScheme"];
   const drafts = v["drafts"];
+  const screenPins = v["screenPins"];
   return (
     (scheme === undefined || scheme === "light" || scheme === "dark") &&
     (drafts === undefined || isStringArray(drafts)) &&
+    (screenPins === undefined || (Array.isArray(screenPins) && screenPins.every(isScreenPin))) &&
     (v["mode"] === "preview" || v["mode"] === "annotate") &&
     isString(v["roleId"]) &&
     isString(v["stateId"]) &&
@@ -166,6 +211,8 @@ export function parseToFrameMessage(data: unknown): ToFrameMessage | null {
       if (!isString(key) || (requests !== undefined && !isCommentNumbers(requests))) return null;
       return { type: "proto:focus", key, ...(requests !== undefined ? { requests: [...requests] } : {}) };
     }
+    case "proto:focus-screen-pin":
+      return isCommentNumbers(data["requests"]) ? { type: "proto:focus-screen-pin", requests: [...data["requests"]] } : null;
     default:
       return null;
   }
@@ -206,10 +253,23 @@ export function parseFromFrameMessage(data: unknown): FromFrameMessage | null {
       if (!isString(key) || !isCommentNumbers(requests) || !isBox(box)) return null;
       return { type: "proto:pin", key, requests: [...requests], box: boxOf(box) };
     }
+    case "proto:screen-click": {
+      const { point, at } = data;
+      return isPoint(point) && isPoint(at) ? { type: "proto:screen-click", point: pointOf(point), at: pointOf(at) } : null;
+    }
+    case "proto:screen-pin": {
+      const { requests, point, at } = data;
+      if (!isCommentNumbers(requests) || !isPoint(point) || !isPoint(at)) return null;
+      return { type: "proto:screen-pin", requests: [...requests], point: pointOf(point), at: pointOf(at) };
+    }
     case "proto:geometry": {
-      const boxes = data["boxes"];
-      if (!isObject(boxes) || !Object.values(boxes).every(isBox)) return null;
-      return { type: "proto:geometry", boxes: Object.fromEntries(Object.entries(boxes as Record<string, FrameBox>).map(([key, b]) => [key, boxOf(b)])) };
+      const { boxes, scroll } = data;
+      if (!isObject(boxes) || !Object.values(boxes).every(isBox) || (scroll !== undefined && !isPoint(scroll))) return null;
+      return {
+        type: "proto:geometry",
+        boxes: Object.fromEntries(Object.entries(boxes as Record<string, FrameBox>).map(([key, b]) => [key, boxOf(b)])),
+        ...(scroll !== undefined ? { scroll: pointOf(scroll) } : {}),
+      };
     }
     case "proto:error":
       return isString(data["message"]) ? { type: "proto:error", message: data["message"] } : null;

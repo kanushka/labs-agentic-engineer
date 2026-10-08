@@ -21,10 +21,11 @@
  * inside a sandboxed frame, never in the host's own page. The host tells the
  * frame what to run (`load`), what to draw (`view`) and when to start the
  * mock data over (`reset`); the frame answers with navigations, selection
- * toggles, pin clicks, the elements a screen draws, where the elements a host anchors to
- * are (`onGeometry`, for `useFrameAnchors`), data snapshots, Escape and errors.
- * Through its `ref` a host puts keyboard focus back on an element (or its
- * pin) when its own UI by the element closes.
+ * toggles, clicks on empty space in Annotate, pin clicks, the elements a
+ * screen draws, where the elements a host anchors to are and how far the
+ * prototype is scrolled (`onGeometry`, for `useFrameAnchors`), data
+ * snapshots, Escape and errors. Through its `ref` a host puts keyboard focus
+ * back on an element (or a pin) when its own UI by it closes.
  * Every message's source and shape is checked. Until the app first draws,
  * a loading cover sits over the frame, so an early click is not silently
  * lost; a frame that neither draws nor reports an error within
@@ -34,7 +35,7 @@
 import { useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import type { DataSnapshot } from "../data.js";
 import type { PrototypeManifest } from "../manifest/types.js";
-import { parseFromFrameMessage, type FrameBox, type FrameColorScheme, type FrameElement, type FrameView, type ToFrameMessage } from "./bridge.js";
+import { parseFromFrameMessage, type FrameBox, type FrameColorScheme, type FrameElement, type FramePoint, type FrameView, type ToFrameMessage } from "./bridge.js";
 import { prototypeFrameDocument } from "./frame-document.js";
 import type { FrameGeometry } from "./useFrameAnchors.js";
 
@@ -57,6 +58,10 @@ export interface PrototypeFrameProps {
   onToggle: (elementKey: string, additive: boolean) => void;
   /** A pin was clicked, in either mode: its element and the queued comments' numbers it shows (`[]`: the element's draft pin). */
   onPin?: ((elementKey: string, requests: number[]) => void) | undefined;
+  /** A click in Annotate on empty space, on no element: a whole-screen comment at `at`, the spot of the prototype's document (its pin is drawn there). */
+  onScreenClick?: ((at: FramePoint) => void) | undefined;
+  /** A whole-screen comment's pin was clicked, in either mode: the queued comment's number it shows (`[]`: the screen's hollow pin). */
+  onScreenPin?: ((requests: number[]) => void) | undefined;
   onEscape: () => void;
   onElements: (screenId: string, elements: FrameElement[]) => void;
   onData?: ((data: DataSnapshot) => void) | undefined;
@@ -80,6 +85,8 @@ export interface PrototypeFrameHandle {
    * for `requests` when given (`[]`: its draft pin), as `onPin` named it.
    */
   focusElement: (key: string, requests?: readonly number[]) => void;
+  /** Move keyboard focus into the frame, onto the whole-screen comment's pin for `requests` (`[]`: the screen's hollow pin), as `onScreenPin` named it. */
+  focusScreenPin: (requests: readonly number[]) => void;
 }
 
 /** How long the frame may take to draw its app (or report why not) before the host stops waiting. */
@@ -107,12 +114,14 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
   // The latest props, for the one message listener and the effects below.
   const latest = useRef(props);
   latest.current = props;
-  // The boxes the frame last reported: its geometry replaces them all, a toggle adds the clicked element's at once.
-  const boxes = useRef<Readonly<Record<string, FrameBox>>>({});
-  const reportBoxes = (next: Readonly<Record<string, FrameBox>>) => {
-    boxes.current = next;
-    if (frame.current) latest.current.onGeometry?.({ frame: frame.current, boxes: next });
+  // The boxes and scroll the frame last reported: its geometry replaces them, a toggle adds the clicked element's box at once, a screen click says the scroll.
+  const geometry = useRef<{ boxes: Readonly<Record<string, FrameBox>>; scroll: FramePoint }>({ boxes: {}, scroll: { x: 0, y: 0 } });
+  const report = (next: Partial<FrameGeometry>) => {
+    geometry.current = { boxes: next.boxes ?? geometry.current.boxes, scroll: next.scroll ?? geometry.current.scroll };
+    if (frame.current) latest.current.onGeometry?.({ frame: frame.current, ...geometry.current });
   };
+  /** A spot the frame named in its viewport (`point`) and its document (`at`): how far the document is scrolled. */
+  const scrolledBy = (point: FramePoint, at: FramePoint): FramePoint => ({ x: at.x - point.x, y: at.y - point.y });
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -128,15 +137,23 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
           p.onNavigate(message.screenId);
           break;
         case "proto:toggle":
-          if (message.box) reportBoxes({ ...boxes.current, [message.elementKey]: message.box });
+          if (message.box) report({ boxes: { ...geometry.current.boxes, [message.elementKey]: message.box } });
           p.onToggle(message.elementKey, message.additive === true);
           break;
         case "proto:pin":
-          reportBoxes({ ...boxes.current, [message.key]: message.box });
+          report({ boxes: { ...geometry.current.boxes, [message.key]: message.box } });
           p.onPin?.(message.key, message.requests);
           break;
+        case "proto:screen-click":
+          report({ scroll: scrolledBy(message.point, message.at) });
+          p.onScreenClick?.(message.at);
+          break;
+        case "proto:screen-pin":
+          report({ scroll: scrolledBy(message.point, message.at) });
+          p.onScreenPin?.(message.requests);
+          break;
         case "proto:geometry":
-          reportBoxes(message.boxes);
+          report({ boxes: message.boxes, scroll: message.scroll ?? { x: 0, y: 0 } });
           break;
         case "proto:escape":
           p.onEscape();
@@ -169,6 +186,10 @@ export function PrototypeFrame(props: PrototypeFrameProps) {
       focusElement: (key, requests) => {
         frame.current?.focus();
         post({ type: "proto:focus", key, ...(requests !== undefined ? { requests: [...requests] } : {}) });
+      },
+      focusScreenPin: (requests) => {
+        frame.current?.focus();
+        post({ type: "proto:focus-screen-pin", requests: [...requests] });
       },
     }),
     [],

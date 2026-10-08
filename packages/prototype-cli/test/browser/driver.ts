@@ -40,6 +40,8 @@ export const driver = {
   select: (page: string, target: Target, label: string) => call("act")(page, target, { type: "select", label }) as Promise<void>,
   read: (page: string, target: Target, reading: Reading) => call("read")(page, target, reading) as Promise<string | number | null>,
   box: (page: string, target: Target) => call("box")(page, target) as Promise<Box>,
+  /** A pointer click at (`x`, `y`) of the app frame's viewport (empty space, in Comment mode); resolves to that spot in the page's viewport. */
+  clickAppAt: (page: string, x: number, y: number) => call("clickAppAt")(page, x, y) as Promise<{ x: number; y: number }>,
   /** A key on the page, to whatever has focus. */
   pressKey: (page: string, key: string) => call("pressKey")(page, key) as Promise<void>,
   resize: (page: string, width: number, height: number) => call("resizePage")(page, width, height) as Promise<void>,
@@ -48,6 +50,8 @@ export const driver = {
   evalInApp: (page: string, expression: string) => call("evalInApp")(page, expression) as Promise<string>,
   /** The cursor the app frame shows over the middle of `target`, or (null) over empty space at the bottom of the screen. */
   cursorAt: (page: string, target: Target | null) => call("cursorAt")(page, target) as Promise<string>,
+  /** With the pointer resting on `target`, the outline colour of each app element in `keys`. */
+  outlinesOnHover: (page: string, target: Target, keys: string[]) => call("outlinesOnHover")(page, target, keys) as Promise<string[]>,
   /** Waits until the app frame draws in `mode`: a host's mode switch reaches the frame by message, after the click. */
   frameMode: (page: string, mode: "preview" | "annotate") =>
     call("evalInApp")(
@@ -81,6 +85,10 @@ export const host = {
   picker: (label: string): Target => ({ where: "host", role: "combobox", name: label }),
   button: (name: string): Target => ({ where: "host", role: "button", name }),
   region: (name: string): Target => ({ where: "host", role: "region", name }),
+  /** The floating dock at the bottom of the review, which holds every review control. */
+  dock: (): Target => ({ where: "host", role: "region", name: "Review controls" }),
+  /** The browser window's address bar: the screen the review shows (`prototype://<screen>`). */
+  address: (): Target => ({ where: "host", label: "Address" }),
   /** A dialog by its name (a comment bubble: `Comment on <elements>`, `Comment <n>`); `partial` matches a substring. */
   dialog: (name: string, partial = false): Target => ({ where: "host", role: "dialog", name, partial }),
   status: (): Target => ({ where: "host", role: "status" }),

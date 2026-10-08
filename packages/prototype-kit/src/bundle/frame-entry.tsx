@@ -20,8 +20,9 @@
  * The frame runtime's entry, bundled per theme by `buildThemeRuntimes`: the
  * script inside a host's sandboxed prototype frame. It waits for `load`, runs
  * the prototype, draws the view it is sent, and reports back what the screen
- * holds, what the reviewer pressed (an element, a pin), the mock data and
- * anything that failed. Asked, it puts focus back on an element or its pin.
+ * holds, what the reviewer pressed (an element, a pin, empty space in
+ * Annotate), the mock data and anything that failed. Asked, it puts focus
+ * back on an element or a pin.
  */
 
 import { Component, useEffect, useRef, useState, type ReactNode } from "react";
@@ -48,6 +49,12 @@ function focusElement(key: string, requests: readonly number[] | undefined) {
   const pin = requests && document.querySelector(`[data-proto-pin-for="${of}"][data-proto-pin="${requests.length > 0 ? String(requests[0]) : "draft"}"]`);
   const target = pin || document.querySelector(`[data-proto-key="${of}"]`);
   if (target instanceof HTMLElement) target.focus();
+}
+
+/** Focus the whole-screen comment's pin `proto:screen-pin` named (`requests`; `[]`: the hollow pin). */
+function focusScreenPin(requests: readonly number[]) {
+  const pin = document.querySelector(`[data-proto-screen-pin="${requests.length > 0 ? String(requests[0]) : "draft"}"]`);
+  if (pin instanceof HTMLElement) pin.focus();
 }
 
 /** Whether the key is the prototype's own: a control inside it closed a picker or an overlay with it, so the host must not act on it. */
@@ -137,15 +144,23 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
 
   useEffect(() => {
     watcher.current = watchElements(() => screen.current);
-    geometry.current = watchGeometry(
-      () => anchored.current,
-      (boxes) => post({ type: "proto:geometry", boxes }),
-    );
-    return () => {
-      watcher.current?.stop();
-      geometry.current?.stop();
-    };
+    return () => watcher.current?.stop();
   }, []);
+
+  // Where things are is reported only once an app draws: a frame with none has nothing to anchor to.
+  const hasApp = loaded !== null;
+  useEffect(() => {
+    if (!hasApp) return;
+    const watch = watchGeometry(
+      () => anchored.current,
+      (boxes, scroll) => post({ type: "proto:geometry", boxes, scroll }),
+    );
+    geometry.current = watch;
+    return () => {
+      watch.stop();
+      geometry.current = null;
+    };
+  }, [hasApp]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -154,6 +169,10 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
       if (!message) return;
       if (message.type === "proto:focus") {
         focusElement(message.key, message.requests);
+        return;
+      }
+      if (message.type === "proto:focus-screen-pin") {
+        focusScreenPin(message.requests);
         return;
       }
       if (message.type === "proto:reset") {
@@ -210,6 +229,8 @@ function Frame({ theme }: { theme: PrototypeTheme }) {
           const box = boxOf(key);
           if (box) post({ type: "proto:pin", key, requests, box });
         }}
+        onScreenClick={(point, at) => post({ type: "proto:screen-click", point, at })}
+        onScreenPin={(requests, point, at) => post({ type: "proto:screen-pin", requests, point, at })}
         onData={(data) => post({ type: "proto:data", data })}
         onError={(message) => post({ type: "proto:error", message })}
         colorScheme={view.colorScheme}

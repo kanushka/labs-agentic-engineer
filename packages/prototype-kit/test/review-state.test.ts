@@ -91,4 +91,28 @@ describe("the comment bubble", () => {
     const annotating = run({ type: "ENTER_ANNOTATE" }, { type: "OPEN_PIN", index: 0, pin: { key: "a", requests: [1] } });
     expect(reduceReview(manifest, annotating, { type: "SELECT_ONLY", elementKey: "b" }).bubble).toEqual({ on: "selection" });
   });
+
+  it("opens on the whole screen at the spot a click on empty space in Annotate hit, letting the selection go", () => {
+    const at = { x: 40, y: 900 };
+    const s = run({ type: "ENTER_ANNOTATE" }, { type: "SELECT_ONLY", elementKey: "a" }, { type: "CLOSE_BUBBLE" }, { type: "SCREEN_CLICK", at });
+    expect(s.bubble).toEqual({ on: "screen", at });
+    expect(s.view.selectedKeys).toEqual([]);
+  });
+
+  it("closes an open bubble on a click on empty space, as a click away does, keeping the selection", () => {
+    const open = run({ type: "ENTER_ANNOTATE" }, { type: "SELECT_ONLY", elementKey: "a" });
+    const s = reduceReview(manifest, open, { type: "SCREEN_CLICK", at: { x: 1, y: 1 } });
+    expect(s.bubble).toBeNull();
+    expect(s.view.selectedKeys).toEqual(["a"]);
+  });
+
+  it("opens nothing on a click on empty space in Preview, where the frame should not report one", () => {
+    const s = run({ type: "SCREEN_CLICK", at: { x: 1, y: 1 } });
+    expect(s).toEqual(initialReview(manifest));
+  });
+
+  it("opens a whole-screen comment's pin where it is, naming no element", () => {
+    const pin = { requests: [2] };
+    expect(run({ type: "ENTER_ANNOTATE" }, { type: "OPEN_PIN", index: 1, pin }).bubble).toEqual({ on: "comment", index: 1, pin });
+  });
 });

@@ -34,13 +34,27 @@ placement (`placeBubble`) and focus on a click away (`focusLeftBehind`). `--pers
 `localStorage` under `proto:data:<revision hash>`; a new revision starts from
 the seed.
 
+The layout is the console's review's, in the host's own styles: a header of
+only the prototype's name, the window, and below it one floating dock
+(`Dock`) with every control, in groups split by dividers: View
+(`ViewControls`: Role and State, compact selects with their name inline, and
+Reset data as an icon button), then, in preview only, Mode (`ModeTools`) and
+Comments (`CommentQueue`). An export's dock has the View group alone. There
+is no screen or flow picker: the reviewer moves through the prototype by
+using it, and a comment's list entry goes to its screen, role and state. The
+dock sits below the window in the layout (`.ph-body` is a column), so it
+never covers the prototype's last rows; what it opens grows upward over the
+prototype. Below 1100px it drops the Comment mode hint, below 1000px the
+selects' inline names (the value stays). Bubbles keep above the stage's
+bottom (`BubbleBounds`, the window's area), so they never cover the dock.
+
 Comment mode (the view's `annotate`; preview only, never in an export)
 comments in place, as the console's review does, in the host's own styles:
 
-- The toolbar's Preview · Comment tool pair (`Toolbar`): labelled, with
+- The dock's Preview · Comment tool pair (`ModeTools`): labelled, with
   icons, `V` and `C` in their tooltips; the active tool is tinted orange in
   Comment and neutral in Preview. While in Comment mode the window has an
-  orange ring, its bar a "Comment mode · Esc" tag, and the comment bar the
+  orange ring, its bar a "Comment mode · Esc" tag, and the dock the
   hint "Click anything to comment"; the frame draws the kit's comment cursor
   (solid "+" bubble over an element, hollow over empty space).
 - A click on an element opens a comment bubble at it (`AnchoredBubble`, by
@@ -50,23 +64,35 @@ comments in place, as the console's review does, in the host's own styles:
   it, or goes back to the element when it put it nowhere. Shift-click adds or removes elements, keeping the text. Add or
   Cmd/Ctrl+Enter queues the comment and leaves a numbered pin. The text is
   held to the comment limit, with a counter near it.
-- A pin opens its comment, in either mode, to read, Edit (Save or
-  Cmd/Ctrl+Enter) or Remove.
+- A click on empty space (where the cursor shows the hollow bubble) comments
+  on the whole screen: the bubble opens at the spot, with a hollow pin there
+  while it is written; added, the comment leaves a numbered pin at the spot,
+  which scrolls with the prototype's page. With a bubble open, that click
+  only closes it (as a click away does). The spot is the host's own: the
+  feedback file never has it (`elementIds: []`, as before).
+- A pin (on an element, or a whole-screen comment's at its spot) opens its
+  comment, in either mode, to read, Edit (Save or Cmd/Ctrl+Enter) or Remove.
 - Text is never lost: a bubble closed with text in it (click away, Escape,
   another plain click, leaving the screen) keeps it as a draft where it was
   written, shown as a hollow pin; reopening the same elements, or the draft
-  pin, restores it. A whole-screen comment's text is kept the same way and
-  comes back on the next Comment on screen. Drafts are not counted or saved.
+  pin, restores it. A whole-screen comment's text is kept the same way, as
+  the screen's draft, its hollow pin at its spot; the pin, the next click on
+  empty space or Comment on this screen reopens it. Drafts are not counted
+  or saved.
   An empty bubble just closes.
-- The comment bar at the bottom (`CommentBar`) replaces the old side panel:
-  the count, which expands into a list of every comment across screens,
-  roles and states, its elements named by their labels (an entry goes there
-  and opens the comment), Comment on screen, and Save feedback, which writes
+- The dock's comments (`CommentQueue`) replace the old side panel: the
+  count, which opens upward a list of every comment across screens, roles
+  and states, its elements named by their labels (an entry goes there
+  and opens the comment) and, below it, Comment on this screen (the
+  keyboard's whole-screen comment, its bubble at the dock), and Save
+  feedback, which writes
   `.prototype/feedback.json` as before (`POST /feedback`; the drafts are
-  never in it). It says when the queue is full (50; saving does not empty
-  it, so the way on is removing one), and marks each comment written on an
-  earlier revision. Its empty list says how to start ("Press C or choose
-  Comment, then click anything").
+  never in it). Above the dock it says when the queue is full (50; saving
+  does not empty it, so the way on is removing one), how many comments were
+  written on an earlier revision (each marked in the list) and the save's
+  outcome. Its empty list says how to start ("Press C or choose
+  Comment, then click anything on the screen: an element, or empty space
+  for the whole screen").
 - Keys on the host page: V returns to Preview and C toggles Comment mode
   (neither while typing); Escape closes
   the bubble, then clears the selection (the frame reports an Escape it did

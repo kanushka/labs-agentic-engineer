@@ -26,7 +26,7 @@
  */
 
 import { useEffect, useState, type MouseEvent } from "react";
-import type { FrameBox } from "../host/bridge.js";
+import type { FrameBox, FramePoint, FrameScreenPin } from "../host/bridge.js";
 import { useKit, type KitContextValue } from "./context.js";
 import { watchGeometry } from "./geometry.js";
 
@@ -110,6 +110,41 @@ export function RootPins() {
         <span key={key} className="proto-root-pins" style={{ top: box.y + 2, left: box.x + box.width - 2 }}>
           <Pins elementKey={key} />
         </span>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Whole-screen comments' pins, each at the spot of the document where it was
+ * made, so it scrolls with the page: numbered for a queued comment, hollow
+ * for the screen's draft or the comment being written there. A pin is a
+ * button in either mode; clicking it reports its comment's number (none:
+ * the hollow pin) and where it is.
+ */
+export function ScreenPins({ pins, onOpen }: { pins: readonly FrameScreenPin[]; onOpen: (requests: number[], point: FramePoint, at: FramePoint) => void }) {
+  const open = (pin: FrameScreenPin) => (e: MouseEvent<HTMLButtonElement>) => {
+    // The pin's own: no selection, press or screen click under it.
+    e.stopPropagation();
+    e.preventDefault();
+    const r = e.currentTarget.getBoundingClientRect();
+    onOpen(pin.number === undefined ? [] : [pin.number], { x: r.x + r.width / 2, y: r.y + r.height / 2 }, pin.at);
+  };
+  return (
+    <>
+      {pins.map((pin) => (
+        <button
+          key={pin.number ?? "draft"}
+          type="button"
+          className={pin.number === undefined ? "proto-chip proto-pin proto-screen-pin proto-pin-draft" : "proto-chip proto-pin proto-screen-pin"}
+          style={{ left: pin.at.x, top: pin.at.y }}
+          aria-label={pin.number === undefined ? "Draft comment on the screen" : `Comment ${pin.number}`}
+          data-proto-screen-pin={pin.number ?? "draft"}
+          data-testid={pin.number === undefined ? "draft-pin" : "request-pin"}
+          onClick={open(pin)}
+        >
+          {pin.number ?? "…"}
+        </button>
       ))}
     </>
   );

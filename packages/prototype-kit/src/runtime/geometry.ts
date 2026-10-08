@@ -25,7 +25,7 @@
  * document; the kit places the pins of elements it cannot wrap by them.
  */
 
-import type { FrameBox } from "../host/bridge.js";
+import type { FrameBox, FramePoint } from "../host/bridge.js";
 
 /** Where the element drawn for `key` is in the frame's viewport, or undefined when the screen does not draw it. */
 export function boxOf(key: string): FrameBox | undefined {
@@ -35,10 +35,14 @@ export function boxOf(key: string): FrameBox | undefined {
   return { x: r.x, y: r.y, width: r.width, height: r.height };
 }
 
-/** Calls `report` with the boxes of `keys()` whenever they move; `refresh` re-measures now (e.g. the keys changed). */
+/**
+ * Calls `report` with the boxes of `keys()` and how far the document is
+ * scrolled whenever either changes; `refresh` re-measures now (e.g. the keys
+ * changed).
+ */
 export function watchGeometry(
   keys: () => readonly string[],
-  report: (boxes: Record<string, FrameBox>) => void,
+  report: (boxes: Record<string, FrameBox>, scroll: FramePoint) => void,
 ): { refresh: () => void; stop: () => void } {
   let last = "";
   // The animation frame a measure waits for; null when none is pending.
@@ -50,10 +54,11 @@ export function watchGeometry(
       const box = boxOf(key);
       if (box) boxes[key] = box;
     }
-    const signature = JSON.stringify(boxes);
+    const scroll = { x: window.scrollX, y: window.scrollY };
+    const signature = JSON.stringify([boxes, scroll]);
     if (signature === last) return;
     last = signature;
-    report(boxes);
+    report(boxes, scroll);
   };
   const schedule = () => {
     if (pending !== null) return;

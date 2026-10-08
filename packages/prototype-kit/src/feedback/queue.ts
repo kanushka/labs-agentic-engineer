@@ -30,7 +30,10 @@
  *    they were selected) so selecting them again restores it. A draft is
  *    neither counted against the limit nor sent;
  *  - comments a revision orphaned: their elements are no longer drawn;
- *    one can be kept on its whole screen instead.
+ *    one can be kept on its whole screen instead;
+ *  - where a whole-screen comment was made, when the reviewer clicked a spot
+ *    on the screen to make it (`at`): its pin is drawn there. The spot is the
+ *    review's own; a submission never carries it.
  *
  * How the open comment's text becomes a draft is the host layer's
  * (`host/comment-draft.ts`).
@@ -38,11 +41,21 @@
  * Every operation returns a new queue (the same one when it refuses).
  */
 
+import type { FramePoint, FrameScreenPin } from "../host/bridge.js";
 import type { PrototypeViewState } from "../host/view-state.js";
 import { MAX_FEEDBACK_REQUESTS, type FeedbackRequest, type FeedbackSubmission } from "./request.js";
 
+/**
+ * A request as the review holds it: for a whole-screen comment made by
+ * clicking a spot on the screen, that spot too (in the frame document's CSS
+ * pixels, where its pin is drawn). Never sent.
+ */
+export interface PlacedRequest extends FeedbackRequest {
+  at?: FramePoint | undefined;
+}
+
 /** A queued comment: the request, and the revision it was written on. */
-export interface QueuedComment extends FeedbackRequest {
+export interface QueuedComment extends PlacedRequest {
   revision: string;
 }
 
@@ -51,7 +64,7 @@ export interface FeedbackQueue {
   hash: string | null;
   requests: readonly QueuedComment[];
   /** Started comments, each on its own screen and set of elements; never sent. */
-  drafts: readonly FeedbackRequest[];
+  drafts: readonly PlacedRequest[];
 }
 
 export const EMPTY_FEEDBACK_QUEUE: FeedbackQueue = Object.freeze({ hash: null, requests: [], drafts: [] });
@@ -94,18 +107,23 @@ function sameElements(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id) => b.includes(id));
 }
 
-const samePlace = (draft: FeedbackRequest, screenId: string, elementIds: readonly string[]) =>
+const samePlace = (draft: PlacedRequest, screenId: string, elementIds: readonly string[]) =>
   draft.screenId === screenId && sameElements(draft.elementIds, elementIds);
 
-const withoutDraftAt = (drafts: readonly FeedbackRequest[], screenId: string, elementIds: readonly string[]) =>
+const withoutDraftAt = (drafts: readonly PlacedRequest[], screenId: string, elementIds: readonly string[]) =>
   drafts.filter((d) => !samePlace(d, screenId, elementIds));
 
+/** The request as the review keeps it: a spot only for a whole-screen comment (one on elements is pinned on them). */
+function placed({ at, ...request }: PlacedRequest): PlacedRequest {
+  return at !== undefined && request.elementIds.length === 0 ? { ...request, at } : request;
+}
+
 /** Queue a comment, refused once the queue is full; it uses up the draft on its elements. */
-export function enqueue(queue: FeedbackQueue, hash: string, request: FeedbackRequest): FeedbackQueue {
+export function enqueue(queue: FeedbackQueue, hash: string, request: PlacedRequest): FeedbackQueue {
   if (queue.requests.length >= MAX_FEEDBACK_REQUESTS) return queue;
   return {
     hash: queue.hash ?? hash,
-    requests: [...queue.requests, { ...request, revision: hash }],
+    requests: [...queue.requests, { ...placed(request), revision: hash }],
     drafts: withoutDraftAt(queue.drafts, request.screenId, request.elementIds),
   };
 }
@@ -137,7 +155,7 @@ export function earlierComments(queue: FeedbackQueue, hash: string): number[] {
   return queue.requests.flatMap((r, i) => (r.revision !== hash ? [i] : []));
 }
 
-/** The queue with its `index`th (0-based) comment kept on its whole screen, at its number: the elements it named are dropped. */
+/** The queue with its `index`th (0-based) comment kept on its whole screen, at its number: the elements it named are dropped (it has no spot, so no pin). */
 export function keepOnScreen(queue: FeedbackQueue, index: number): FeedbackQueue {
   if (!queue.requests[index]) return queue;
   return { ...queue, requests: queue.requests.map((r, i) => (i === index ? { ...r, elementIds: [] } : r)) };
@@ -160,13 +178,13 @@ export function orphansOnScreen(queue: FeedbackQueue, hash: string, view: Protot
 }
 
 /** Keep `draft` as the draft on its screen and elements (replacing any there); empty text drops it. */
-export function keepDraft(queue: FeedbackQueue, draft: FeedbackRequest): FeedbackQueue {
+export function keepDraft(queue: FeedbackQueue, draft: PlacedRequest): FeedbackQueue {
   const others = withoutDraftAt(queue.drafts, draft.screenId, draft.elementIds);
-  return { ...queue, drafts: draft.text.trim() === "" ? others : [...others, draft] };
+  return { ...queue, drafts: draft.text.trim() === "" ? others : [...others, placed(draft)] };
 }
 
-/** The draft on these elements of this screen, if any. */
-export function draftAt(queue: FeedbackQueue, screenId: string, elementIds: readonly string[]): FeedbackRequest | undefined {
+/** The draft on these elements of this screen (none: its whole-screen draft), if any. */
+export function draftAt(queue: FeedbackQueue, screenId: string, elementIds: readonly string[]): PlacedRequest | undefined {
   return queue.drafts.find((d) => samePlace(d, screenId, elementIds));
 }
 
@@ -176,8 +194,21 @@ export function draftPinsOnScreen(queue: FeedbackQueue, screenId: string): strin
 }
 
 /** The draft the draft pin on `key` opens: the latest one drawn there. */
-export function draftOfPin(queue: FeedbackQueue, screenId: string, key: string): FeedbackRequest | undefined {
+export function draftOfPin(queue: FeedbackQueue, screenId: string, key: string): PlacedRequest | undefined {
   return [...queue.drafts].reverse().find((d) => d.screenId === screenId && d.elementIds[0] === key);
+}
+
+/**
+ * The whole-screen comments' pins on this screen, at their spots: each queued
+ * one made at a spot, numbered as the queue numbers it, then one hollow pin:
+ * at the spot of the whole-screen comment being written here (`writing`; none
+ * when it has no spot), else at the screen's draft's spot, if it has one.
+ * Comments without a spot (written from the list) have no pin.
+ */
+export function screenPinsOnScreen(queue: FeedbackQueue, screenId: string, writing: { at?: FramePoint | undefined } | null): FrameScreenPin[] {
+  const pins: FrameScreenPin[] = queue.requests.flatMap((r, i) => (r.screenId === screenId && r.elementIds.length === 0 && r.at ? [{ at: r.at, number: i + 1 }] : []));
+  const hollow = writing ? writing.at : draftAt(queue, screenId, [])?.at;
+  return hollow ? [...pins, { at: hollow }] : pins;
 }
 
 /** A queued comment as the batch carries it: the request alone. */

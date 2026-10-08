@@ -18,7 +18,11 @@ kit's CSS (`kit-css.ts`): a 32×32 SVG arrow with a bubble (dark ink outlined
 in white, one graphic for light and dark; hotspot at the arrow's tip), the
 solid orange "+" bubble on what takes a comment (`crosshair` fallback) and
 the hollow one on empty space (`html:has(.proto-scene[data-proto-mode=annotate])`,
-since the scene itself lets the pointer through; `default` fallback). `KitComponentProps` lists every
+since the scene itself lets the pointer through; `default` fallback). A click
+where the hollow bubble shows is a whole-screen comment at that spot
+(`runtime/screen-click.ts`: a pointer click whose target is in no
+`[data-proto-annotating]` element and no pin; a click a key made has no spot
+and is not one). `KitComponentProps` lists every
 component's theme props; `ThemeRegistry` maps over it.
 
 `<AppShell>` is a screen's root inside the product's chrome: product name,
@@ -121,8 +125,16 @@ a comment is on as both hosts' bubbles and lists name it: its elements'
 labels, or "Whole screen". `orphansOnScreen` names the comments written on
 an earlier revision, on the screen, role and state showing, whose elements
 the frame no longer reports drawn for the revision showing, and
-`keepOnScreen` turns one into a whole-screen comment at its number. Drafts
-and a comment's revision are client-only; the feedback contract and
+`keepOnScreen` turns one into a whole-screen comment at its number. A
+whole-screen comment made by clicking a spot keeps that spot (`PlacedRequest.at`,
+in the frame document's CSS pixels) on the queued comment and on the screen's
+draft; `enqueue` and `keepDraft` drop it from a comment on elements, and
+`screenPinsOnScreen` gives the screen's pins at their spots (numbered by the
+queue; one hollow, at the spot being written at, else the screen draft's). A
+whole-screen comment without a spot (from a host's list, kept on its screen
+after its element went, or queued before spots existed) has no pin and is
+listed as "Whole screen". Drafts, spots and a comment's revision are
+client-only: `submissionOf` sends none of them, so the feedback contract and
 `feedback-cases.json` (batch validity) are unchanged.
 
 ## Host reducer and bridge (`/host`)
@@ -156,14 +168,31 @@ pin's click is its own (no selection, press or navigation) and posts
 `proto:pin` (key, the numbers it shows or `[]` for the draft pin, the
 element's box); `PrototypeFrame.onPin` takes it. When a host's bubble closes,
 `PrototypeFrame`'s ref `focusElement(key, requests?)` sends `proto:focus`,
-and the frame focuses that pin, else the element. A host on the older
-protocol ignores the new fields and messages. `SELECT_ELEMENTS` selects
+and the frame focuses that pin, else the element.
+
+Whole-screen comments' pins (`FrameView.screenPins`, optional: `{ at,
+number? }`, no number for the hollow one) are drawn by `ScreenPins`, each
+absolutely positioned at its spot of the document, so it scrolls with the
+page (a theme's inner scroller, such as the default theme's main pane, does
+not move it), centred on the spot and over the prototype. In Annotate a click
+on empty space posts `proto:screen-click` (`point` in the viewport, `at` in
+the document); a screen pin's click posts `proto:screen-pin` (the number it
+shows, `[]` for the hollow one, and the same two points), and
+`focusScreenPin(requests)` sends `proto:focus-screen-pin`. `proto:geometry`
+carries the document's `scroll` too (a screen click or pin says it at once:
+`at - point`), so `useFrameAnchors().point(at)` places a host's bubble at the
+spot as the prototype scrolls. A host on the older protocol ignores the new
+fields and messages; a frame on it sends no scroll (taken as none) and no
+screen clicks. `SELECT_ELEMENTS` selects
 several elements at once (reopening a draft), entering Annotate.
 
 `reduceReview` (`review-state.ts`) wraps the view reducer with the comment
 bubble a host draws, so hosts open and close it alike: a click in Annotate
 opens it on the selection (Shift keeps it open as the selection grows);
-`COMMENT_ON_SCREEN` opens it on the whole screen (entering Annotate);
+`SCREEN_CLICK` (a click on empty space, Annotate only) closes an open
+bubble as a click away does, else opens a whole-screen comment at its spot;
+`COMMENT_ON_SCREEN` opens one from a host's own control (no spot; entering
+Annotate) or at a draft's spot (its hollow pin);
 `OPEN_COMMENT` goes to where a queued comment was made and opens it;
 `OPEN_PIN` opens a pin's comment in place (either mode); `CLOSE_BUBBLE`
 keeps the selection; clearing the selection, or moving off the screen,
@@ -174,9 +203,10 @@ alike and only draw:
 
 - `useCommentDraft` (over `comment-draft.ts`'s `followComment` and
   `keepOpenComment`): the open new comment's text, kept as a draft where it
-  was written (elements, or the whole screen) whenever the bubble closes or
+  was written (elements, or the whole screen at its spot) whenever the bubble closes or
   a plain click moves it; Shift carries it; a bubble opening where a draft
-  is kept starts from it; the review unmounting keeps it too.
+  is kept starts from it; the review unmounting keeps it too. `newComment`
+  is the comment the open bubble adds (its elements, or the screen and spot).
 - `useReviewKeys`: V returns to Preview and C toggles Annotate (neither while
   typing), Escape undoes the
   bubble, then the selection. `capture` listens on the way down and stops a
@@ -185,7 +215,9 @@ alike and only draw:
   handled.
 - `placeBubble` (`bubble-placement.ts`): below the anchor, flipped above
   when there is no room, kept inside the window (a host with its own popper
-  need not use it). `focusLeftBehind` (`bubble-focus.ts`): whether a click
+  need not use it). The window it is given is the room the host allows: the
+  kit CLI's host passes its stage's bottom as the height, so a bubble never
+  covers the dock below the stage. `focusLeftBehind` (`bubble-focus.ts`): whether a click
   away left focus nowhere, so the host puts it back on the element instead
   of taking it from a control the click focused.
 

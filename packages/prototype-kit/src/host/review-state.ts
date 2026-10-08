@@ -20,17 +20,19 @@
  * comment bubble, as one state, headless, so every host opens and closes the
  * bubble the same way and only draws it. The bubble is what the reviewer is
  * writing or reading a comment on: the selected elements, the whole screen
- * (a host's "Comment on screen"), or a queued comment opened from a host's
- * list or its pin.
+ * (a click on empty space in Annotate, at that spot, or a host's "Comment on
+ * this screen"), or a queued comment opened from a host's list or its pin.
  */
 
 import type { FeedbackRequest } from "../feedback/request.js";
+import type { FramePoint } from "./bridge.js";
 import type { PrototypeManifest } from "../manifest/types.js";
 import { initialPrototypeView, reducePrototypeView, type PrototypeViewEvent, type PrototypeViewState } from "./view-state.js";
 /** What the open comment bubble is on; null when none is open. */
 export type CommentBubble =
   | { on: "selection" }
-  | { on: "screen" }
+  /** The whole screen: at the spot of the frame's document a click on empty space hit, or (no spot) from a host's own control. */
+  | { on: "screen"; at?: FramePoint | undefined }
   /**
    * The queued comment at `index` (0-based, as the queue holds it); `pin`
    * when its pin opened it (the pin's element and numbers, where keyboard
@@ -39,9 +41,9 @@ export type CommentBubble =
   | { on: "comment"; index: number; pin?: CommentPin | undefined }
   | null;
 
-/** A pin in the frame, as `PrototypeFrame.onPin` names it. */
+/** A pin in the frame, as `PrototypeFrame.onPin` names it: on the element `key`, or (no key) a whole-screen comment's pin (`onScreenPin`). */
 export interface CommentPin {
-  key: string;
+  key?: string | undefined;
   requests: number[];
 }
 
@@ -52,8 +54,14 @@ export interface ReviewState {
 
 export type ReviewEvent =
   | PrototypeViewEvent
-  /** Comment on the whole screen showing (switches to Annotate). */
-  | { type: "COMMENT_ON_SCREEN" }
+  /** Comment on the whole screen showing (switches to Annotate); at the spot `at` when given (a draft's hollow pin reopening it). */
+  | { type: "COMMENT_ON_SCREEN"; at?: FramePoint | undefined }
+  /**
+   * A click on empty space in Annotate, at `at` (`PrototypeFrame.onScreenClick`):
+   * a click away from an open bubble closes it; else it opens a whole-screen
+   * comment there.
+   */
+  | { type: "SCREEN_CLICK"; at: FramePoint }
   /** Go to where a queued comment was made and open it. */
   | { type: "OPEN_COMMENT"; index: number; request: FeedbackRequest }
   /** A queued comment's pin was clicked (either mode): open it where it is, letting the selection go. */
@@ -74,8 +82,13 @@ export function reduceReview(manifest: PrototypeManifest, s: ReviewState, e: Rev
   switch (e.type) {
     case "COMMENT_ON_SCREEN": {
       const view = reducePrototypeView(manifest, s.view, s.view.mode === "annotate" ? { type: "CLEAR_SELECTION" } : { type: "ENTER_ANNOTATE" });
-      return { view, bubble: { on: "screen" } };
+      return { view, bubble: e.at ? { on: "screen", at: e.at } : { on: "screen" } };
     }
+    case "SCREEN_CLICK":
+      // The frame is untrusted: only Annotate comments on a click.
+      if (s.view.mode !== "annotate") return s;
+      if (s.bubble) return { ...s, bubble: null };
+      return { view: reducePrototypeView(manifest, s.view, { type: "CLEAR_SELECTION" }), bubble: { on: "screen", at: e.at } };
     case "OPEN_COMMENT": {
       const { request } = e;
       const view = initialPrototypeView(manifest, {
@@ -107,7 +120,7 @@ export function reduceReview(manifest: PrototypeManifest, s: ReviewState, e: Rev
 function bubbleAfter(s: ReviewState, view: PrototypeViewState, e: PrototypeViewEvent): CommentBubble {
   // Letting the selection go ends the comment (it was added, or the reviewer moved on).
   if (e.type === "CLEAR_SELECTION") return null;
-  // A click the reducer refused (empty canvas, Preview) changes nothing.
+  // A click the reducer refused (an element it does not know, Preview) changes nothing.
   if (view === s.view) return s.bubble;
   const selected = view.mode === "annotate" && view.selectedKeys.length > 0;
   if (e.type === "SELECT_ONLY" || e.type === "TOGGLE_SELECTION" || e.type === "SELECT_ELEMENTS") return selected ? { on: "selection" } : null;

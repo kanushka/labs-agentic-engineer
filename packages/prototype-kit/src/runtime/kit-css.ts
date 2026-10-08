@@ -18,7 +18,8 @@
 
 /**
  * The kit's own styles: the Annotate layer (outline, label chip, the comment
- * cursor), the comment pins (a hollow one for a draft) and the scene's
+ * cursor), the comment pins (a hollow one for a draft; a whole-screen
+ * comment's at its spot of the document, over the prototype) and the scene's
  * pointer rule. Themes restyle them through the `--proto-*` custom
  * properties. Inline, because the frame loads nothing.
  */
@@ -38,7 +39,7 @@ const ADD_CURSOR = cursor(
   `<path d="${BUBBLE}" fill="#FF7300" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/><path d="M23 17.6v6.2M19.9 20.7h6.2" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`,
   "crosshair",
 );
-/** Over empty space, where a click comments on nothing: a hollow bubble. */
+/** Over empty space, where a click comments on the whole screen there: a hollow bubble. */
 const EMPTY_CURSOR = cursor(`<path d="${BUBBLE}" fill="#fff" stroke="#FF7300" stroke-width="1.6" stroke-linejoin="round"/>`, "default");
 
 export const KIT_CSS = `
@@ -49,7 +50,7 @@ html:has(.proto-scene[data-proto-mode=annotate]){cursor:${EMPTY_CURSOR}}
 .proto-selectable.proto-inline{display:inline-block}
 .proto-content{display:contents}
 [data-proto-annotating]{pointer-events:auto;cursor:${ADD_CURSOR};outline:2px solid transparent;outline-offset:2px;border-radius:4px}
-[data-proto-annotating]:hover{outline-color:var(--proto-select-hover,#93c5fd)}
+[data-proto-annotating]:hover:not(:has([data-proto-annotating]:hover)){outline-color:var(--proto-select-hover,#93c5fd)}
 [data-proto-annotating][data-proto-selected]{outline-color:var(--proto-select,#2563eb)}
 .proto-selectable[data-proto-annotating]>.proto-content{pointer-events:none}
 .proto-corner{position:absolute;top:-12px;display:flex;gap:4px;z-index:3;pointer-events:none}
@@ -61,4 +62,5 @@ html:has(.proto-scene[data-proto-mode=annotate]){cursor:${EMPTY_CURSOR}}
 .proto-pin:focus-visible{outline:2px solid var(--proto-select,#2563eb);outline-offset:1px}
 .proto-pin-draft{background:var(--proto-pin-draft-bg,Canvas);color:var(--proto-pin-draft-fg,CanvasText);border-style:dashed}
 .proto-root-pins{position:fixed;display:flex;gap:4px;z-index:3;pointer-events:none;transform:translateX(-100%)}
+.proto-screen-pin{position:absolute;z-index:2147483000;transform:translate(-50%,-50%)}
 `;

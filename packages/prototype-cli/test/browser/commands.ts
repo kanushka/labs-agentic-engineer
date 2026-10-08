@@ -138,6 +138,18 @@ const box: BrowserCommand<[pageId: string, target: Target]> = async (_ctx, pageI
   return b satisfies Box;
 };
 
+/**
+ * A click at the spot (`x`, `y`) of the app frame's viewport, as a person's
+ * pointer clicks there; returns where that is in the page's viewport.
+ */
+const clickAppAt: BrowserCommand<[pageId: string, x: number, y: number]> = async (_ctx, pageId, x, y) => {
+  const frame = await page(pageId).locator(APP_FRAME).boundingBox();
+  if (!frame) throw new Error("the app frame is not drawn");
+  const at = { x: frame.x + x, y: frame.y + y };
+  await page(pageId).mouse.click(at.x, at.y);
+  return at;
+};
+
 /** A key pressed on the page itself, wherever focus is (Playwright key names, e.g. "c", "Escape"). */
 const pressKey: BrowserCommand<[pageId: string, key: string]> = async (_ctx, pageId, key) => {
   await page(pageId).keyboard.press(key);
@@ -149,6 +161,24 @@ const resizePage: BrowserCommand<[pageId: string, width: number, height: number]
 
 const waitFor: BrowserCommand<[pageId: string, target: Target, state?: "visible" | "hidden"]> = async (_ctx, pageId, target, state = "visible") => {
   await locate(pageId, target).first().waitFor({ state, timeout: 15_000 });
+};
+
+/**
+ * With the pointer resting on `target` (an app element), the computed outline
+ * colour of each app element in `keys`: what the frame highlights on hover.
+ */
+const outlinesOnHover: BrowserCommand<[pageId: string, target: Target, keys: string[]]> = async (_ctx, pageId, target, keys) => {
+  await locate(pageId, target).hover();
+  const handle = await page(pageId).locator(APP_FRAME).elementHandle();
+  const frame = await handle?.contentFrame();
+  if (!frame) throw new Error("the app frame is not there");
+  return frame.evaluate(
+    (ks) => ks.map((k) => {
+      const el = document.querySelector(`[data-proto-key="${k}"]`);
+      return el ? getComputedStyle(el).outlineColor : "";
+    }),
+    keys,
+  );
 };
 
 /**
@@ -273,11 +303,13 @@ export const commands = {
   act,
   read,
   box,
+  clickAppAt,
   pressKey,
   resizePage,
   waitFor,
   evalInApp,
   cursorAt,
+  outlinesOnHover,
   viewBeforeLoad,
   requests,
   setStorage,

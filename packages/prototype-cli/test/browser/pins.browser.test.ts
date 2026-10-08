@@ -83,7 +83,7 @@ describe("comment pins", () => {
     await driver.waitFor(page, app.button("Comment 1"));
     await driver.click(page, app.button("Comment 2"));
     await driver.click(page, app.button("Comment 1"));
-    expect(await driver.read(page, host.picker("Screen"), "value")).toBe("screen.contacts");
+    expect(await driver.read(page, host.address(), "text")).toBe("prototype://screen.contacts");
   });
 
   it("draws a draft's pin hollow, and focuses the pin a host names when its bubble closes", async () => {
@@ -101,5 +101,27 @@ describe("comment pins", () => {
     expect(await driver.evalInApp(page, `document.activeElement.getAttribute("aria-label") + " " + document.activeElement.dataset.protoPinFor`)).toBe(`Draft comment ${row}`);
     await fromHost({ type: "proto:focus", key: "btn.new", requests: [1] });
     expect(await driver.evalInApp(page, `document.activeElement.getAttribute("aria-label")`)).toBe("Comment 1");
+  });
+
+  it("draws whole-screen comments' pins at their spots of the document, scrolling with it, hollow for a draft, and focuses one a host names", async () => {
+    const fromHost = (message: object) =>
+      driver.evalInApp(page, `window.dispatchEvent(new MessageEvent("message", { data: ${JSON.stringify(message)}, source: window.parent })); new Promise((r) => setTimeout(r, 300))`);
+    const screenPins = [{ at: { x: 300, y: 260 }, number: 3 }, { at: { x: 200, y: 900 } }];
+    const view = { mode: "preview", roleId: "editor", stateId: "state.default", screenId: "screen.contacts", selectedKeys: [], pins: {}, screenPins };
+    await driver.evalInApp(page, `document.body.style.paddingBottom = "2000px"`);
+    await fromHost({ type: "proto:view", view });
+    const centre = (name: string) =>
+      driver.evalInApp(page, `(() => { const r = document.querySelector('[aria-label="${name}"]').getBoundingClientRect(); return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2 + scrollY)].join(","); })()`);
+    expect(await centre("Comment 3")).toBe("300,260");
+    expect(await centre("Draft comment on the screen")).toBe("200,900");
+    await driver.evalInApp(page, `window.scrollTo(0, 100)`);
+    expect(await centre("Comment 3")).toBe("300,260");
+    expect(await driver.evalInApp(page, `getComputedStyle(document.querySelector('[aria-label="Draft comment on the screen"]')).borderTopStyle`)).toBe("dashed");
+
+    await fromHost({ type: "proto:focus-screen-pin", requests: [3] });
+    expect(await driver.evalInApp(page, `document.activeElement.getAttribute("aria-label")`)).toBe("Comment 3");
+    await fromHost({ type: "proto:focus-screen-pin", requests: [] });
+    expect(await driver.evalInApp(page, `document.activeElement.getAttribute("aria-label")`)).toBe("Draft comment on the screen");
+    await driver.evalInApp(page, `window.scrollTo(0, 0); document.body.style.paddingBottom = ""`);
   });
 });

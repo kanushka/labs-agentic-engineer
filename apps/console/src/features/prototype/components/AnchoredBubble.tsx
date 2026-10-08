@@ -16,16 +16,19 @@
  * under the License.
  */
 
-import { useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { ClickAwayListener, Paper, Popper } from "@wso2/oxygen-ui";
 import { focusLeftBehind, type HostRect } from "@wso2/prototype-kit/host";
 
 /**
  * Where a bubble points: elements in the frame (the kit's frame anchors, in
- * the console's viewport), or an element of the console's own (the send bar,
- * for a whole-screen comment).
+ * the console's viewport), or an element of the console's own (the dock, for
+ * a whole-screen comment).
  */
 export type BubbleAnchor = HostRect | HTMLElement;
+
+/** The review's stage (the prototype window's area), which a bubble keeps within; none: the viewport. */
+export const BubbleBounds = createContext<HTMLElement | null>(null);
 
 /** A frame rectangle as the element Popper places by: a virtual one, since the element itself is inside the sandboxed frame. */
 function virtualElement({ top, left, width, height }: HostRect) {
@@ -33,15 +36,22 @@ function virtualElement({ top, left, width, height }: HostRect) {
   return { getBoundingClientRect: () => ({ ...rect, toJSON: () => rect }) };
 }
 
-// Popper's options, made once: MUI rebuilds its popper whenever these change
-// identity, and a rebuilt popper that flips (no room below) sets its placement
-// again, so options made per render would never settle.
+// Popper's options, made once (the modifiers once per stage): MUI rebuilds its
+// popper whenever these change identity, and a rebuilt popper that flips (no
+// room below) sets its placement again, so options made per render would never settle.
 const POPPER_OPTIONS = { strategy: "fixed" } as const;
-const MODIFIERS = [{ name: "offset", options: { offset: [0, 8] } }];
+const OFFSET = { name: "offset", options: { offset: [0, 8] } };
+
+/** Kept inside the stage when there is one, so a bubble on the prototype never covers the dock below it. */
+function modifiersFor(bounds: HTMLElement | null) {
+  if (!bounds) return [OFFSET];
+  return [OFFSET, { name: "flip", options: { boundary: bounds } }, { name: "preventOverflow", options: { boundary: bounds } }];
+}
 
 /**
  * The popover every comment bubble is drawn in, by its anchor (flipping
- * above it when there is no room below), over the frame and never inside it.
+ * above it when there is no room below), kept inside the review's stage
+ * (`BubbleBounds`), over the frame and never inside it.
  * Nothing is drawn until the anchor is known.
  */
 export function AnchoredBubble({
@@ -60,6 +70,10 @@ export function AnchoredBubble({
   children: ReactNode;
 }) {
   const paper = useRef<HTMLDivElement>(null);
+  const bounds = useContext(BubbleBounds);
+  // A bubble on the console's own element (the dock) is outside the stage: it flips above it within the viewport.
+  const onHost = anchor instanceof HTMLElement;
+  const modifiers = useMemo(() => modifiersFor(onHost ? null : bounds), [onHost, bounds]);
   const anchorEl = useMemo(() => (anchor === null || anchor instanceof HTMLElement ? anchor : virtualElement(anchor)), [anchor]);
   return (
     <Popper
@@ -69,7 +83,7 @@ export function AnchoredBubble({
       // Inside the review's dialog, so its focus trap keeps focus in the bubble.
       disablePortal
       popperOptions={POPPER_OPTIONS}
-      modifiers={MODIFIERS}
+      modifiers={modifiers}
       sx={{ zIndex: (t) => t.zIndex.modal + 1 }}
     >
       <ClickAwayListener onClickAway={() => onClickAway(paper.current !== null && focusLeftBehind(paper.current))}>

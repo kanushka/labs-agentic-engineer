@@ -18,21 +18,25 @@
 
 /**
  * The popover every comment bubble is drawn in, by its anchor: below it, or
- * above it when there is no room below, kept inside the window, over the
- * frame and never inside it. Nothing is drawn until the anchor is known; a
+ * above it when there is no room below, kept inside the window and above the
+ * bottom of the review's stage (`BubbleBounds`: so it never covers the dock
+ * below the stage), over the frame and never inside it. Nothing is drawn until the anchor is known; a
  * click anywhere outside it is a click away. (Clicks inside the prototype's
  * frame never reach the host page: a click there is the frame's to report.)
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { focusLeftBehind, placeBubble, type HostRect } from "@wso2/prototype-kit/host";
 
 /**
  * Where a bubble points: elements in the frame (the kit's frame anchors, in
- * the host's viewport), or an element of the host's own (the comment bar, for
- * a whole-screen comment).
+ * the host's viewport), or an element of the host's own (the dock, for a
+ * whole-screen comment).
  */
 export type BubbleAnchor = HostRect | HTMLElement;
+
+/** The review's stage (the prototype window's area), whose bottom a bubble keeps above; none: the window's. */
+export const BubbleBounds = createContext<HTMLElement | null>(null);
 
 function rectOf(anchor: BubbleAnchor): HostRect {
   if (!(anchor instanceof HTMLElement)) return anchor;
@@ -57,25 +61,28 @@ export function AnchoredBubble({
 }) {
   const bubble = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const bounds = useContext(BubbleBounds);
 
   useLayoutEffect(() => {
     const el = bubble.current;
     if (!el || !anchor) return;
     const measure = () => {
-      const next = placeBubble(rectOf(anchor), { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
+      const floor = bounds ? Math.min(window.innerHeight, bounds.getBoundingClientRect().bottom) : window.innerHeight;
+      const next = placeBubble(rectOf(anchor), { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: floor });
       setAt((a) => (a && a.top === next.top && a.left === next.left ? a : next));
     };
     measure();
-    // The bubble grows as its text does; the host's own anchor (the bar) changes size as it expands.
+    // The bubble grows as its text does; the host's own anchor (the dock) and the stage change size too.
     const resized = new ResizeObserver(measure);
     resized.observe(el);
     if (anchor instanceof HTMLElement) resized.observe(anchor);
+    if (bounds) resized.observe(bounds);
     window.addEventListener("resize", measure);
     return () => {
       resized.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [anchor]);
+  }, [anchor, bounds]);
 
   const latest = useRef(onClickAway);
   useEffect(() => {

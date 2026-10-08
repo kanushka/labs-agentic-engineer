@@ -24,6 +24,7 @@
  */
 
 import { createContext, useContext } from "react";
+import type { FrameScreenPin } from "../host/bridge.js";
 import type { PrototypeManifest } from "../manifest/types.js";
 import type { DataStore } from "./store.js";
 
@@ -41,6 +42,8 @@ export interface KitView {
   pins: Readonly<Record<string, readonly number[]>>;
   /** The element ids on this screen that hold a draft comment, drawn as a hollow pin; none when absent. */
   drafts?: readonly string[] | undefined;
+  /** Whole-screen comments' pins on this screen, at their spots of the document; none when absent. */
+  screenPins?: readonly FrameScreenPin[] | undefined;
 }
 
 export interface KitContextValue {

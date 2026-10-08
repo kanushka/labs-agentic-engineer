@@ -19,20 +19,22 @@
 /**
  * Where the frame's elements are in the host page, for a host that draws its
  * own UI by them (a comment bubble, a pin). The frame reports element boxes
- * in its own viewport (`proto:toggle`, `proto:geometry`); this adds where the
- * frame element sits in the host's viewport, and keeps that current as the
+ * in its own viewport (`proto:toggle`, `proto:geometry`) and how far its
+ * document is scrolled; this adds where the frame element sits in the host's
+ * viewport, and keeps that current as the
  * host page scrolls or resizes, or the frame element moves or resizes. The
  * frame re-reports its boxes when the prototype scrolls, resizes or redraws,
  * so together the anchors follow the element. Headless: the host draws.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FrameBox } from "./bridge.js";
+import type { FrameBox, FramePoint } from "./bridge.js";
 
-/** The elements' boxes as the frame last reported them, and the frame element they are drawn in. */
+/** The elements' boxes and the document's scroll as the frame last reported them, and the frame element they are drawn in. */
 export interface FrameGeometry {
   frame: HTMLElement;
   boxes: Readonly<Record<string, FrameBox>>;
+  scroll: FramePoint;
 }
 
 /** A rectangle in the host's viewport (CSS pixels, as `getBoundingClientRect()` gives). */
@@ -51,9 +53,16 @@ export interface FrameAnchors {
    * when the frame draws none of them. The same object while nothing moved.
    */
   anchor: (keys: readonly string[]) => HostRect | null;
+  /**
+   * Where the spot `at` of the frame's document (a whole-screen comment's)
+   * is in the host, as a rectangle of no size; null until the frame is
+   * known. The same object while nothing moved.
+   */
+  point: (at: FramePoint) => HostRect | null;
 }
 
 const NO_BOXES: Readonly<Record<string, FrameBox>> = Object.freeze({});
+const NO_SCROLL: FramePoint = Object.freeze({ x: 0, y: 0 });
 
 function sameOrigin(a: { top: number; left: number } | null, b: { top: number; left: number }): boolean {
   return a !== null && a.top === b.top && a.left === b.left;
@@ -73,12 +82,14 @@ function around(origin: { top: number; left: number }, boxes: Readonly<Record<st
 export function useFrameAnchors(): FrameAnchors {
   const [frame, setFrame] = useState<HTMLElement | null>(null);
   const [boxes, setBoxes] = useState(NO_BOXES);
+  const [scroll, setScroll] = useState(NO_SCROLL);
   // The frame viewport's top-left corner in the host's viewport.
   const [origin, setOrigin] = useState<{ top: number; left: number } | null>(null);
 
   const onGeometry = useCallback((geometry: FrameGeometry) => {
     setFrame(geometry.frame);
     setBoxes(geometry.boxes);
+    setScroll((s) => (s.x === geometry.scroll.x && s.y === geometry.scroll.y ? s : geometry.scroll));
   }, []);
 
   useEffect(() => {
@@ -111,5 +122,15 @@ export function useFrameAnchors(): FrameAnchors {
     };
   }, [origin, boxes]);
 
-  return useMemo(() => ({ onGeometry, anchor }), [onGeometry, anchor]);
+  // One rectangle per spot while nothing moved, likewise.
+  const point = useMemo(() => {
+    const placed = new Map<string, HostRect | null>();
+    return (at: FramePoint): HostRect | null => {
+      const id = `${at.x},${at.y}`;
+      if (!placed.has(id)) placed.set(id, origin && { top: origin.top + at.y - scroll.y, left: origin.left + at.x - scroll.x, width: 0, height: 0 });
+      return placed.get(id) ?? null;
+    };
+  }, [origin, scroll]);
+
+  return useMemo(() => ({ onGeometry, anchor, point }), [onGeometry, anchor, point]);
 }
