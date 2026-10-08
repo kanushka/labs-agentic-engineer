@@ -1239,6 +1239,21 @@ describe("the revision landing in the open review", () => {
     ]);
   });
 
+  it("shows what a failed turn wrote before it stopped, and gives the comments back on it", async () => {
+    const { post } = await sent(["Ask for a reason"]);
+    clickElement("btn.approve");
+    addComment("Make it green");
+    ended(revised(), "failed");
+
+    await waitFor(() => expect(lastLoad(post).source).toBe(REVISED_SOURCE));
+    expect(within(bar()).getByRole("alert")).toHaveTextContent(/stopped partway, so you're seeing the changes it made before it stopped\. Your comments are back/);
+    expect(bar()).toHaveTextContent("2 comments were written on an earlier version of the prototype.");
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1]![2]).toMatchObject({ feedback: { prototypeHash: prototypeHash(SAMPLE_MANIFEST, REVISED_SOURCE) } });
+  });
+
   it("keeps the last good revision showing when the new one is invalid, and gives the comments back", async () => {
     await sent(["Ask for a reason"]);
     ended({ [manifestPath(C)]: "{" , [sourcePath(C)]: REVISED_SOURCE });

@@ -38,8 +38,10 @@ type ConversationMessage = components["schemas"]["ConversationMessage"];
 //    each request by number, applied or declined. A few requests the sample
 //    knows how to apply (a tweak, an editFile on the source); anything else is
 //    declined, as the mock cannot write code. "Remove …" takes the Reject
-//    button away (a comment held on it is orphaned), and "… fail …" fails the
-//    turn, writing nothing (the review gets its comments back).
+//    button away (a comment held on it is orphaned), "… fail …" fails the
+//    turn, writing nothing (the review gets its comments back), and "…
+//    partway …" fails it after the requests before it are written, so the
+//    review shows what the turn changed and gets its comments back on it.
 //
 // The files land in the local doc from the turn's stream, as every agent
 // write does in mock mode; a finished turn's files also seed the doc after a
@@ -377,6 +379,9 @@ const TWEAKS: Tweak[] = [
 /** A request that makes the revision's turn fail, so a review can be seen getting its comments back. */
 const FAIL = /\bfail\b/i;
 
+/** A request that makes the revision's turn fail once the requests before it are applied, leaving their edits written. */
+const PARTWAY = /\bpartway\b/i;
+
 export interface PrototypeTurn {
   display: string;
   frames: ScriptFrame[];
@@ -453,8 +458,11 @@ function revise(req: {
   s.say(`Revising the prototype of ${component} with your ${n === 1 ? "request" : `${n} requests`}.`);
   const failing = feedback.requests.findIndex((r) => FAIL.test(r.text));
   if (failing >= 0) return { display: req.display, ...s.pause(1500).fail(`The revision failed: request ${failing + 1} asked this mock to fail it.`) };
+  // Requests are worked through in order; one asking to stop partway ends the turn there.
+  const stop = feedback.requests.findIndex((r) => PARTWAY.test(r.text));
+  const worked = stop >= 0 ? feedback.requests.slice(0, stop) : feedback.requests;
   let source = req.source;
-  const answers = feedback.requests.map((request, i) => {
+  const answers = worked.map((request, i) => {
     const tweak = TWEAKS.find((t) => t.match.test(request.text));
     if (!tweak) return `${i + 1}. Declined: this mock can't make that change. (${request.screenId})`;
     if (!source.includes(tweak.from)) return `${i + 1}. Already so: ${tweak.applied}`;
@@ -462,11 +470,12 @@ function revise(req: {
     source = source.replace(tweak.from, tweak.to);
     return `${i + 1}. Applied: ${tweak.applied}`;
   });
-  s.pause(400).say(answers.join("\n"));
+  if (answers.length > 0) s.pause(400).say(answers.join("\n"));
   const changed = source !== req.source;
+  const ended = stop >= 0 ? s.pause(400).fail(`The revision stopped partway: request ${stop + 1} asked this mock to fail it.`) : s.end();
   return {
     display: req.display,
-    ...s.end(),
+    ...ended,
     ...(changed ? { files: { [manifestPath(component)]: req.manifest, [sourcePath(component)]: source } } : {}),
   };
 }

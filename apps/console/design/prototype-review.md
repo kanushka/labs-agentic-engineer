@@ -178,7 +178,11 @@ whole-screen comment there (`proto:screen-click`).
   turn (`chatStore.onTurnEnd`) or an invalid revision keeps the last ready
   revision showing and puts the batch back in front of the queue
   (`restored`), with the reason (the reviewer's situation: the prototype
-  wasn't updated, the previous version still shows) and Retry. A stream lost
+  wasn't updated, the previous version still shows) and Retry. A turn that
+  failed after writing valid files leaves them showing: the batch comes back
+  onto them (the queue's hash moves on, each comment marked "Written on an
+  earlier version"), and the notice says the agent stopped partway and what
+  shows is what it changed before it stopped. A stream lost
   mid-turn reports no outcome; the status (ready or invalid) decides.
   Reopened mid-revision, the review shows the same state.
 - **Reviewed dot:** shown while a valid prototype's current revision is
@@ -194,8 +198,10 @@ the bare `/prototype` or `/prototype <c>` with the same component. The mock
 (`mocks/fixtures/prototype.ts`) writes the manifest then the source, answers
 feedback by number, and refuses a bad batch as Go does. Its revisions: "on
 the right" and "bigger total" apply, "remove" takes the Reject button away
-(orphaning comments on it), and "fail" fails the turn (`turn-failed`, status
-failed) writing nothing.
+(orphaning comments on it), "fail" fails the turn (`turn-failed`, status
+failed) writing nothing, and "partway" fails it after writing what the
+requests before it ask (send "Remove the Reject button" then "Stop partway"
+to see a failed turn's edits showing).
 
 ## Theme
 

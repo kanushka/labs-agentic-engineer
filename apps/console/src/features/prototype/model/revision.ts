@@ -36,7 +36,9 @@ import type { AppPrototype, PrototypeFiles } from "./prototypes";
 //             each still marked with the revision it was written on;
 //   failed    the turn failed, or what it left is invalid: the last good
 //             revision keeps showing and the batch goes back in front of the
-//             queue, with the reason.
+//             queue, with the reason. A turn that failed after writing valid
+//             files leaves them showing: the batch goes back onto them (each
+//             comment still marked with the revision it was written on).
 //
 // A turn's outcome comes from the chat store, which reports it as the turn
 // goes idle, before the prototype stops revising here. A turn whose stream
@@ -93,11 +95,18 @@ function settled(s: ReviewSession, prototype: AppPrototype): ReviewSession {
       : prototype.status === "invalid"
         ? `The updated prototype can't be shown (${prototype.problem ?? "it is invalid"})`
         : null;
+  const shownHash = s.shown ? prototypeHash(s.shown.manifestText, s.shown.source) : null;
   if (failure === null) {
-    const queue = s.shown ? onRevision(s.queue, prototypeHash(s.shown.manifestText, s.shown.source)) : s.queue;
+    const queue = shownHash !== null ? onRevision(s.queue, shownHash) : s.queue;
     return { ...s, queue, sent: null, notice: { kind: "updated", addressed: s.sent?.feedback.requests.length ?? 0 } };
   }
-  const queue = s.sent ? restored(s.queue, s.sent.feedback) : s.queue;
+  // A failed turn may have written valid files before it stopped: they are showing, so the batch goes back onto them.
+  const partway = s.sent !== null && shownHash !== null && shownHash !== s.sent.feedback.prototypeHash;
+  const given = s.sent ? restored(s.queue, s.sent.feedback) : s.queue;
+  const queue = partway && shownHash !== null ? onRevision(given, shownHash) : given;
+  const seeing = partway
+    ? "The agent stopped partway, so you're seeing the changes it made before it stopped."
+    : `${failure}, so you're still seeing the previous version.`;
   const back = s.sent ? " Your comments are back in the queue: Retry sends them again." : "";
-  return { ...s, queue, sent: null, notice: { kind: "failed", reason: `${failure}, so you're still seeing the previous version.${back}` } };
+  return { ...s, queue, sent: null, notice: { kind: "failed", reason: `${seeing}${back}` } };
 }

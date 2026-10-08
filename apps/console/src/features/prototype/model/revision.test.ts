@@ -66,6 +66,26 @@ describe("a revision landing", () => {
     expect(earlierComments(failed.queue, hashOf(V1))).toEqual([]);
   });
 
+  it("moves a failed batch onto what the turn wrote before it stopped, which is showing, and says so", () => {
+    const failed = follow(turnEnded(heldWhileRevising(), "failed"), app("ready", V2));
+    expect(failed.shown).toBe(V2);
+    expect(failed.queue.requests.map((r) => r.text)).toEqual(["Ask for a reason", "Make it green"]);
+    expect(feedbackBatch("expense-web", failed.queue)?.prototypeHash).toBe(hashOf(V2));
+    expect(earlierComments(failed.queue, hashOf(V2))).toEqual([0, 1]);
+    expect(failed.notice).toEqual({
+      kind: "failed",
+      reason: "The agent stopped partway, so you're seeing the changes it made before it stopped. Your comments are back in the queue: Retry sends them again.",
+    });
+  });
+
+  it("says the previous version still shows when a failed turn changed nothing", () => {
+    const failed = follow(turnEnded(heldWhileRevising(), "failed"), app("ready", V1));
+    expect(failed.notice).toEqual({
+      kind: "failed",
+      reason: "The prototype wasn't updated, so you're still seeing the previous version. Your comments are back in the queue: Retry sends them again.",
+    });
+  });
+
   it("keeps an empty queue empty", () => {
     let s = sendStarted(follow(NEW_SESSION, app("ready", V1)), { prototypeHash: hashOf(V1), component: "expense-web", requests: [request([], "x")] });
     s = follow(follow(s, app("revising", V1)), app("ready", V2));

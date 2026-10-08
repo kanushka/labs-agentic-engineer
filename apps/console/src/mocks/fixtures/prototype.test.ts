@@ -112,4 +112,13 @@ describe("scriptPrototypeTurn", () => {
     expect(turn.frames.at(-1)?.part).toMatchObject({ type: "turn-failed" });
     expect(turn.failure).toMatch(/failed/);
   });
+
+  it("fails the turn a request asks to stop partway, keeping what the requests before it wrote", () => {
+    const feedback = { prototypeHash: "a".repeat(64), component: SAMPLE_COMPONENT, requests: [request("Remove the Reject button"), request("Stop partway")] };
+    const turn = scriptPrototypeTurn({ ...base, instruction: "/prototype expense-web", feedback, doc: made() })!;
+    expect(writes(turn.frames)).toEqual([`editFile ${sourcePath(SAMPLE_COMPONENT)}`]);
+    expect(turn.files?.[sourcePath(SAMPLE_COMPONENT)]).not.toContain('id="btn.reject"');
+    expect(turn.frames.at(-1)?.part).toMatchObject({ type: "turn-failed" });
+    expect(turn.failure).toMatch(/request 2/);
+  });
 });
