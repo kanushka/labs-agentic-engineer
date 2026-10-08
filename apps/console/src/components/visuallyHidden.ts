@@ -16,7 +16,11 @@
  * under the License.
  */
 
-/** Read out by a screen reader, not shown: for text another cue already says on screen. */
+/**
+ * Read out, not shown: an `sx` for text only assistive tech should get (who
+ * said a chat line; what a Send just found unanswered; that the agent is
+ * revising the prototype).
+ */
 export const visuallyHidden = {
   position: "absolute",
   width: "1px",

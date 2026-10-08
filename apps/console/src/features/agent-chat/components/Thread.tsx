@@ -19,23 +19,22 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Box, Button, CircularProgress, Typography } from "@wso2/oxygen-ui";
 import { CircleAlert, Sparkles } from "@wso2/oxygen-ui-icons-react";
+import { visuallyHidden } from "../../../components/visuallyHidden";
 import { usePrototypeNotes } from "../../prototype/usePrototypeNotes";
 import { usePrototypeRequestsText } from "../../prototype/usePrototypeRequestsText";
 import { useSpecModel } from "../../spec/useSpecWorkspace";
-import { answerableQuestionId, interviewWriteUp, userLineText, type ChatItem } from "../chatLog";
-import type { PrototypeFeedback, TurnScope } from "../turnScope";
+import { interviewWriteUp, openQuestionId, userLineText, type ChatItem } from "../chatLog";
+import type { PrototypeFeedback } from "../turnScope";
 import { chatStore, useProjectChat } from "../useProjectChat";
 import { ActivityLine } from "./ActivityLine";
 import { InterviewFollowUp } from "./InterviewFollowUp";
 import { NoteActions } from "./NoteActions";
-import { QuestionCard } from "./QuestionCard";
-import { visuallyHidden } from "../../../components/visuallyHidden";
+import { QuestionsPointer } from "./QuestionsPointer";
 
 // The conversation, oldest first: what the user said, what the agent said,
 // a compact line for each file it wrote, and its questions as cards. After an
 // interview has written its feature, the walk and the next feature follow;
 // after a prototype turn has written a valid prototype, Open prototype.
-
 
 function AgentMark() {
   return (
@@ -180,13 +179,13 @@ function useStickToBottom() {
   return setNode;
 }
 
-export function Thread({ projectName, scope }: { projectName: string; scope: TurnScope }) {
+export function Thread({ projectName }: { projectName: string }) {
   const chat = useProjectChat(projectName);
   const features = useSpecModel(projectName).data?.features;
   const { items, turn } = chat;
   const running = turn.phase !== "idle";
 
-  const answerable = answerableQuestionId(items);
+  const openQuestion = openQuestionId(items);
   const featurePaths = useMemo(() => new Set((features ?? []).map((f) => f.path)), [features]);
   const followUp = running ? null : interviewWriteUp(items, featurePaths);
   const prototypeNotes = usePrototypeNotes(projectName, items, running);
@@ -257,12 +256,7 @@ export function Thread({ projectName, scope }: { projectName: string; scope: Tur
           {item.kind === "error" && <ErrorRow text={item.text} />}
           {item.kind === "question" && (
             <Box sx={{ pl: 4 }}>
-              <QuestionCard
-                item={item}
-                answerable={item.id === answerable}
-                sending={turn.phase === "starting"}
-                onAnswer={(answers) => void chatStore.answer(projectName, item.id, answers, scope)}
-              />
+              <QuestionsPointer projectName={projectName} item={item} open={item.id === openQuestion} />
             </Box>
           )}
           {followUp?.afterId === item.id && <InterviewFollowUp projectName={projectName} path={followUp.path} />}
