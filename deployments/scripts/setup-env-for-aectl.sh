@@ -125,8 +125,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ============================================================================
 OC_BRANCH="release-v1.2"
 OC_VERSION="1.2.5"
-CLUSTER_NAME="openchoreo"
-CLUSTER_CONTEXT="k3d-${CLUSTER_NAME}"
+CLUSTER_NAME="${CLUSTER_NAME:-openchoreo}"
+CLUSTER_CONTEXT="${CLUSTER_CONTEXT:-k3d-${CLUSTER_NAME}}"
 
 # Dev control-plane gateway https listener (SRE agent -> aep-api's handoff, see
 # deployments/scripts/setup-sre.sh / tools/aectl/cmd/sre.go's --mcp-hostname).
@@ -316,7 +316,8 @@ yaml.safe_dump(cfg, open(path, "w"), default_flow_style=False, width=10**6)
 PY
         echo "   + port 80 published (ACME HTTP-01)"
     fi
-    k3d cluster create --config="$CLUSTER_CONFIG"
+    # The fetched config names the cluster openchoreo; the positional name wins over it.
+    k3d cluster create "${CLUSTER_NAME}" --config="$CLUSTER_CONFIG"
     rm -f "$CLUSTER_CONFIG"
 else
     echo "⏭️  Cluster '${CLUSTER_NAME}' already exists"

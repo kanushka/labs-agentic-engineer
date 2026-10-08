@@ -43,9 +43,10 @@ SA_NAME="aep-thunder-reader"
 SA_NAMESPACE="default"
 SECRET_NAME="${SA_NAME}-token"
 # The apiserver as the aep-api CONTAINER reaches it: both are on the
-# k3d-openchoreo docker network, and the serving cert carries
-# k3d-openchoreo-serverlb as a SAN.
-KUBE_API_URL="https://k3d-openchoreo-serverlb:6443"
+# k3d-<cluster> docker network, and the serving cert carries
+# k3d-<cluster>-serverlb as a SAN.
+CLUSTER_NAME="${CLUSTER_NAME:-openchoreo}"
+KUBE_API_URL="https://k3d-${CLUSTER_NAME}-serverlb:6443"
 
 if [[ "${1:-}" == "--revoke" ]]; then
   kubectl delete clusterrolebinding "${SA_NAME}" --ignore-not-found
@@ -126,7 +127,7 @@ fi
 # Prove the credential before handing it over: a token that cannot LIST is worth
 # finding out about here, not as a deploy that silently never waits.
 echo "==> Verifying the credential can LIST thunderapplications"
-STATUS="$(docker run --rm --network k3d-openchoreo \
+STATUS="$(docker run --rm --network "k3d-${CLUSTER_NAME}" \
   -v "${CA_PATH}:/ca.crt:ro" curlimages/curl:latest \
   -sS --cacert /ca.crt -H "Authorization: Bearer ${TOKEN}" \
   -o /dev/null -w '%{http_code}' --max-time 15 \

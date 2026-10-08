@@ -269,6 +269,13 @@ workflow-skill:
 # config file carrying the same suffix (deployments/README.md).
 AE_DOMAIN ?= localhost
 
+# The k3d cluster the local-dev targets build onto and install into. Exported,
+# so every script dev-env runs reads the same name (they default to openchoreo
+# too). Override to keep a second cluster beside another k3d setup; only one
+# can run at a time, since both publish the same host ports (8080/8443).
+CLUSTER_NAME ?= openchoreo
+export CLUSTER_NAME
+
 dev-env:
 	@if [ "$(AE_DOMAIN)" != "localhost" ]; then \
 		echo "❌ dev-env is the localhost flow: it imports skaffold/defaults.yaml, whose URLs are localhost." >&2; \
@@ -309,7 +316,7 @@ dev-env:
 # Needs the cluster to exist: skaffold is given its kube-context, and the
 # import targets it by name.
 dev-images:
-	skaffold build --kube-context k3d-openchoreo -f skaffold.yaml
+	skaffold build --kube-context k3d-$(CLUSTER_NAME) -f skaffold.yaml
 	# skaffold's own build cache lives in the HOST docker daemon, not the k3d
 	# cluster's containerd — a cache hit ("Found Locally") skips its internal
 	# k3d-import too, so a recreated/fresh cluster silently never receives an
@@ -321,7 +328,7 @@ dev-images:
 		ghcr.io/wso2/aep/collab:dev-local \
 		ghcr.io/wso2/aep/console:dev-local \
 		ghcr.io/wso2/aep/tryit:dev-local \
-		--cluster openchoreo
+		--cluster $(CLUSTER_NAME)
 
 # The observability plane's heavy half (OpenSearch, Prometheus, collectors,
 # adapters): `make dev-env` installs it running and parks it last, unless the

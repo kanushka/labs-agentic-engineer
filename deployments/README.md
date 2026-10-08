@@ -44,6 +44,10 @@ make dev-env
 # aep-api: http://console.ae.localhost:8080/aep-api-service/ (the console proxies it)
 # Try it:  http://tryit.ae.localhost:8080
 
+#    The k3d cluster is `openchoreo`; CLUSTER_NAME=<name> builds onto and
+#    installs into another, to keep AEP beside a different k3d setup (stop the
+#    other first: both publish 8080/8443). Pass the same name to every target.
+
 # 2. Edit source, then run this to rebuild + redeploy just the changed image(s)
 make dev-update
 
